@@ -1,234 +1,459 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Sparkles, Trophy, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { Check, Sparkles, Trophy, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { GoalPaceBar } from '@/components/ui/GoalPaceBar'
 import {
-  playWeeklyGoalFailSound,
-  playWeeklyGoalWinSound,
-  warmAudioContext,
-} from '@/lib/timerSound'
-import type { WeeklyShutdownGoalSummary, WeeklyReviewStat } from '@/lib/weeklyShutdown'
+  SplitAccentProgressBar,
+} from '@/components/ui/SplitAccentProgressBar'
+import type {
+  WeeklyShutdownGoalSummary,
+  WeeklyReviewStat,
+  WeeklyHabitReviewSummary,
+} from '@/lib/weeklyShutdown'
 import { cn } from '@/lib/utils'
 
 interface WeeklyGoalRevealModalProps {
   summaries: WeeklyShutdownGoalSummary[]
   untargetedStats: WeeklyReviewStat[]
+  habitSummaries?: WeeklyHabitReviewSummary[]
   weekLabel: string
   onClose: () => void
 }
 
-const BAR_DURATION_MS = 2000
-/** Each bar starts this long after the previous — ends stay ~1.5s apart with overlapping fills. */
-const BAR_START_STAGGER_MS = 1500
-const INTRO_BEFORE_BAR_MS = 500
-/** Weight bars sit at last week's position this long before animating to this week. */
-const WEIGHT_HOLD_MS = 1800
-/** Extra pause after the weight bar finishes before workout/daily goals animate. */
-const POST_WEIGHT_GAP_MS = 2200
-const SOUND_BEFORE_BAR_END_MS = 500
-const PAUSE_BEFORE_FINALE_MS = 600
-const STAT_INTRO_MS = 450
-const STAT_HOLD_MS = 1100
-/** Max scrollable review body height. */
-const BODY_MAX_PX = 520
+const BAR_DURATION_MS = 1400
+const INTRO_BEFORE_BAR_MS = 350
+const STATS_EXTRA_DELAY_MS = 450
+const STAT_STAGGER_MS = 90
+const FOOTER_EXTRA_DELAY_MS = 350
 
 function formatPercent(n: number): string {
   const rounded = Math.round(n * 10) / 10
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
 }
 
+function goalKindLabel(summary: WeeklyShutdownGoalSummary): string {
+  if (summary.metricKey === 'focus') {
+    return summary.kind === 'weekly' ? 'Focus · weekly goal' : 'Focus · daily goal'
+  }
+  if (summary.isWorkout) {
+    return summary.kind === 'weekly' ? 'Workout · weekly goal' : 'Workout · daily goal'
+  }
+  if (summary.isWeight) {
+    return summary.weightMode === 'bulk' ? 'Weight · bulk' : 'Weight · cut'
+  }
+  return summary.kind === 'weekly' ? 'Weekly goal' : 'Daily goal'
+}
+
+function reviewHitLabel(summary: WeeklyShutdownGoalSummary): string {
+  if (summary.isWeight) return 'Good week'
+  if (summary.usesPaceReview) return 'On track'
+  return summary.percent > 100 ? 'Crushed it!' : 'Goal crushed!'
+}
+
+function reviewMissLabel(summary: WeeklyShutdownGoalSummary): string {
+  if (summary.isWeight) return 'Off track'
+  if (summary.usesPaceReview) return 'Behind'
+  return 'Missed'
+}
+
+function HabitDayRing({ done, label }: { done: boolean; label: string }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+      <span
+        className={cn(
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 sm:h-[18px] sm:w-[18px]',
+          done
+            ? 'bg-emerald-500/15 ring-emerald-500/50 text-emerald-400'
+            : 'bg-red-500/10 ring-red-500/40 text-red-400',
+        )}
+        aria-label={done ? 'Done' : 'Missed'}
+      >
+        {done ? <Check size={9} strokeWidth={3} /> : <X size={9} strokeWidth={3} />}
+      </span>
+      <span className="truncate text-[7px] font-medium uppercase text-zinc-600 sm:text-[8px]">
+        {label}
+      </span>
+    </div>
+  )
+}
+
+function HabitReviewCard({ habit }: { habit: WeeklyHabitReviewSummary }) {
+  const doneCount = habit.days.filter((d) => d.done).length
+  const isDaily = habit.logPeriod === 'daily'
+
+  return (
+    <div className="flex h-full min-h-0 flex-col rounded-md border border-zinc-800/80 bg-zinc-950 px-2 py-1.5">
+      <div className="flex items-center justify-between gap-1.5">
+        <p className="min-w-0 truncate text-[10px] font-medium text-zinc-200">{habit.label}</p>
+        {isDaily && (
+          <span className="shrink-0 text-[9px] tabular-nums text-zinc-500">
+            {doneCount}/{habit.days.length}
+          </span>
+        )}
+      </div>
+      <div className={cn('mt-auto flex gap-0.5 pt-1.5', isDaily ? 'justify-between' : 'justify-start')}>
+        {habit.days.map((day) => (
+          <HabitDayRing key={day.date} done={day.done} label={day.dayLabel} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StatReviewCard({ stat }: { stat: WeeklyReviewStat }) {
+  return (
+    <div className="flex h-full flex-col rounded-md border border-[var(--accent-500)]/20 bg-zinc-950 px-2 py-1.5">
+      <p className="truncate text-[8px] font-medium uppercase tracking-widest text-zinc-500">
+        {stat.label}
+      </p>
+      <p className="mt-auto truncate pt-1 text-sm font-light tabular-nums text-zinc-50">{stat.value}</p>
+      <p className="truncate text-[9px] text-zinc-500">{stat.detail}</p>
+    </div>
+  )
+}
+
+function WeightWeekProgressBar({
+  percentBefore,
+  percentAfter,
+  size = 'md',
+  /** Gray bar width on the campaign scale (last week; may shrink on loss). */
+  grayPct,
+  /** Green segment width beyond gray (gain only). */
+  greenPct = 0,
+  animate = false,
+  barReady = false,
+  barDurationMs = BAR_DURATION_MS,
+  fillRef,
+}: {
+  percentBefore: number
+  percentAfter: number
+  size?: 'sm' | 'md'
+  grayPct: number
+  greenPct?: number
+  animate?: boolean
+  barReady?: boolean
+  barDurationMs?: number
+  fillRef?: RefObject<HTMLDivElement | null>
+}) {
+  const lastPct = Math.min(100, Math.max(0, percentBefore))
+  const thisPct = Math.min(100, Math.max(0, percentAfter))
+  const gained = thisPct > lastPct
+  const lost = thisPct < lastPct
+  const overlapPx = size === 'sm' ? 1 : 2
+  const clampedGray = Math.min(100, Math.max(0, grayPct))
+  const clampedGreen = Math.min(100 - clampedGray, Math.max(0, greenPct))
+  const transition =
+    animate && barReady
+      ? `width ${barDurationMs}ms cubic-bezier(0.16, 1, 0.3, 1)`
+      : undefined
+
+  return (
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-full bg-zinc-800 ring-1 ring-zinc-700/50',
+        size === 'sm' ? 'h-1.5' : 'h-2.5',
+      )}
+    >
+      {lost && (
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-red-400 via-red-500 to-red-600"
+          style={{ width: `${thisPct}%` }}
+        >
+          <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/15 to-transparent" />
+        </div>
+      )}
+
+      {gained && (
+        <div
+          ref={fillRef}
+          className="absolute inset-y-0 z-[5] rounded-r-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600"
+          style={{
+            left: `calc(${clampedGray}% - ${overlapPx}px)`,
+            width:
+              clampedGreen > 0
+                ? `calc(${clampedGreen}% + ${overlapPx}px)`
+                : '0%',
+            transition,
+          }}
+        >
+          <div className="absolute inset-0 rounded-r-full bg-gradient-to-b from-white/20 to-transparent" />
+        </div>
+      )}
+
+      <div
+        ref={lost ? fillRef : undefined}
+        className={cn(
+          'absolute inset-y-0 left-0 z-10 bg-zinc-500',
+          gained ? 'rounded-l-full' : 'rounded-full',
+        )}
+        style={{
+          width: `${clampedGray}%`,
+          transition: lost ? transition : undefined,
+        }}
+        title="Last week's average"
+      />
+    </div>
+  )
+}
+
 function GoalRevealCard({
   summary,
-  cardIndex,
-  isAfterWeight = false,
-  postWeightIndex = 0,
-  onBarComplete,
+  barsActive,
+  barDurationMs,
+  featured = false,
+  compact = false,
 }: {
   summary: WeeklyShutdownGoalSummary
-  cardIndex: number
-  isAfterWeight?: boolean
-  postWeightIndex?: number
-  onBarComplete?: () => void
+  barsActive: boolean
+  barDurationMs: number
+  featured?: boolean
+  compact?: boolean
 }) {
+  const isCompact = compact && !featured
   const isWeight = summary.isWeight
-  const barStart = isWeight ? (summary.percentBefore ?? 0) : 0
-  const barEnd = isWeight ? summary.percent : Math.min(100, summary.percent)
-  const barStartDelayMs = isWeight
-    ? WEIGHT_HOLD_MS
-    : isAfterWeight
-      ? WEIGHT_HOLD_MS + BAR_DURATION_MS + POST_WEIGHT_GAP_MS + postWeightIndex * BAR_START_STAGGER_MS
-      : INTRO_BEFORE_BAR_MS + cardIndex * BAR_START_STAGGER_MS
-  const barDurationMs = BAR_DURATION_MS
-  const [widthPct, setWidthPct] = useState(barStart)
+  const showPriorPeriod = summary.usesPaceReview === true
+  const rawBeforePct = Math.min(100, Math.max(0, summary.percentBefore ?? 0))
+  const beforePct = showPriorPeriod ? rawBeforePct : 0
+  const afterPct = Math.min(100, Math.max(0, summary.percent))
+  const lastPct = isWeight ? rawBeforePct : beforePct
+  const thisPct = isWeight ? afterPct : afterPct
+  const gainPct = showPriorPeriod ? afterPct - rawBeforePct : afterPct
+  const isDecrease = showPriorPeriod && gainPct < -0.01
+  const showRoundedJunction = showPriorPeriod && gainPct > 0.01 && rawBeforePct > 0.01
+  const hitTarget = summary.usesPaceReview ? summary.hit : afterPct >= 100
+  const weightGained = thisPct > lastPct
+  const weightLost = thisPct < lastPct
+  const barStartDelayMs = INTRO_BEFORE_BAR_MS
+  const gainDelta = Math.max(0, thisPct - lastPct)
+  const [grayPct, setGrayPct] = useState(isWeight ? lastPct : 0)
+  const [greenPct, setGreenPct] = useState(0)
   const [barReady, setBarReady] = useState(false)
-  const [weightAnimating, setWeightAnimating] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const barDoneRef = useRef(false)
   const barFillRef = useRef<HTMLDivElement>(null)
-  const onBarCompleteRef = useRef(onBarComplete)
-  onBarCompleteRef.current = onBarComplete
+
+  // Non-weight bars: split accent animation (increase junction or decrease layer)
+  const [clipWidth, setClipWidth] = useState(beforePct)
+  const [gainWidth, setGainWidth] = useState(0)
+  const [animating, setAnimating] = useState(false)
+  const crushed = !isWeight && !summary.usesPaceReview && summary.percent >= 100
 
   useEffect(() => {
-    setWidthPct(barStart)
+    if (!barsActive) return
+
     setBarReady(false)
-    setWeightAnimating(false)
     setRevealed(false)
     barDoneRef.current = false
 
-    let holdTimer: number | undefined
-    let soundTimer: number | undefined
-    let fallbackTimer: number | undefined
-
-    const revealResult = () => {
-      setRevealed(true)
-      if (summary.hit) {
-        playWeeklyGoalWinSound()
-      } else {
-        playWeeklyGoalFailSound()
-      }
+    if (isWeight) {
+      setGrayPct(lastPct)
+      setGreenPct(0)
+    } else {
+      setClipWidth(beforePct)
+      setGainWidth(0)
+      setAnimating(false)
     }
+
+    let holdTimer: number | undefined
+    let fallbackTimer: number | undefined
 
     const finishBar = () => {
       if (barDoneRef.current) return
       barDoneRef.current = true
-      onBarCompleteRef.current?.()
+      setRevealed(true)
     }
 
     const startBarAnimation = () => {
       const el = barFillRef.current
-      if (!el) return
 
       const onTransitionEnd = (e: TransitionEvent) => {
-        if (e.propertyName !== 'width' || e.target !== el) return
+        if (!el || e.propertyName !== 'width' || e.target !== el) return
         el.removeEventListener('transitionend', onTransitionEnd)
         if (fallbackTimer != null) window.clearTimeout(fallbackTimer)
         finishBar()
       }
 
-      el.addEventListener('transitionend', onTransitionEnd)
-      if (isWeight) setWeightAnimating(true)
-      setBarReady(true)
-      setWidthPct(barStart)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setWidthPct(barEnd))
-      })
+      if (isWeight) {
+        setBarReady(false)
+        setGrayPct(lastPct)
+        setGreenPct(0)
 
-      soundTimer = window.setTimeout(revealResult, Math.max(0, barDurationMs - SOUND_BEFORE_BAR_END_MS))
-
-      fallbackTimer = window.setTimeout(() => {
-        el.removeEventListener('transitionend', onTransitionEnd)
-        finishBar()
-      }, barDurationMs + 32)
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setBarReady(true)
+            requestAnimationFrame(() => {
+              const animEl = barFillRef.current
+              if (animEl && (weightGained || weightLost)) {
+                animEl.addEventListener('transitionend', onTransitionEnd)
+                fallbackTimer = window.setTimeout(() => {
+                  animEl.removeEventListener('transitionend', onTransitionEnd)
+                  finishBar()
+                }, barDurationMs + 32)
+              } else {
+                window.setTimeout(finishBar, 32)
+              }
+              if (weightGained) {
+                setGreenPct(gainDelta)
+              } else if (weightLost) {
+                setGrayPct(thisPct)
+              }
+            })
+          })
+        })
+      } else {
+        if (!el) return
+        el.addEventListener('transitionend', onTransitionEnd)
+        setAnimating(true)
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (showRoundedJunction) {
+              setGainWidth(gainPct)
+            } else {
+              setClipWidth(afterPct)
+            }
+          })
+        })
+        fallbackTimer = window.setTimeout(() => {
+          el.removeEventListener('transitionend', onTransitionEnd)
+          finishBar()
+        }, barDurationMs + 32)
+      }
     }
 
-    // Weight: bar is already at last week's position on mount — hold, then animate.
-    // Other goals: wait for stagger, then fill from zero.
     holdTimer = window.setTimeout(startBarAnimation, barStartDelayMs)
 
     return () => {
       if (holdTimer != null) window.clearTimeout(holdTimer)
-      if (soundTimer != null) window.clearTimeout(soundTimer)
       if (fallbackTimer != null) window.clearTimeout(fallbackTimer)
     }
   }, [
+    barsActive,
+    barDurationMs,
     summary.id,
     summary.percent,
     summary.hit,
     isWeight,
-    barStart,
-    barEnd,
+    lastPct,
+    thisPct,
+    weightGained,
+    weightLost,
+    gainDelta,
     barStartDelayMs,
-    barDurationMs,
+    beforePct,
+    afterPct,
+    gainPct,
+    showRoundedJunction,
   ])
 
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-xl border bg-zinc-950/80 p-4 transition-[border-color,box-shadow] duration-500',
-        revealed && summary.hit
-          ? 'border-emerald-500 shadow-[0_0_24px_rgba(16,185,129,0.2)]'
+        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-zinc-950 transition-[border-color,box-shadow] duration-300',
+        featured ? 'p-2' : 'p-1.5',
+        featured &&
+          !revealed &&
+          'border-[var(--accent-500)]/35 bg-gradient-to-br from-[var(--accent-950)]/40 to-zinc-950 ring-1 ring-[var(--accent-500)]/20',
+        revealed && crushed && 'goal-card-shine border-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.25)]',
+        revealed && summary.hit && !crushed
+          ? 'border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.12)]'
           : revealed && !summary.hit
-            ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.12)]'
-            : 'border-zinc-800/80',
+            ? 'border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.08)]'
+            : !revealed && !featured && 'border-zinc-800/80',
       )}
     >
-      {revealed && summary.hit && (
+      {revealed && crushed && (
+        <div className="pointer-events-none absolute inset-0 goal-card-shine-sweep" aria-hidden />
+      )}
+      {revealed && summary.hit && !crushed && (
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent" />
       )}
 
       <div className="relative">
-        <div>
-          <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-              {summary.isWorkout
-                ? summary.kind === 'weekly'
-                  ? 'Workout · weekly total'
-                  : 'Workout · daily avg'
-                : summary.isWeight
-                  ? summary.weightMode === 'bulk'
-                    ? 'Weight · bulk'
-                    : 'Weight · cut'
-                  : summary.kind === 'weekly'
-                    ? 'Weekly'
-                    : 'Week avg'}
+        <div className="flex items-start justify-between gap-1.5">
+          <div className="min-w-0">
+            <p className="text-[8px] font-medium uppercase tracking-widest text-zinc-500">
+              {goalKindLabel(summary)}
             </p>
-            <h3 className="mt-0.5 truncate text-base font-semibold text-zinc-50">{summary.name}</h3>
-            <p className="mt-0.5 text-xs text-zinc-500">{summary.detail}</p>
-        </div>
-
-        <div className="relative mt-3 h-2.5 overflow-hidden rounded-full bg-zinc-800/80 ring-1 ring-zinc-700/50">
-          <div
-            ref={barFillRef}
-            className={cn(
-              'relative h-full rounded-full',
-              isWeight && !weightAnimating && !revealed
-                ? 'bg-gradient-to-r from-zinc-400 via-zinc-500 to-zinc-600'
-                : summary.isWeight && summary.hit
-                  ? 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600'
-                  : summary.isWeight && !summary.hit
-                    ? 'bg-gradient-to-r from-red-400 via-red-500 to-red-600'
-                    : summary.hit
-                      ? 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600'
-                      : 'bg-gradient-to-r from-[var(--accent-400)] via-[var(--accent-500)] to-[var(--accent-600)]',
-              !summary.isWeight && summary.percent > 100 && revealed && 'shadow-[0_0_8px_rgba(16,185,129,0.5)]',
-            )}
-            style={{
-              width: `${widthPct}%`,
-              transitionProperty: 'width',
-              transitionDuration: barReady ? `${barDurationMs}ms` : '0ms',
-              transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent" />
+            <h3
+              className={cn(
+                'truncate font-semibold leading-tight text-zinc-50',
+                featured ? 'text-sm' : 'text-xs',
+              )}
+            >
+              {summary.name}
+            </h3>
           </div>
+          {(isCompact || featured) && revealed && (
+            <span
+              className={cn(
+                'shrink-0 text-[9px] font-medium',
+                summary.hit ? 'text-emerald-400' : 'text-red-400/90',
+              )}
+            >
+              {summary.hit ? reviewHitLabel(summary) : reviewMissLabel(summary)}
+            </span>
+          )}
         </div>
+        <p className="mt-0.5 line-clamp-2 text-[8px] leading-tight text-zinc-500">{summary.detail}</p>
 
-        <div className="mt-2 flex items-center justify-between">
+        {isWeight ? (
+          <div className="mt-1">
+            <WeightWeekProgressBar
+              percentBefore={lastPct}
+              percentAfter={thisPct}
+              grayPct={grayPct}
+              greenPct={greenPct}
+              animate
+              barReady={barReady}
+              barDurationMs={barDurationMs}
+              size="sm"
+              fillRef={barFillRef}
+            />
+          </div>
+        ) : (
+          <div className="mt-1">
+            <SplitAccentProgressBar
+              beforePct={beforePct}
+              fillPct={isDecrease ? clipWidth : showRoundedJunction ? afterPct : clipWidth}
+              gainPct={showRoundedJunction ? (animating ? gainWidth : 0) : gainPct}
+              hitTarget={hitTarget}
+              animating={animating}
+              durationMs={barDurationMs}
+              fillRef={barFillRef}
+              isDecrease={isDecrease}
+              size="sm"
+            />
+            {summary.showPaceBar && summary.timeElapsedPercent != null && (
+              <GoalPaceBar percent={summary.timeElapsedPercent} size="sm" />
+            )}
+          </div>
+        )}
+
+        <div className="mt-auto flex items-end justify-between pt-1">
           {summary.isWeight ? (
-            <span className="text-sm font-medium tabular-nums text-zinc-100">
+            <span className="truncate text-[10px] font-medium tabular-nums text-zinc-100">
               {summary.weightLabel ?? summary.detail}
             </span>
           ) : (
             <span
               className={cn(
-                'text-xl font-light tabular-nums',
+                'font-light tabular-nums',
+                featured ? 'text-base' : 'text-sm',
                 summary.percent >= 100 ? 'text-emerald-300' : 'text-zinc-100',
               )}
             >
               {formatPercent(summary.percent)}
-              <span className="text-sm text-zinc-500">%</span>
+              <span className="text-[10px] text-zinc-500">%</span>
             </span>
           )}
-          {revealed && summary.hit && (
-            <span className="text-xs font-medium text-emerald-400">
-              {summary.isWeight
-                ? 'Good week'
-                : summary.percent > 100
-                  ? 'Crushed it!'
-                  : 'Goal crushed!'}
+          {!isCompact && !featured && revealed && summary.hit && (
+            <span className="text-[9px] font-medium text-emerald-400">
+              {reviewHitLabel(summary)}
             </span>
           )}
-          {revealed && !summary.hit && (
-            <span className="text-xs font-medium text-red-400/90">
-              {summary.isWeight ? 'Off track' : 'Missed'}
+          {!isCompact && !featured && revealed && !summary.hit && (
+            <span className="text-[9px] font-medium text-red-400/90">
+              {reviewMissLabel(summary)}
             </span>
           )}
         </div>
@@ -237,331 +462,198 @@ function GoalRevealCard({
   )
 }
 
-function StatRevealCard({
-  stat,
-  compact = false,
-}: {
-  stat: WeeklyReviewStat
-  compact?: boolean
-}) {
-  const [revealed, setRevealed] = useState(false)
-
-  useEffect(() => {
-    setRevealed(false)
-    const introTimer = window.setTimeout(() => setRevealed(true), STAT_INTRO_MS)
-    return () => clearTimeout(introTimer)
-  }, [stat.id])
-
+function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <div
-      className={cn(
-        'relative h-full overflow-hidden rounded-xl border bg-zinc-950/80 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]',
-        compact ? 'p-3.5' : 'p-4',
-        revealed
-          ? 'border-[var(--accent-500)]/30 shadow-[0_0_20px_var(--accent-glow)]'
-          : 'border-zinc-800/80 opacity-0 translate-y-3',
-      )}
-    >
-      {revealed && (
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[var(--accent-500)]/8 via-transparent to-transparent" />
-      )}
-
-      <div className="relative">
-        <p
-          className={cn(
-            'text-[10px] font-medium uppercase tracking-widest text-zinc-500 transition-all duration-500',
-            revealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-          )}
-        >
-          {stat.label}
-        </p>
-        <p
-          className={cn(
-            'mt-1.5 font-light tabular-nums tracking-tight text-zinc-50 transition-all duration-700 delay-100 ease-[cubic-bezier(0.22,1,0.36,1)]',
-            compact ? 'text-2xl' : 'text-3xl',
-            revealed ? 'scale-100 opacity-100' : 'scale-95 opacity-0',
-          )}
-        >
-          {stat.value}
-        </p>
-        <p
-          className={cn(
-            'mt-1.5 text-[11px] leading-snug text-zinc-500 transition-all duration-500 delay-200',
-            revealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-          )}
-        >
-          {stat.detail}
-        </p>
-      </div>
-    </div>
+    <p className="col-span-full pt-0.5 text-[8px] font-medium uppercase tracking-widest text-zinc-600">
+      {children}
+    </p>
   )
+}
+
+function isFocusSummary(summary: WeeklyShutdownGoalSummary): boolean {
+  return summary.metricKey === 'focus'
 }
 
 export function WeeklyGoalRevealModal({
   summaries,
   untargetedStats,
+  habitSummaries = [],
   weekLabel,
   onClose,
 }: WeeklyGoalRevealModalProps) {
+  const focusGoals = useMemo(() => summaries.filter(isFocusSummary), [summaries])
   const weeklyGoals = useMemo(
-    () => summaries.filter((s) => s.kind === 'weekly' && !s.isWorkout && !s.isWeight),
+    () => summaries.filter((s) => s.kind === 'weekly' && !s.isWorkout && !s.isWeight && !isFocusSummary(s)),
     [summaries],
   )
   const weightGoals = useMemo(() => summaries.filter((s) => s.isWeight), [summaries])
   const workoutGoals = useMemo(() => summaries.filter((s) => s.isWorkout), [summaries])
   const dailyGoals = useMemo(
-    () => summaries.filter((s) => s.kind === 'daily' && !s.isWorkout && !s.isWeight),
+    () => summaries.filter((s) => s.kind === 'daily' && !s.isWorkout && !s.isWeight && !isFocusSummary(s)),
     [summaries],
   )
   const orderedGoals = useMemo(
-    () => [...weeklyGoals, ...weightGoals, ...workoutGoals, ...dailyGoals],
-    [weeklyGoals, weightGoals, workoutGoals, dailyGoals],
+    () => [...focusGoals, ...weightGoals, ...workoutGoals, ...weeklyGoals, ...dailyGoals],
+    [focusGoals, weightGoals, workoutGoals, weeklyGoals, dailyGoals],
   )
-  const lastWeightIndex = useMemo(() => {
-    let last = -1
-    orderedGoals.forEach((g, i) => {
-      if (g.isWeight) last = i
-    })
-    return last
-  }, [orderedGoals])
 
-  const [showGoals, setShowGoals] = useState(false)
-  const [showStats, setShowStats] = useState(false)
-  const [showFinale, setShowFinale] = useState(false)
-  const goalsCompletedRef = useRef(0)
-  const [bodyHeight, setBodyHeight] = useState(120)
-  const [bodyMaxPx, setBodyMaxPx] = useState(BODY_MAX_PX)
-  const bodyContentRef = useRef<HTMLDivElement>(null)
-  const bottomAnchorRef = useRef<HTMLDivElement>(null)
+  const hasContent =
+    orderedGoals.length > 0 || untargetedStats.length > 0 || habitSummaries.length > 0
+
+  const [barsActive, setBarsActive] = useState(false)
+  const [footerVisible, setFooterVisible] = useState(false)
 
   const hits = orderedGoals.filter((g) => g.hit).length
 
-  const scrollToBottom = useCallback(() => {
-    const anchor = bottomAnchorRef.current
-    if (!anchor) return
+  const barSequenceDurationMs = useMemo(() => {
+    if (orderedGoals.length === 0) return 0
+    return INTRO_BEFORE_BAR_MS + BAR_DURATION_MS
+  }, [orderedGoals.length])
 
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    anchor.scrollIntoView({
-      behavior: prefersReducedMotion ? 'auto' : 'smooth',
-      block: 'end',
-    })
-  }, [])
+  const statsBaseDelay = barSequenceDurationMs + STATS_EXTRA_DELAY_MS
+  const footerDelay =
+    statsBaseDelay + untargetedStats.length * STAT_STAGGER_MS + FOOTER_EXTRA_DELAY_MS
 
   useEffect(() => {
-    warmAudioContext()
-  }, [])
+    setBarsActive(false)
+    setFooterVisible(false)
+    const barTimer = window.setTimeout(() => setBarsActive(true), 0)
+    return () => clearTimeout(barTimer)
+  }, [summaries, untargetedStats, habitSummaries])
 
   useEffect(() => {
-    goalsCompletedRef.current = 0
-    setShowGoals(false)
-    setShowStats(false)
-    setShowFinale(false)
-  }, [summaries, untargetedStats])
-
-  useEffect(() => {
-    if (orderedGoals.length === 0) {
-      if (untargetedStats.length > 0) {
-        const t = window.setTimeout(() => setShowStats(true), 600)
-        return () => clearTimeout(t)
-      }
-      const t = window.setTimeout(() => setShowFinale(true), 800)
-      return () => clearTimeout(t)
-    }
-    const t = window.setTimeout(() => setShowGoals(true), 600)
+    if (!barsActive) return
+    const t = window.setTimeout(() => setFooterVisible(true), footerDelay)
     return () => clearTimeout(t)
-  }, [orderedGoals.length, untargetedStats.length])
-
-  useEffect(() => {
-    if (!showStats || untargetedStats.length === 0) return
-    const t = window.setTimeout(() => setShowFinale(true), STAT_INTRO_MS + STAT_HOLD_MS)
-    return () => clearTimeout(t)
-  }, [showStats, untargetedStats.length])
-
-  useEffect(() => {
-    const t = window.setTimeout(scrollToBottom, 60)
-    return () => clearTimeout(t)
-  }, [showGoals, showFinale, showStats, scrollToBottom])
-
-  useEffect(() => {
-    const updateViewportCap = () => {
-      setBodyMaxPx(Math.min(window.innerHeight * 0.62, BODY_MAX_PX))
-    }
-    updateViewportCap()
-    window.addEventListener('resize', updateViewportCap)
-    return () => window.removeEventListener('resize', updateViewportCap)
-  }, [])
-
-  useEffect(() => {
-    const el = bodyContentRef.current
-    if (!el) return
-
-    const updateHeight = () => {
-      const next = Math.min(el.scrollHeight, bodyMaxPx)
-      setBodyHeight(Math.max(120, next))
-      window.setTimeout(scrollToBottom, 60)
-    }
-
-    updateHeight()
-    const ro = new ResizeObserver(updateHeight)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [showGoals, showFinale, orderedGoals.length, scrollToBottom, showStats, bodyMaxPx])
-
-  const handleGoalBarComplete = useCallback(() => {
-    goalsCompletedRef.current += 1
-    if (goalsCompletedRef.current < orderedGoals.length) return
-
-    if (untargetedStats.length > 0) {
-      window.setTimeout(() => setShowStats(true), PAUSE_BEFORE_FINALE_MS)
-    } else {
-      window.setTimeout(() => setShowFinale(true), PAUSE_BEFORE_FINALE_MS)
-    }
-  }, [orderedGoals.length, untargetedStats.length])
-
-  const reviewStarted = showGoals || showStats || showFinale
+  }, [barsActive, footerDelay])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-md sm:p-5">
       <style>{`
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes goalCardShineSweep {
+          0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
+          20% { opacity: 1; }
+          100% { transform: translateX(120%) skewX(-12deg); opacity: 0; }
+        }
+        .goal-card-shine-sweep {
+          background: linear-gradient(
+            105deg,
+            transparent 35%,
+            rgba(255, 255, 255, 0.14) 48%,
+            rgba(167, 243, 208, 0.22) 52%,
+            transparent 65%
+          );
+          animation: goalCardShineSweep 900ms cubic-bezier(0.22, 1, 0.36, 1) 150ms both;
         }
       `}</style>
-
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/30 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10 transition-[height] duration-[550ms] ease-[cubic-bezier(0.22,1,0.36,1)]">
-        <div className="shrink-0 border-b border-zinc-800/80 bg-gradient-to-br from-[var(--accent-950)]/60 to-transparent px-6 py-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent-500)]">
-                <Sparkles size={18} className="text-black" />
+      <div className="flex h-[min(92vh,820px)] w-full max-w-[min(96vw,68rem)] flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/30 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10">
+        <div className="shrink-0 border-b border-zinc-800/80 bg-gradient-to-br from-[var(--accent-950)]/60 to-transparent px-4 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent-500)]">
+                <Sparkles size={14} className="text-black" />
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-zinc-50">Your week in review</h2>
-                <p className="text-xs text-[var(--accent-300)]">{weekLabel}</p>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-zinc-50 sm:text-base">Your week in review</h2>
+                <p className="truncate text-[11px] text-[var(--accent-300)]">{weekLabel}</p>
               </div>
             </div>
-            {!showFinale && (
+            <div className="flex shrink-0 items-center gap-3">
+              {orderedGoals.length > 0 && (
+                <p className="hidden text-xs tabular-nums text-zinc-400 sm:block">
+                  <span className="font-medium text-[var(--accent-300)]">{hits}</span>
+                  {' / '}
+                  {orderedGoals.length} goals hit
+                </p>
+              )}
               <button
                 onClick={onClose}
                 className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
               >
                 <X size={18} />
               </button>
-            )}
-          </div>
-        </div>
-
-        <div
-          className="overflow-hidden transition-[height] duration-[550ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
-          style={{ height: bodyHeight }}
-        >
-          <div
-            ref={bodyContentRef}
-            className="overflow-y-auto px-6 py-5"
-            style={{ maxHeight: bodyMaxPx }}
-          >
-            {!reviewStarted && (
-              <p className="py-8 text-center text-sm text-zinc-500">Loading your week…</p>
-            )}
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {showGoals &&
-                orderedGoals.map((goal, index) => {
-                  const prev = index > 0 ? orderedGoals[index - 1] : null
-                  const isFirstWeekly =
-                    !goal.isWorkout &&
-                    !goal.isWeight &&
-                    goal.kind === 'weekly' &&
-                    (!prev || prev.isWorkout || prev.isWeight || prev.kind !== 'weekly')
-                  const isFirstWeight = goal.isWeight && !prev?.isWeight
-                  const isFirstWorkout = goal.isWorkout && !prev?.isWorkout
-                  const isFirstDaily =
-                    !goal.isWorkout &&
-                    !goal.isWeight &&
-                    goal.kind === 'daily' &&
-                    (!prev || prev.isWorkout || prev.isWeight || prev.kind !== 'daily')
-
-                  return (
-                    <div key={goal.id} className="contents">
-                      {isFirstWeekly && weeklyGoals.length > 0 && (
-                        <p className="col-span-full mb-0.5 text-[10px] font-medium uppercase tracking-widest text-zinc-600">
-                          Weekly goals
-                        </p>
-                      )}
-                      {isFirstWeight && weightGoals.length > 0 && (
-                        <p className="col-span-full mb-0.5 mt-1 text-[10px] font-medium uppercase tracking-widest text-zinc-600">
-                          Weight goal
-                        </p>
-                      )}
-                      {isFirstWorkout && workoutGoals.length > 0 && (
-                        <p className="col-span-full mb-0.5 mt-1 text-[10px] font-medium uppercase tracking-widest text-zinc-600">
-                          Workout goals
-                        </p>
-                      )}
-                      {isFirstDaily && (
-                        <p className="col-span-full mb-0.5 mt-1 text-[10px] font-medium uppercase tracking-widest text-zinc-600">
-                          Daily goals · week average
-                        </p>
-                      )}
-                      <div className="animate-[slideUp_0.55s_cubic-bezier(0.22,1,0.36,1)]">
-                        <GoalRevealCard
-                          summary={goal}
-                          cardIndex={index}
-                          isAfterWeight={lastWeightIndex >= 0 && index > lastWeightIndex}
-                          postWeightIndex={lastWeightIndex >= 0 && index > lastWeightIndex ? index - lastWeightIndex - 1 : 0}
-                          onBarComplete={handleGoalBarComplete}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-
-              {showStats && (
-                <p className="col-span-full mb-0.5 mt-2 text-[10px] font-medium uppercase tracking-widest text-zinc-600">
-                  Also this week
-                </p>
-              )}
-              {showStats &&
-                untargetedStats.map((stat) => (
-                  <StatRevealCard key={stat.id} stat={stat} compact />
-                ))}
             </div>
-
-            {showFinale && (
-              <div className="mt-4 animate-[slideUp_0.55s_cubic-bezier(0.22,1,0.36,1)]">
-                <div className="rounded-xl border border-[var(--accent-500)]/25 bg-zinc-900/80 p-5 text-center sm:px-8">
-                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-500)] shadow-lg shadow-[var(--accent-500)]/30">
-                    <Trophy size={22} className="text-black" />
-                  </div>
-                  <h3 className="text-lg font-bold text-zinc-50">Week complete</h3>
-                  {orderedGoals.length > 0 ? (
-                    <p className="mt-2 text-sm text-[var(--accent-300)]">
-                      {hits} of {orderedGoals.length} goals hit
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-sm text-zinc-500">
-                      Add goals to track your progress next week.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div ref={bottomAnchorRef} className="h-px shrink-0" aria-hidden />
           </div>
         </div>
 
-        {showFinale && (
-          <div className="shrink-0 border-t border-zinc-800/80 px-6 py-5 animate-[slideUp_0.5s_cubic-bezier(0.22,1,0.36,1)]">
+        <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-3 py-2 sm:px-3.5">
+          {!hasContent && (
+            <div className="flex h-full items-center justify-center py-8">
+              <div className="text-center">
+                <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-500)]">
+                  <Trophy size={16} className="text-black" />
+                </div>
+                <p className="text-sm text-zinc-500">Add goals to track your progress next week.</p>
+              </div>
+            </div>
+          )}
+
+          {hasContent && (
+            <div className="grid auto-rows-fr gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(9.75rem,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr))]">
+              {orderedGoals.map((goal) => {
+                const featured = isFocusSummary(goal)
+                return (
+                  <div
+                    key={goal.id}
+                    className={cn('min-h-0', featured && 'col-span-2 row-span-1 sm:col-span-2')}
+                  >
+                    <GoalRevealCard
+                      summary={goal}
+                      barsActive={barsActive}
+                      barDurationMs={BAR_DURATION_MS}
+                      featured={featured}
+                      compact={!featured}
+                    />
+                  </div>
+                )
+              })}
+
+              {barsActive && habitSummaries.length > 0 && (
+                <>
+                  <SectionLabel>Habits</SectionLabel>
+                  {habitSummaries.map((habit) => (
+                    <div
+                      key={habit.id}
+                      className={cn(
+                        'min-h-0',
+                        habit.logPeriod === 'daily' ? 'col-span-2' : 'col-span-1',
+                      )}
+                    >
+                      <HabitReviewCard habit={habit} />
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {barsActive && untargetedStats.length > 0 && (
+                <>
+                  <SectionLabel>Also this week</SectionLabel>
+                  {untargetedStats.map((stat) => (
+                    <div key={stat.id} className="min-h-0">
+                      <StatReviewCard stat={stat} />
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 border-t border-zinc-800/80 px-4 py-2.5">
+          {orderedGoals.length > 0 && (
+            <p className="mb-3 text-center text-xs text-zinc-500 sm:hidden">
+              {hits} of {orderedGoals.length} goals hit
+            </p>
+          )}
+          {footerVisible && (
             <Button
               onClick={onClose}
               className="w-full bg-[var(--accent-500)] font-bold text-black hover:bg-[var(--accent-400)]"
             >
               Start fresh
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

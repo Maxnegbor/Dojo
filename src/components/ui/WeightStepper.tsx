@@ -15,6 +15,7 @@ interface WeightStepperProps {
   valueKg: number | null
   unit: AppSettings['weightUnit']
   disabled?: boolean
+  className?: string
   onChange: (kg: number | null) => void
 }
 
@@ -23,6 +24,7 @@ export function WeightStepper({
   valueKg,
   unit,
   disabled,
+  className,
   onChange,
 }: WeightStepperProps) {
   const [editing, setEditing] = useState(false)
@@ -69,11 +71,11 @@ export function WeightStepper({
   }, [editing])
 
   return (
-    <label className="block">
+    <div className={cn('inline-block w-fit max-w-full', className)}>
       <span className="mb-1 block text-xs font-medium text-zinc-400">{label}</span>
       <div
         className={cn(
-          'flex h-[42px] items-stretch overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-900/80',
+          'flex h-[42px] w-fit items-stretch overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-900/80',
           'focus-within:border-[var(--accent-500)] focus-within:ring-1 focus-within:ring-[var(--accent-ring)]',
           disabled && 'opacity-60',
         )}
@@ -83,7 +85,7 @@ export function WeightStepper({
           disabled={disabled || valueKg == null}
           onClick={stepDown}
           className={cn(
-            'flex w-10 shrink-0 items-center justify-center text-zinc-400 transition-colors',
+            'flex w-9 shrink-0 items-center justify-center text-zinc-400 transition-colors',
             'hover:bg-zinc-800 hover:text-zinc-200',
             'disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-zinc-400',
           )}
@@ -93,7 +95,7 @@ export function WeightStepper({
         </button>
 
         {editing ? (
-          <div className="flex flex-1 items-center justify-center gap-1 px-1">
+          <div className="flex min-w-[4.5rem] items-center justify-center gap-1 px-2">
             <input
               ref={inputRef}
               type="text"
@@ -110,13 +112,13 @@ export function WeightStepper({
                   cancelInput()
                 }
               }}
-              className="w-full bg-transparent text-center text-sm tabular-nums text-zinc-100 focus:outline-none"
+              className="w-full min-w-0 bg-transparent text-center text-sm tabular-nums text-zinc-100 focus:outline-none"
               aria-label="Enter weight"
             />
             <span className="shrink-0 text-xs text-zinc-500">{unit}</span>
           </div>
         ) : (
-          <span
+          <div
             role="button"
             tabIndex={disabled ? -1 : 0}
             onDoubleClick={startEditing}
@@ -124,14 +126,14 @@ export function WeightStepper({
               if (e.key === 'Enter') startEditing()
             }}
             className={cn(
-              'flex flex-1 cursor-text select-none items-center justify-center gap-1 text-sm tabular-nums text-zinc-100',
+              'flex min-w-[4.5rem] cursor-text select-none items-center justify-center gap-1 px-2 text-sm tabular-nums text-zinc-100',
               !disabled && 'hover:text-zinc-50',
             )}
             title={disabled ? undefined : 'Double-click to type'}
           >
             {formatWeightStepper(valueKg, unit)}
             <span className="text-xs text-zinc-500">{unit}</span>
-          </span>
+          </div>
         )}
 
         <button
@@ -139,7 +141,7 @@ export function WeightStepper({
           disabled={disabled}
           onClick={stepUp}
           className={cn(
-            'flex w-10 shrink-0 items-center justify-center text-zinc-400 transition-colors',
+            'flex w-9 shrink-0 items-center justify-center text-zinc-400 transition-colors',
             'hover:bg-zinc-800 hover:text-zinc-200',
             'disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-zinc-400',
           )}
@@ -148,6 +150,6 @@ export function WeightStepper({
           <Plus size={14} />
         </button>
       </div>
-    </label>
+    </div>
   )
 }

@@ -5,24 +5,31 @@ interface ProgressBarProps {
   onTrack?: boolean
   label?: string
   size?: 'sm' | 'md'
+  tone?: 'default' | 'focus'
   className?: string
 }
 
 export function ProgressBar({
   percent,
-  onTrack = true,
+  onTrack: _onTrack = true,
   label,
   size = 'md',
+  tone = 'default',
   className,
 }: ProgressBarProps) {
   const clamped = Math.min(100, Math.max(0, percent))
+  const isFocus = tone === 'focus'
 
   return (
     <div className={cn('w-full', className)}>
       {label && (
         <div className="mb-1 flex items-center justify-between text-xs text-zinc-400">
           <span>{label}</span>
-          <span className={onTrack ? 'text-emerald-400' : 'text-amber-400'}>
+          <span
+            className={
+              isFocus ? 'text-indigo-300' : 'text-[var(--accent-300)] tabular-nums'
+            }
+          >
             {Math.round(clamped)}%
           </span>
         </div>
@@ -34,12 +41,7 @@ export function ProgressBar({
         )}
       >
         <div
-          className={cn(
-            'h-full rounded-full transition-all duration-500',
-            onTrack
-              ? 'bg-gradient-to-r from-indigo-500 to-emerald-500'
-              : 'bg-gradient-to-r from-amber-500 to-orange-500',
-          )}
+          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all duration-500"
           style={{ width: `${clamped}%` }}
         />
       </div>

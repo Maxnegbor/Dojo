@@ -1,6 +1,7 @@
 import type { DailyLog, DailyHabits } from '@/types'
 import { normalizeHabits } from '@/types'
 import { getDailyLogHabitTypes } from '@/lib/habitTypes'
+import { addDays, parseISO } from 'date-fns'
 import { formatDate } from '@/lib/utils'
 
 function habitDoneOnDate(
@@ -61,11 +62,55 @@ export function getHabitCompletionRate(
   logs: DailyLog[],
   habit: string,
   dates: string[],
+  options?: { asOfDate?: string; todayHabits?: DailyHabits },
 ): number {
   if (dates.length === 0) return 0
   const logsByDate = new Map(logs.map((l) => [l.date, l]))
+  const { asOfDate, todayHabits } = options ?? {}
   const done = dates.filter((d) =>
-    habitDoneOnDate(logsByDate, habit, d),
+    habitDoneOnDate(logsByDate, habit, d, todayHabits, asOfDate),
   ).length
   return (done / dates.length) * 100
+}
+
+/** Habit completion % over the last N days ending on `asOfDate`. */
+export function getRecentHabitConsistency(
+  logs: DailyLog[],
+  habitId: string,
+  asOfDate: string,
+  days: number,
+  todayHabits?: DailyHabits,
+): number {
+  const dates = Array.from({ length: days }, (_, index) =>
+    formatDate(addDays(parseISO(asOfDate), -index)),
+  )
+  return getHabitCompletionRate(logs, habitId, dates, { asOfDate, todayHabits })
+}
+
+/** Habit completion % over the last 7 days ending on `asOfDate`. */
+export function getLast7DayHabitConsistency(
+  logs: DailyLog[],
+  habitId: string,
+  asOfDate: string,
+  todayHabits?: DailyHabits,
+): number {
+  return getRecentHabitConsistency(logs, habitId, asOfDate, 7, todayHabits)
+}
+
+/** Habit completion % over the last 30 days ending on `asOfDate`. */
+export function getLast30DayHabitConsistency(
+  logs: DailyLog[],
+  habitId: string,
+  asOfDate: string,
+  todayHabits?: DailyHabits,
+): number {
+  return getRecentHabitConsistency(logs, habitId, asOfDate, 30, todayHabits)
+}
+
+/** Red through 75%; green only from 75% to 100%. */
+export function getConsistencyHeatColor(percent: number): string {
+  const clamped = Math.min(100, Math.max(0, percent))
+  if (clamped <= 75) return 'hsl(0, 72%, 52%)'
+  const t = (clamped - 75) / 25
+  return `hsl(${t * 120}, 72%, 52%)`
 }

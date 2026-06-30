@@ -10,11 +10,13 @@ export const BUILTIN_DAILY_LOG_METRICS: {
   { id: 'screen_time', label: 'Screentime' },
 ]
 
+import { storageGetItem, storageSetItem } from '@/lib/userStorage'
+
 const STORAGE_KEY = 'personal-os-daily-log-hidden-metrics'
 
 function readHidden(): DailyLogBuiltinMetric[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = storageGetItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as string[]
       if (Array.isArray(parsed)) {
@@ -40,12 +42,12 @@ export function isDailyLogMetricVisible(metric: DailyLogBuiltinMetric): boolean 
 export function hideDailyLogMetric(metric: DailyLogBuiltinMetric) {
   const hidden = readHidden()
   if (!hidden.includes(metric)) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...hidden, metric]))
+    storageSetItem(STORAGE_KEY, JSON.stringify([...hidden, metric]))
   }
 }
 
 export function showDailyLogMetric(metric: DailyLogBuiltinMetric) {
-  localStorage.setItem(
+  storageSetItem(
     STORAGE_KEY,
     JSON.stringify(readHidden().filter((id) => id !== metric)),
   )

@@ -1,6 +1,8 @@
 import { addDays, parseISO } from 'date-fns'
 import { getDraft, type DailyLogDraft } from '@/lib/dailyLogDraft'
 import { localStore } from '@/lib/localStore'
+import { getWeeklyLog } from '@/lib/weeklyLogStore'
+import { getPreviousWeekDates } from '@/lib/weightGoal'
 import type { DailyLog } from '@/types'
 import { formatDate } from '@/lib/utils'
 
@@ -30,6 +32,22 @@ export function resolvePriorWeight(date: string, logs: DailyLog[] = []): number 
     .sort((a, b) => b.date.localeCompare(a.date))[0]
 
   return prior?.weight ?? null
+}
+
+/** Prefill for weekly shutdown — prior week's log, then legacy daily weight. */
+export function resolvePriorWeeklyWeight(
+  weekDates: string[],
+  weekStartsOn: 0 | 1,
+): number | null {
+  const prevWeekDates = getPreviousWeekDates(weekDates, weekStartsOn)
+  const prevKey = prevWeekDates[0]
+  if (prevKey) {
+    const prev = getWeeklyLog(prevKey).weight
+    if (prev != null) return prev
+  }
+  const firstDay = weekDates[0]
+  if (firstDay) return resolvePriorWeight(firstDay)
+  return null
 }
 
 export function applyWeightAutofill(

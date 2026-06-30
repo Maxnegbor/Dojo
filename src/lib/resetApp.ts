@@ -1,16 +1,15 @@
+import { clearAllUserStorage } from '@/lib/userStorage'
+import { isSupabaseConfigured } from '@/lib/supabase'
+
 const APP_PREFIX = 'personal-os-'
-const DATA_KEY = 'personal-os-data'
+const LEGACY_DATA_KEY = 'personal-os-data'
 
-const EMPTY_STORE = {
-  dailyLogs: [],
-  workouts: [],
-  goals: [],
-  scheduleBlocks: [],
-  reminders: [],
-}
+/** Wipes all Dojo config keys and user storage (Supabase when configured). */
+export async function resetAllAppData(userId?: string | null) {
+  if (isSupabaseConfigured && userId) {
+    await clearAllUserStorage(userId)
+  }
 
-/** Wipes all local Dojo data: logs, goals, schedule, settings, drafts, and prefs. */
-export function resetAllAppData() {
   const keys: string[] = []
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i)
@@ -20,9 +19,5 @@ export function resetAllAppData() {
     localStorage.removeItem(key)
   }
 
-  // Keep an empty store so default goals are not re-seeded on first load.
-  localStorage.setItem(DATA_KEY, JSON.stringify(EMPTY_STORE))
+  localStorage.removeItem(LEGACY_DATA_KEY)
 }
-
-export const FRESH_START_QUOTE =
-  'Every morning is a fresh start. Empty your cup — then fill it with intention.'

@@ -16,7 +16,7 @@ import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import type { DailyLog, Goal, Workout } from '@/types'
 import { calculateProgress, getWeeklyWorkoutTotal } from '@/lib/metrics'
-import { getWeekDates } from '@/lib/utils'
+import { formatDuration, getWeekDates } from '@/lib/utils'
 import { ALLOW_FUTURE_DATES } from '@/lib/devFlags'
 import { useSettings } from '@/context/SettingsContext'
 import { format, isFuture, isToday, parseISO } from 'date-fns'
@@ -75,7 +75,7 @@ export function DashboardCharts({
           <p className="text-[10px] uppercase tracking-wide text-zinc-500">
             {viewingToday ? 'Focus today' : viewingFutureWeek ? 'Focus · week ahead' : `Focus · ${format(parseISO(date), 'MMM d')}`}
           </p>
-          <p className="text-2xl font-bold text-[var(--accent-400)]">{focusToday}m</p>
+          <p className="text-2xl font-bold text-[var(--accent-400)]">{formatDuration(focusToday)}</p>
         </Card>
         <Card className="text-center">
           <p className="text-[10px] uppercase tracking-wide text-zinc-500">
@@ -85,7 +85,7 @@ export function DashboardCharts({
                 : 'Focus that week'
               : 'Focus this week'}
           </p>
-          <p className="text-2xl font-bold text-[var(--accent-300)]">{focusWeek}m</p>
+          <p className="text-2xl font-bold text-[var(--accent-300)]">{formatDuration(focusWeek)}</p>
         </Card>
       </div>
 

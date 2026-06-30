@@ -6,6 +6,7 @@ import { getDailyLogHabitTypes, getWeeklyLogHabitTypes, habitWeeklyLogKey } from
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeeklyMetricValue } from '@/lib/metrics'
 import { formatDate, getWeekDates } from '@/lib/utils'
+import { formatMetricAmount, usesTimedMetricDisplay } from '@/lib/timedMetrics'
 
 const BASELINE_DAYS = 30
 
@@ -191,6 +192,9 @@ function goalBaselineValue(
 
 function formatGoalDisplay(goal: Goal, value: number): string | undefined {
   if (value <= 0 && goal.metric_key !== 'weight') return '0'
+  if (usesTimedMetricDisplay(goal.unit, goal.metric_key)) {
+    return formatMetricAmount(value, goal.unit, goal.metric_key)
+  }
   if (goal.metric_key === 'sleep') return value > 0 ? value.toFixed(1) : '0'
   if (goal.metric_key === 'steps') return Math.round(value).toLocaleString()
   if (goal.metric_key === 'weight') return value > 0 ? value.toFixed(1) : '—'

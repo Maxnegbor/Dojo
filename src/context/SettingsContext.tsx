@@ -8,8 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 import { format } from 'date-fns'
-import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/types'
-import { getAppSettings, saveAppSettings } from '@/lib/settingsStore'
+import { type AppSettings } from '@/types'
+import { getAppSettings, getDefaultAppSettings, saveAppSettings } from '@/lib/settingsStore'
 
 interface SettingsContextValue {
   settings: AppSettings
@@ -36,6 +36,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     applyDocumentSettings(settings)
   }, [settings])
 
+  useEffect(() => {
+    const reload = () => setSettings(getAppSettings())
+    window.addEventListener('user-storage-ready', reload)
+    return () => window.removeEventListener('user-storage-ready', reload)
+  }, [])
+
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch }
@@ -45,8 +51,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const resetSettings = useCallback(() => {
-    saveAppSettings(DEFAULT_APP_SETTINGS)
-    setSettings({ ...DEFAULT_APP_SETTINGS })
+    const defaults = getDefaultAppSettings()
+    saveAppSettings(defaults)
+    setSettings(defaults)
   }, [])
 
   const formatTime = useCallback(

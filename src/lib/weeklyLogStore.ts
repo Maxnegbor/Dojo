@@ -1,8 +1,10 @@
+import { storageGetItem, storageSetItem } from '@/lib/userStorage'
+
 const PREFIX = 'personal-os-weekly-log-'
 
 export function getWeeklyLog(weekKey: string): Record<string, number> {
   try {
-    const raw = localStorage.getItem(`${PREFIX}${weekKey}`)
+    const raw = storageGetItem(`${PREFIX}${weekKey}`)
     if (raw) return JSON.parse(raw) as Record<string, number>
   } catch {
     /* ignore */
@@ -17,7 +19,7 @@ export function setWeeklyLogValue(weekKey: string, metricKey: string, value: num
   } else {
     current[metricKey] = value
   }
-  localStorage.setItem(`${PREFIX}${weekKey}`, JSON.stringify(current))
+  storageSetItem(`${PREFIX}${weekKey}`, JSON.stringify(current))
 }
 
 export function setWeeklyLog(weekKey: string, values: Record<string, number | null>) {
@@ -26,5 +28,5 @@ export function setWeeklyLog(weekKey: string, values: Record<string, number | nu
     if (value == null || Number.isNaN(value)) delete current[key]
     else current[key] = value
   }
-  localStorage.setItem(`${PREFIX}${weekKey}`, JSON.stringify(current))
+  storageSetItem(`${PREFIX}${weekKey}`, JSON.stringify(current))
 }

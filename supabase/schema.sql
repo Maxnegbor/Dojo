@@ -1,5 +1,5 @@
 -- Dojo schema for Supabase
--- Run this in the Supabase SQL editor
+-- Run this in the Supabase SQL editor (fresh project), or run migrations/001 for existing projects.
 
 -- Daily logs
 create table if not exists daily_logs (
@@ -12,20 +12,21 @@ create table if not exists daily_logs (
   screen_time_minutes integer,
   focus_minutes integer default 0,
   notes text default '',
-  habits jsonb default '{"meditation": false, "skincare": false}',
+  habits jsonb default '{}',
   custom_metrics jsonb default '{}',
+  morning_log jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   unique (user_id, date)
 );
 
--- Workouts
+-- Workouts (category is a free-text workout type id)
 create table if not exists workouts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   daily_log_id uuid references daily_logs(id) on delete set null,
   date date not null,
-  category text not null check (category in ('hiit', 'zone2', 'strength')),
+  category text not null,
   duration_minutes integer not null,
   notes text default '',
   created_at timestamptz default now()
@@ -37,8 +38,15 @@ create table if not exists goals (
   user_id uuid not null references auth.users(id) on delete cascade,
   metric_key text not null,
   name text not null,
-  target_value numeric not null,
-  target_type text not null check (target_type in ('daily', 'weekly')),
+  target_value numeric,
+  target_type text check (target_type in ('daily', 'weekly')),
+  log_period text,
+  target_period text,
+  period_days integer,
+  period_start_date date,
+  period_end_date date,
+  period_recurring boolean,
+  category_id text,
   goal_weight_start numeric,
   goal_weight_target numeric,
   unit text default '',
@@ -73,12 +81,22 @@ create table if not exists reminders (
   created_at timestamptz default now()
 );
 
+-- User preferences & config (mirrors former localStorage keys)
+create table if not exists user_storage (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  key text not null,
+  value jsonb not null default '{}',
+  updated_at timestamptz default now(),
+  primary key (user_id, key)
+);
+
 -- Row Level Security
 alter table daily_logs enable row level security;
 alter table workouts enable row level security;
 alter table goals enable row level security;
 alter table schedule_blocks enable row level security;
 alter table reminders enable row level security;
+alter table user_storage enable row level security;
 
 create policy "Users manage own daily_logs" on daily_logs
   for all using (auth.uid() = user_id);
@@ -95,7 +113,11 @@ create policy "Users manage own schedule_blocks" on schedule_blocks
 create policy "Users manage own reminders" on reminders
   for all using (auth.uid() = user_id);
 
+create policy "Users manage own user_storage" on user_storage
+  for all using (auth.uid() = user_id);
+
 -- Indexes
 create index if not exists idx_daily_logs_user_date on daily_logs (user_id, date);
 create index if not exists idx_workouts_user_date on workouts (user_id, date);
 create index if not exists idx_schedule_blocks_user_date on schedule_blocks (user_id, date);
+create index if not exists idx_user_storage_user_id on user_storage (user_id);

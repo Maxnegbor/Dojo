@@ -22,12 +22,12 @@ export function HabitStreakBadge({
 }: HabitStreakBadgeProps) {
   if (variant === 'circle') {
     const active = streak > 0
-    const colorClass = active ? 'text-orange-400' : 'text-zinc-500'
+    const colorClass = active ? 'text-[var(--accent-400)]' : 'text-zinc-500'
 
     return (
       <span
         className={cn(
-          'inline-flex h-7 shrink-0 items-center justify-center gap-0.5 rounded-full bg-black/40',
+          'inline-flex h-6 shrink-0 items-center justify-center gap-0.5 rounded-full bg-black/40',
           HABIT_STREAK_SLOT_WIDTH,
           className,
         )}
@@ -52,7 +52,7 @@ export function HabitStreakBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums text-orange-400',
+        'inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums text-[var(--accent-400)]',
         className,
       )}
       title={streak > 99 ? `${streak} day streak` : undefined}

@@ -2,7 +2,9 @@ import { addDays, parseISO } from 'date-fns'
 import type { DailyLog, Goal } from '@/types'
 import type { AppSettings } from '@/types'
 import { formatWeightStepper, kgToDisplay } from '@/lib/settingsStore'
+import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeekDates } from '@/lib/utils'
+import { formatGoalEndDate } from '@/lib/goalPeriod'
 
 export type WeightGoalMode = 'bulk' | 'cut'
 
@@ -38,11 +40,18 @@ export function getPreviousWeekDates(
   return getWeekDates(addDays(parseISO(weekDates[0]), -7), weekStartsOn)
 }
 
-/** Average of logged weights in the week (days without a log are skipped). */
+/** Weight for a week — prefers the weekly shutdown log, then legacy daily entries. */
 export function getWeeklyWeightAverage(
   logs: DailyLog[],
   weekDates: string[],
+  weekKey?: string,
 ): number | null {
+  const key = weekKey ?? weekDates[0]
+  if (key) {
+    const weekly = getWeeklyLog(key).weight
+    if (weekly != null) return weekly
+  }
+
   const weights = weekDates
     .map((date) => logs.find((l) => l.date === date)?.weight)
     .filter((w): w is number => w != null)
@@ -93,9 +102,11 @@ export function getWeightGoalProgress(
   const unit = (goal.unit === 'lb' ? 'lb' : 'kg') as AppSettings['weightUnit']
   const mode = weightGoalMode(goal)
   const prevWeekDates = getPreviousWeekDates(weekDates, weekStartsOn)
+  const prevWeekKey = prevWeekDates[0]
+  const weekKey = weekDates[0]
 
-  const lastLogged = getWeeklyWeightAverage(logs, prevWeekDates)
-  const thisLogged = getWeeklyWeightAverage(logs, weekDates)
+  const lastLogged = getWeeklyWeightAverage(logs, prevWeekDates, prevWeekKey)
+  const thisLogged = getWeeklyWeightAverage(logs, weekDates, weekKey)
 
   const lastWeekAvg = lastLogged ?? start
   const thisWeekAvg = thisLogged ?? lastWeekAvg
@@ -124,6 +135,11 @@ export function formatWeightGoalRange(
   unit: AppSettings['weightUnit'],
 ): string {
   return `${formatWeightStepper(startKg, unit)} → ${formatWeightStepper(targetKg, unit)} ${unit}`
+}
+
+export function formatWeightGoalDateRange(goal: Goal): string | null {
+  if (!goal.period_start_date || !goal.period_end_date) return null
+  return `${formatGoalEndDate(goal.period_start_date)} → ${formatGoalEndDate(goal.period_end_date)}`
 }
 
 export function displayWeightKg(kg: number, unit: AppSettings['weightUnit']): string {

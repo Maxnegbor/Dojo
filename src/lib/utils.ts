@@ -21,9 +21,10 @@ export function minutesToTime(minutes: number): string {
 }
 
 export function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m}m`
+  const total = Math.max(0, Math.round(minutes))
+  if (total < 60) return `${total}m`
+  const h = Math.floor(total / 60)
+  const m = total % 60
   if (m === 0) return `${h}h`
   return `${h}h ${m}m`
 }

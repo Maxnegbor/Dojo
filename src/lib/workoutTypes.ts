@@ -6,6 +6,8 @@ export interface WorkoutTypeDefinition {
   color: string
 }
 
+import { storageGetItem, storageSetItem } from '@/lib/userStorage'
+
 const STORAGE_KEY = 'personal-os-workout-types'
 
 export const WORKOUT_COLOR_PRESETS = [
@@ -36,7 +38,7 @@ export function slugifyWorkoutId(label: string): string {
 
 export function getWorkoutTypes(): WorkoutTypeDefinition[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = storageGetItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as WorkoutTypeDefinition[]
       if (Array.isArray(parsed)) {
@@ -55,7 +57,7 @@ export function getWorkoutTypes(): WorkoutTypeDefinition[] {
 }
 
 export function saveWorkoutTypes(types: WorkoutTypeDefinition[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(types))
+  storageSetItem(STORAGE_KEY, JSON.stringify(types))
 }
 
 export function getWorkoutTypeIds(): WorkoutCategory[] {

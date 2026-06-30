@@ -11,7 +11,7 @@ import { isMandatoryLogComplete } from '@/lib/dailyLog'
 import { getDraft } from '@/lib/dailyLogDraft'
 import type { DailyLog } from '@/types'
 import { useSettings } from '@/context/SettingsContext'
-import { cn, formatDate, getMonthStartPad, getWeekdayLabels } from '@/lib/utils'
+import { cn, formatDate, formatDuration, getMonthStartPad, getWeekdayLabels } from '@/lib/utils'
 
 interface MonthCalendarModalProps {
   month: Date
@@ -108,7 +108,7 @@ export function MonthCalendarModal({
               >
                 <span className="font-medium text-zinc-300">{format(day, 'd')}</span>
                 {focus > 0 && (
-                  <span className="text-[9px] text-indigo-400">{focus}m</span>
+                  <span className="text-[9px] text-indigo-400">{formatDuration(focus)}</span>
                 )}
                 {status === 'complete' && (
                   <Check size={10} className="text-emerald-400" />

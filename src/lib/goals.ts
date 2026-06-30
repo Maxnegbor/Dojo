@@ -4,7 +4,7 @@ import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
 /** Weekly totals derived from daily logs — never prompt for manual entry at shutdown. */
 export function isAggregatedFromDailyLogs(metricKey: MetricKey): boolean {
   if (metricKey.startsWith('workout_')) return true
-  return ['focus', 'steps', 'screen_time', 'sleep', 'weight'].includes(metricKey)
+  return ['focus', 'steps', 'screen_time', 'sleep'].includes(metricKey)
 }
 
 export const BUILTIN_METRICS: {
@@ -14,9 +14,9 @@ export const BUILTIN_METRICS: {
   defaultLogPeriod: GoalPeriod
 }[] = [
   { key: 'sleep', label: 'Sleep', unit: 'hrs', defaultLogPeriod: 'daily' },
-  { key: 'weight', label: 'Weight', unit: 'kg', defaultLogPeriod: 'daily' },
+  { key: 'weight', label: 'Weight', unit: 'kg', defaultLogPeriod: 'weekly' },
   { key: 'steps', label: 'Steps', unit: 'steps', defaultLogPeriod: 'daily' },
-  { key: 'screen_time', label: 'Screentime', unit: 'min', defaultLogPeriod: 'daily' },
+  { key: 'screen_time', label: 'Screentime', unit: 'hrs:min', defaultLogPeriod: 'daily' },
   { key: 'focus', label: 'Focus', unit: 'min', defaultLogPeriod: 'daily' },
 ]
 
@@ -31,15 +31,24 @@ export function effectiveLogPeriod(goal: Goal): GoalPeriod {
 }
 
 export function normalizeGoal(goal: Goal): Goal {
-  const rawPeriod = goal.log_period ?? goal.target_type ?? 'daily'
   const normalized = {
     ...goal,
     target_value: goal.target_value ?? null,
   }
-  const log_period = hasTarget(normalized) ? rawPeriod : 'daily'
+  const hasGoalTarget = hasTarget(normalized)
+  const target_period = hasGoalTarget
+    ? (goal.target_period ?? goal.log_period ?? goal.target_type ?? 'daily')
+    : 'daily'
+  const log_period: GoalPeriod = hasGoalTarget
+    ? goal.metric_key === 'weight'
+      ? 'weekly'
+      : (goal.log_period ?? goal.target_type ?? 'daily')
+    : 'daily'
   return {
     ...normalized,
+    unit: normalized.metric_key === 'screen_time' && normalized.unit === 'min' ? 'hrs:min' : normalized.unit,
     log_period,
+    target_period: hasGoalTarget ? target_period : 'daily',
     target_type: log_period,
     show_in_daily_log: log_period === 'daily',
   }

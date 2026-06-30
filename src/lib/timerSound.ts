@@ -93,6 +93,17 @@ function playTone(
   osc.stop(start + duration + 0.02)
 }
 
+/** Quick satisfying chime when a daily habit is checked off. */
+export function playHabitCheckSound() {
+  const ctx = getAudioContext()
+  if (!ctx) return
+
+  const now = ctx.currentTime
+  playTone(ctx, 523.25, now, 0.1, 0.042, 'sine')
+  playTone(ctx, 659.25, now + 0.07, 0.14, 0.038, 'sine')
+  playTone(ctx, 783.99, now + 0.13, 0.18, 0.032, 'sine')
+}
+
 /** Richer fanfare for weekly shutdown goal completion. */
 export function playWeeklyGoalWinSound() {
   const ctx = getAudioContext()

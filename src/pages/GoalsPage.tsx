@@ -1,55 +1,43 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { MetricsEditor } from '@/components/goals/MetricsEditor'
 import { useSettings } from '@/context/SettingsContext'
+import {
+  backfillPastWeekSnapshotsOnGoalEdit,
+  goalTargetFieldsChanged,
+} from '@/lib/goalTargetSnapshots'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
-import type { DailyLog, Goal, Workout } from '@/types'
-import { getPreviousWeekDates } from '@/lib/weightGoal'
-import { formatDate, getWeekDates } from '@/lib/utils'
-import { useAuth, useDailyLog } from '@/hooks/useData'
+import type { Goal } from '@/types'
+import { useAuth } from '@/hooks/useData'
 
 export function GoalsPage() {
-  const today = formatDate(new Date())
-  const { log } = useDailyLog(today)
   const { userId } = useAuth()
   const { settings } = useSettings()
   const [goals, setGoals] = useState<Goal[]>([])
-  const [weekLogs, setWeekLogs] = useState<DailyLog[]>([])
-  const [weekWorkouts, setWeekWorkouts] = useState<Workout[]>([])
-
-  const weekRange = useMemo(() => {
-    const weekDates = getWeekDates(new Date(), settings.weekStartsOn)
-    const prevWeekDates = getPreviousWeekDates(weekDates, settings.weekStartsOn)
-    return {
-      start: prevWeekDates[0] ?? weekDates[0],
-      end: weekDates[weekDates.length - 1],
-    }
-  }, [settings.weekStartsOn])
 
   const load = useCallback(async () => {
     if (!userId) return
-    const { start, end } = weekRange
 
     if (isSupabaseConfigured) {
-      const { fetchGoals, fetchDailyLogs, fetchWorkouts } = await import('@/lib/supabase')
-      const [g, logs, workouts] = await Promise.all([
-        fetchGoals(userId),
-        fetchDailyLogs(userId, start, end),
-        fetchWorkouts(userId, start, end),
-      ])
-      setGoals(g)
-      setWeekLogs(logs)
-      setWeekWorkouts(workouts)
+      const { fetchGoals } = await import('@/lib/supabase')
+      setGoals(await fetchGoals(userId))
     } else {
       setGoals(localStore.getGoals())
-      setWeekLogs(localStore.getDailyLogs(start, end))
-      setWeekWorkouts(localStore.getWorkouts(start, end))
     }
-  }, [userId, weekRange])
+  }, [userId])
 
   useEffect(() => { load() }, [load])
 
   const saveGoal = async (goal: Goal) => {
+    const existing = goals.find((g) => g.id === goal.id)
+    if (
+      existing &&
+      goal.metric_key.startsWith('workout_') &&
+      goalTargetFieldsChanged(existing, goal)
+    ) {
+      backfillPastWeekSnapshotsOnGoalEdit(existing, settings.weekStartsOn)
+    }
+
     if (isSupabaseConfigured) {
       const { upsertGoal } = await import('@/lib/supabase')
       await upsertGoal(goal)
@@ -78,11 +66,6 @@ export function GoalsPage() {
   return (
     <MetricsEditor
       goals={goals}
-      log={log ?? undefined}
-      weekLogs={weekLogs}
-      weekWorkouts={weekWorkouts}
-      date={today}
-      weekStartsOn={settings.weekStartsOn}
       userId={userId}
       onSaveGoal={saveGoal}
       onDeleteGoal={removeGoal}

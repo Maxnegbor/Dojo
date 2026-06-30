@@ -221,3 +221,56 @@ export async function deleteReminder(id: string): Promise<void> {
   const { error } = await supabase.from('reminders').delete().eq('id', id)
   if (error) throw error
 }
+
+export async function fetchAllUserStorage(userId: string): Promise<Record<string, unknown>> {
+  if (!supabase) return {}
+
+  const { data, error } = await supabase
+    .from('user_storage')
+    .select('key, value')
+    .eq('user_id', userId)
+
+  if (error) throw error
+
+  const result: Record<string, unknown> = {}
+  for (const row of data ?? []) {
+    result[row.key as string] = row.value
+  }
+  return result
+}
+
+export async function upsertUserStorage(
+  userId: string,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+
+  const { error } = await supabase.from('user_storage').upsert(
+    {
+      user_id: userId,
+      key,
+      value,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,key' },
+  )
+
+  if (error) throw error
+}
+
+export async function deleteUserStorageKey(userId: string, key: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+  const { error } = await supabase
+    .from('user_storage')
+    .delete()
+    .eq('user_id', userId)
+    .eq('key', key)
+  if (error) throw error
+}
+
+export async function clearUserStorage(userId: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+  const { error } = await supabase.from('user_storage').delete().eq('user_id', userId)
+  if (error) throw error
+}

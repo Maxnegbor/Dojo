@@ -5,6 +5,9 @@ import {
   GREY_BLOCK_TITLE,
   SCHEDULE_BLOCK_COLORS,
 } from '@/types'
+import { localStore } from '@/lib/localStore'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { generateId } from '@/lib/utils'
 
 export function isScheduleBlockColor(value: string): value is ScheduleBlockColor {
   return SCHEDULE_BLOCK_COLORS.includes(value as ScheduleBlockColor)
@@ -96,4 +99,49 @@ export function setScheduleBlockColor(
     color: BLOCK_COLOR_HEX[blockColor],
     title: nextTitle,
   }
+}
+
+export async function fetchScheduleBlocksForDate(
+  userId: string,
+  date: string,
+): Promise<ScheduleBlock[]> {
+  if (isSupabaseConfigured) {
+    const { fetchScheduleBlocks } = await import('@/lib/supabase')
+    return (await fetchScheduleBlocks(userId, date)).map(normalizeScheduleBlock)
+  }
+  return localStore.getScheduleBlocks(date).map(normalizeScheduleBlock)
+}
+
+export function cloneScheduleBlocksForDate(
+  blocks: ScheduleBlock[],
+  targetDate: string,
+  userId: string,
+): ScheduleBlock[] {
+  const now = new Date().toISOString()
+  return blocks.map((block) => ({
+    ...block,
+    id: generateId(),
+    user_id: userId,
+    date: targetDate,
+    created_at: now,
+  }))
+}
+
+export async function persistScheduleBlock(block: ScheduleBlock): Promise<ScheduleBlock> {
+  const normalized = normalizeScheduleBlock(block)
+  if (isSupabaseConfigured) {
+    const { upsertScheduleBlock } = await import('@/lib/supabase')
+    return normalizeScheduleBlock(await upsertScheduleBlock(normalized))
+  }
+  localStore.upsertScheduleBlock(normalized)
+  return normalized
+}
+
+export async function removeScheduleBlock(id: string): Promise<void> {
+  if (isSupabaseConfigured) {
+    const { deleteScheduleBlock } = await import('@/lib/supabase')
+    await deleteScheduleBlock(id)
+    return
+  }
+  localStore.deleteScheduleBlock(id)
 }

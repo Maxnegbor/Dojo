@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Check } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { CompletionWaveFill } from '@/components/ui/CompletionWaveFill'
+import { useReminderDismissAnimation } from '@/hooks/useReminderDismissAnimation'
 import type { Reminder } from '@/types'
 import { cn, generateId } from '@/lib/utils'
 
@@ -27,6 +29,9 @@ export function NotesAndReminders({
   const visible = items.filter(
     (r) => !r.completed && r.due_date <= viewDate && r.kind !== 'note',
   )
+
+  const handleDismiss = useCallback((id: string) => onRemove(id), [onRemove])
+  const { dismiss, getPhase } = useReminderDismissAnimation({ onDismiss: handleDismiss })
 
   useEffect(() => {
     if (composing) inputRef.current?.focus()
@@ -74,26 +79,59 @@ export function NotesAndReminders({
       }
     >
       <ul className="space-y-1">
-        {visible.map((item) => (
-          <li
-            key={item.id}
-            className="group flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/50"
-          >
-            <button
-              onClick={() => onRemove(item.id)}
-              aria-label={`Complete ${item.title}`}
-              className={cn(
-                'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200',
-                'border-zinc-600 text-transparent',
-                'group-hover:border-emerald-500/70 group-hover:bg-emerald-500/10',
-                'hover:!border-emerald-500 hover:!bg-emerald-500/20 hover:!text-emerald-400',
-              )}
+        {visible.map((item) => {
+          const phase = getPhase(item.id)
+          const completing = phase === 'completing'
+          const exiting = phase === 'exiting'
+          const checkActive = completing || exiting
+
+          return (
+            <li
+              key={item.id}
+              className={cn('reminder-row', exiting && 'reminder-row-exiting')}
             >
-              <Check size={11} className="scale-0 transition-transform group-hover:scale-100" />
-            </button>
-            <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">{item.title}</p>
-          </li>
-        ))}
+              <div className="reminder-row-inner">
+                <div
+                  className={cn(
+                    'group relative flex items-center gap-2.5 overflow-hidden rounded-lg px-2 py-2 transition-colors',
+                    !completing && !exiting && 'hover:bg-zinc-800/50',
+                  )}
+                >
+                  <CompletionWaveFill
+                    plain
+                    phase={completing ? 'animating' : exiting ? 'done' : undefined}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => dismiss(item.id)}
+                    disabled={!!phase}
+                    aria-label={`Complete ${item.title}`}
+                    className={cn(
+                      'relative z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200',
+                      checkActive
+                        ? 'border-emerald-500 bg-emerald-500 text-zinc-950'
+                        : 'border-zinc-600 text-transparent group-hover:border-emerald-500/70 group-hover:bg-emerald-500/10 hover:!border-emerald-500 hover:!bg-emerald-500/20 hover:!text-emerald-400',
+                    )}
+                  >
+                    {checkActive ? (
+                      <Check size={11} strokeWidth={3} />
+                    ) : (
+                      <Check size={11} className="scale-0 transition-transform group-hover:scale-100" />
+                    )}
+                  </button>
+                  <p
+                    className={cn(
+                      'relative z-10 min-w-0 flex-1 truncate text-sm transition-colors duration-300',
+                      exiting ? 'text-emerald-300/90' : 'text-zinc-200',
+                    )}
+                  >
+                    {item.title}
+                  </p>
+                </div>
+              </div>
+            </li>
+          )
+        })}
 
         {composing && (
           <li className="flex items-center gap-2.5 rounded-lg px-2 py-2">
@@ -119,10 +157,6 @@ export function NotesAndReminders({
           </li>
         )}
       </ul>
-
-      {visible.length === 0 && !composing && (
-        <p className="py-3 text-center text-xs text-zinc-500">No reminders yet</p>
-      )}
     </Card>
   )
 }

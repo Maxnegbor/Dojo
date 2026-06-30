@@ -1,12 +1,19 @@
 import type { Goal, MetricKey } from '@/types'
 import type { DailyLog, Workout } from '@/types'
-import { goalLogPeriod, hasTarget } from '@/lib/goals'
+import { hasTarget, goalLogPeriod } from '@/lib/goals'
+import {
+  getCustomPeriodRange,
+  goalTargetPeriod,
+  isCustomTargetPeriod,
+} from '@/lib/goalPeriod'
+import { getWeeklyShutdownWeekKey } from '@/lib/weeklyShutdown'
 import {
   getWeightGoalProgress,
   isWeightGoal,
 } from '@/lib/weightGoal'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeekDates } from '@/lib/utils'
+import { formatMetricAmount, usesTimedMetricDisplay } from '@/lib/timedMetrics'
 
 export interface ProgressResult {
   current: number
@@ -30,6 +37,10 @@ export interface ProgressDelta {
   name: string
   /** Bulk/cut week-over-week direction (weight goals only). */
   weightWeekHit?: boolean
+  /** Daily-logged goals tracked by week-to-date average in shutdown. */
+  usesWeekAverage?: boolean
+  /** Today's logged value (for daily-average goals like sleep). */
+  todayValue?: number
 }
 
 export function getMetricValue(
@@ -103,6 +114,39 @@ export function getWeeklyDailyAverage(
   return total / days.length
 }
 
+/** Week-to-date average for daily-logged metrics (only days with a logged value). */
+export function getWeekToDateDailyAverage(
+  metricKey: MetricKey,
+  logs: DailyLog[],
+  workouts: Workout[],
+  weekDates: string[],
+  asOfDate: string,
+): number {
+  const days = weekDates.filter((date) => date <= asOfDate)
+  const values = days
+    .map((date) => {
+      const log = logs.find((entry) => entry.date === date)
+      return getMetricValue(metricKey, log, workouts, date)
+    })
+    .filter((value) => value > 0)
+
+  if (values.length === 0) return 0
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+export function isDailyLoggedAverageMetric(goal: Goal): boolean {
+  if (isWeightGoal(goal)) return false
+  if (isCustomTargetPeriod(goal)) return false
+  if (goalTargetPeriod(goal) !== 'daily') return false
+  if (goalLogPeriod(goal) !== 'daily') return false
+  return true
+}
+
+function withLogForDate(logs: DailyLog[], log: DailyLog | undefined, date: string): DailyLog[] {
+  if (!log || log.date !== date) return logs
+  return [...logs.filter((entry) => entry.date !== date), log]
+}
+
 export function getWeeklyMetricValue(
   metricKey: MetricKey,
   logs: DailyLog[],
@@ -144,6 +188,101 @@ export function getWeeklyMetricValue(
   }
 }
 
+function getMetricValueInRange(
+  metricKey: MetricKey,
+  logs: DailyLog[],
+  workouts: Workout[],
+  startDate: string,
+  endDate: string,
+): number {
+  const dates = logs
+    .map((l) => l.date)
+    .filter((d) => d >= startDate && d <= endDate)
+    .sort()
+
+  if (metricKey.startsWith('workout_')) {
+    const cat = metricKey.replace('workout_', '')
+    return workouts
+      .filter((w) => w.category === cat && w.date >= startDate && w.date <= endDate)
+      .reduce((s, w) => s + w.duration_minutes, 0)
+  }
+
+  if (metricKey.startsWith('custom:')) {
+    return logs
+      .filter((l) => l.date >= startDate && l.date <= endDate)
+      .reduce((s, l) => s + (l.custom_metrics?.[metricKey] ?? 0), 0)
+  }
+
+  if (metricKey === 'focus') {
+    return logs
+      .filter((l) => l.date >= startDate && l.date <= endDate)
+      .reduce((s, l) => s + (l.focus_minutes ?? 0), 0)
+  }
+
+  if (metricKey === 'steps' || metricKey === 'screen_time') {
+    return dates.reduce((sum, date) => {
+      const log = logs.find((l) => l.date === date)
+      if (metricKey === 'steps') return sum + (log?.steps ?? 0)
+      return sum + (log?.screen_time_minutes ?? 0)
+    }, 0)
+  }
+
+  if (metricKey === 'sleep') {
+    const vals = logs
+      .filter((l) => l.date >= startDate && l.date <= endDate)
+      .map((l) => l.sleep_hours)
+      .filter((v): v is number => v != null && v > 0)
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
+  }
+
+  return dates.reduce((sum, date) => {
+    const log = logs.find((l) => l.date === date)
+    return sum + getMetricValue(metricKey, log, workouts, date)
+  }, 0)
+}
+
+function sumWeeklyLogsInRange(
+  metricKey: string,
+  start: string,
+  end: string,
+  weekStartsOn: 0 | 1,
+): number {
+  let total = 0
+  const seen = new Set<string>()
+  let cursor = new Date(start + 'T12:00:00')
+  const endDate = new Date(end + 'T12:00:00')
+
+  while (cursor <= endDate) {
+    const weekDates = getWeekDates(cursor, weekStartsOn)
+    const weekKey = getWeeklyShutdownWeekKey(weekDates)
+    if (!seen.has(weekKey)) {
+      seen.add(weekKey)
+      const manual = getWeeklyLog(weekKey)[metricKey]
+      if (manual != null) total += manual
+    }
+    cursor.setDate(cursor.getDate() + 7)
+  }
+
+  return total
+}
+
+export function getCustomPeriodMetricValue(
+  goal: Goal,
+  logs: DailyLog[],
+  workouts: Workout[],
+  asOfDate: string,
+  weekStartsOn: 0 | 1 = 1,
+): number {
+  const range = getCustomPeriodRange(goal, asOfDate)
+  if (!range) return 0
+
+  if (goalLogPeriod(goal) === 'weekly' && goal.metric_key.startsWith('custom:')) {
+    return sumWeeklyLogsInRange(goal.metric_key, range.start, range.end, weekStartsOn)
+  }
+
+  return getMetricValueInRange(goal.metric_key, logs, workouts, range.start, range.end)
+}
+
 export function calculateProgress(
   goal: Goal,
   log: DailyLog | undefined,
@@ -154,7 +293,8 @@ export function calculateProgress(
   weekKey?: string,
   weekStartsOn?: 0 | 1,
 ): ProgressResult {
-  const period = goalLogPeriod(goal)
+  const targetPeriod = goalTargetPeriod(goal)
+  const logPeriod = goalLogPeriod(goal)
   let current: number
   const target = goal.target_value
 
@@ -170,8 +310,20 @@ export function calculateProgress(
     }
   }
 
-  if (period === 'weekly') {
+  if (isCustomTargetPeriod(goal)) {
+    current = getCustomPeriodMetricValue(
+      goal,
+      allLogs,
+      workouts,
+      date,
+      weekStartsOn ?? 1,
+    )
+  } else if (targetPeriod === 'weekly') {
     current = getWeeklyMetricValue(goal.metric_key, allLogs, workouts, weekDates, weekKey)
+  } else if (logPeriod === 'weekly') {
+    const weekTotal = getWeeklyMetricValue(goal.metric_key, allLogs, workouts, weekDates, weekKey)
+    const dayIndex = Math.max(1, weekDates.indexOf(date) + 1)
+    current = weekTotal / dayIndex
   } else if (goal.metric_key.startsWith('workout_')) {
     current = getMetricValue(goal.metric_key, log, workouts, date)
   } else {
@@ -184,23 +336,35 @@ export function calculateProgress(
       target: null,
       percent: 0,
       onTrack: true,
-      label: `${current} ${goal.unit}`,
+      label: usesTimedMetricDisplay(goal.unit, goal.metric_key)
+        ? formatMetricAmount(current, goal.unit, goal.metric_key)
+        : `${current} ${goal.unit}`,
       hasTarget: false,
     }
   }
 
   const percent = (current / target) * 100
-  const onTrack =
-    period === 'weekly'
-      ? percent >= (weekDates.indexOf(date) + 1) * (100 / 7) * 0.7
-      : current >= target * 0.8
+  let onTrack: boolean
+  if (isCustomTargetPeriod(goal)) {
+    const range = getCustomPeriodRange(goal, date)
+    const pace = range && range.totalDays > 0
+      ? (range.elapsedDays / range.totalDays) * 100 * 0.7
+      : 70
+    onTrack = percent >= pace
+  } else if (targetPeriod === 'weekly') {
+    onTrack = percent >= (weekDates.indexOf(date) + 1) * (100 / 7) * 0.7
+  } else {
+    onTrack = current >= target * 0.8
+  }
 
   return {
     current,
     target,
     percent,
     onTrack,
-    label: `${current} / ${target} ${goal.unit}`,
+    label: usesTimedMetricDisplay(goal.unit, goal.metric_key)
+      ? `${formatMetricAmount(current, goal.unit, goal.metric_key)} / ${formatMetricAmount(target, goal.unit, goal.metric_key)}`
+      : `${current} / ${target} ${goal.unit}`,
     hasTarget: true,
   }
 }
@@ -237,11 +401,48 @@ export function calculateProgressDeltas(
         }
       }
 
+      if (isDailyLoggedAverageMetric(goal)) {
+        const logsBefore = withLogForDate(allLogsBefore, logBefore, date)
+        const logsAfter = withLogForDate(allLogsAfter, logAfter, date)
+        const avgBefore = getWeekToDateDailyAverage(
+          goal.metric_key,
+          logsBefore,
+          workoutsBefore,
+          weekDates,
+          date,
+        )
+        const avgAfter = getWeekToDateDailyAverage(
+          goal.metric_key,
+          logsAfter,
+          workoutsAfter,
+          weekDates,
+          date,
+        )
+        const target = goal.target_value
+        const percentBefore = target != null && target > 0 ? (avgBefore / target) * 100 : 0
+        const percentAfter = target != null && target > 0 ? (avgAfter / target) * 100 : 0
+
+        return {
+          goal,
+          before: avgBefore,
+          after: avgAfter,
+          todayContribution: avgAfter - avgBefore,
+          target,
+          percentBefore,
+          percentAfter,
+          isWeekly: false,
+          usesWeekAverage: true,
+          todayValue: getMetricValue(goal.metric_key, logAfter, workoutsAfter, date),
+          unit: goal.unit,
+          name: goal.name,
+        }
+      }
+
       const beforeProg = calculateProgress(goal, logBefore, workoutsBefore, date, weekDates, allLogsBefore, undefined, weekStartsOn)
       const afterProg = calculateProgress(goal, logAfter, workoutsAfter, date, weekDates, allLogsAfter, undefined, weekStartsOn)
 
       let todayContribution = afterProg.current - beforeProg.current
-      if (goalLogPeriod(goal) === 'daily') {
+      if (goalTargetPeriod(goal) === 'daily') {
         todayContribution =
           getMetricValue(goal.metric_key, logAfter, workoutsAfter, date) -
           getMetricValue(goal.metric_key, logBefore, workoutsBefore, date)
@@ -255,7 +456,7 @@ export function calculateProgressDeltas(
         target: afterProg.target,
         percentBefore: beforeProg.percent,
         percentAfter: afterProg.percent,
-        isWeekly: goalLogPeriod(goal) === 'weekly',
+        isWeekly: goalTargetPeriod(goal) !== 'daily',
         unit: goal.unit,
         name: goal.name,
       }

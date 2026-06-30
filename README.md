@@ -36,14 +36,24 @@ Open [http://localhost:5173](http://localhost:5173).
 ### Supabase Setup
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Run `supabase/schema.sql` in the SQL editor
-3. Enable anonymous auth (Authentication → Providers → Anonymous) or add email auth
-4. Copy your project URL and anon key into `.env`:
+2. Run `supabase/schema.sql` in the SQL editor (new projects)
+3. **Existing projects:** also run `supabase/migrations/001_user_storage_and_schema_updates.sql`
+4. Enable email auth (Authentication → Providers → Email)
+5. Copy your project URL and anon key into `.env`:
 
 ```
 VITE_SUPABASE_URL=https://xxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
 ```
+
+When Supabase is configured, **all app data** is stored in Postgres:
+
+| Table | Data |
+|-------|------|
+| `daily_logs`, `workouts`, `goals`, `schedule_blocks`, `reminders` | Core tracking |
+| `user_storage` | Settings, habit/workout types, weekly logs, drafts, goal snapshots, shutdown state |
+
+On first login, existing browser `personal-os-*` keys are migrated into `user_storage` automatically.
 
 Without Supabase credentials, the app runs in **local mode** using browser localStorage.
 

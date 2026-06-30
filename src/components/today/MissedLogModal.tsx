@@ -2,11 +2,10 @@ import { useState } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { MetricInput } from '@/components/ui/MetricInput'
-import { useSettings } from '@/context/SettingsContext'
+import { DurationMetricInput } from '@/components/ui/DurationMetricInput'
 import type { DailyLog } from '@/types'
 import { dismissMissedLog, isMandatoryLogComplete, isMissedLogDismissed } from '@/lib/dailyLog'
 import { clearDraft } from '@/lib/dailyLogDraft'
-import { formatWeightValue, parseWeightInput } from '@/lib/settingsStore'
 import { formatDate } from '@/lib/utils'
 
 interface MissedLogModalProps {
@@ -17,11 +16,8 @@ interface MissedLogModalProps {
 }
 
 export function MissedLogModal({ date, log, onSave, onDismiss }: MissedLogModalProps) {
-  const { settings } = useSettings()
-  const [sleep, setSleep] = useState(log?.sleep_hours?.toString() ?? '')
-  const [weight, setWeight] = useState(formatWeightValue(log?.weight, settings.weightUnit))
   const [steps, setSteps] = useState(log?.steps?.toString() ?? '')
-  const [screen, setScreen] = useState(log?.screen_time_minutes?.toString() ?? '')
+  const [screenMinutes, setScreenMinutes] = useState<number | null>(log?.screen_time_minutes ?? null)
   const [saving, setSaving] = useState(false)
 
   const formatted = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
@@ -33,10 +29,8 @@ export function MissedLogModal({ date, log, onSave, onDismiss }: MissedLogModalP
   const handleSave = async () => {
     setSaving(true)
     await onSave({
-      sleep_hours: sleep ? parseFloat(sleep) : null,
-      weight: parseWeightInput(weight, settings.weightUnit),
       steps: steps ? parseInt(steps, 10) : null,
-      screen_time_minutes: screen ? parseInt(screen, 10) : null,
+      screen_time_minutes: screenMinutes,
     })
     clearDraft(date)
     setSaving(false)
@@ -79,10 +73,12 @@ export function MissedLogModal({ date, log, onSave, onDismiss }: MissedLogModalP
         </div>
 
         <div className="mb-4 grid grid-cols-2 gap-3">
-          <MetricInput label="Sleep" unit="hrs" step="0.5" value={sleep} onChange={(e) => setSleep(e.target.value)} />
-          <MetricInput label="Weight" unit={settings.weightUnit} step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} />
           <MetricInput label="Steps" unit="steps" value={steps} onChange={(e) => setSteps(e.target.value)} />
-          <MetricInput label="Screentime" unit="min" value={screen} onChange={(e) => setScreen(e.target.value)} />
+          <DurationMetricInput
+            label="Screentime"
+            value={screenMinutes}
+            onChange={setScreenMinutes}
+          />
         </div>
 
         <div className="flex gap-2">

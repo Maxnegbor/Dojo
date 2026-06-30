@@ -1,6 +1,6 @@
 import type { DailyLog, Goal, Workout } from '@/types'
 import type { WeekStartDay } from '@/types'
-import { goalLogPeriod } from '@/lib/goals'
+import { hasTarget } from '@/lib/goals'
 import { isWeightGoal } from '@/lib/weightGoal'
 import { getPreviousWeekDates } from '@/lib/weightGoal'
 import { flushDraftToStore, setDraft, type DailyLogDraft } from '@/lib/dailyLogDraft'
@@ -61,66 +61,40 @@ export async function flushDailyLogAndGetProgressDeltas(
   )
 }
 
+/** True when shutdown saved new progress for this goal today. */
+export function deltaHasProgressToday(delta: ProgressDelta): boolean {
+  if (isWeightGoal(delta.goal)) {
+    return Math.abs(delta.percentAfter - delta.percentBefore) > 0.01
+  }
+  if (delta.usesWeekAverage) {
+    return (
+      Math.abs(delta.todayContribution) > 0.001 ||
+      Math.abs(delta.after - delta.before) > 0.001 ||
+      Math.abs(delta.percentAfter - delta.percentBefore) > 0.01
+    )
+  }
+  return (
+    delta.todayContribution > 0.001 ||
+    delta.after > delta.before + 0.001 ||
+    delta.percentAfter > delta.percentBefore + 0.01
+  )
+}
+
 export function filterShutdownProgressDeltas(
   deltas: ProgressDelta[],
   focusMinutes: number,
-): ProgressDelta[] {
-  const fromGoals = deltas.filter((d) => {
-    if (d.todayContribution > 0) return true
-    if (d.percentAfter > 0) return true
-    if (d.goal.metric_key.startsWith('custom:') && d.after > 0) return true
-    if (isWeightGoal(d.goal) && (d.todayContribution > 0 || d.percentAfter !== d.percentBefore)) return true
-    if (d.goal.metric_key === 'focus' && focusMinutes > 0) return true
-    return false
-  })
+): { deltas: ProgressDelta[]; untrackedFocusMinutes: number | null } {
+  const fromGoals = deltas.filter(
+    (d) => !isWeightGoal(d.goal) && d.goal.is_active && hasTarget(d.goal),
+  )
 
-  const enriched = fromGoals.map((d) => {
-    if (d.goal.metric_key === 'focus' && focusMinutes > 0) {
-      const target = d.target ?? 0
-      const percentAfter =
-        goalLogPeriod(d.goal) === 'daily' && target > 0
-          ? Math.min(100, (focusMinutes / target) * 100)
-          : d.percentAfter
-      return {
-        ...d,
-        after: goalLogPeriod(d.goal) === 'daily' ? focusMinutes : d.after,
-        todayContribution: focusMinutes,
-        percentAfter,
-      }
-    }
-    if (d.goal.metric_key.startsWith('custom:') && d.after > 0 && d.todayContribution === 0) {
-      return { ...d, todayContribution: d.after }
-    }
-    return d
-  })
+  const enriched = fromGoals
 
-  const hasFocusGoal = enriched.some((d) => d.goal.metric_key === 'focus')
-  if (focusMinutes > 0 && !hasFocusGoal) {
-    enriched.push({
-      goal: {
-        id: '__focus_summary__',
-        user_id: '',
-        metric_key: 'focus',
-        name: 'Focus',
-        target_value: focusMinutes,
-        log_period: 'daily',
-        goal_weight_start: null,
-        goal_weight_target: null,
-        unit: 'min',
-        is_active: true,
-        created_at: '',
-      },
-      before: 0,
-      after: focusMinutes,
-      todayContribution: focusMinutes,
-      target: focusMinutes,
-      percentBefore: 0,
-      percentAfter: 100,
-      isWeekly: false,
-      unit: 'min',
-      name: 'Focus',
-    })
-  }
+  const hasActiveFocusGoal = enriched.some(
+    (d) => d.goal.metric_key === 'focus' && d.goal.is_active && hasTarget(d.goal),
+  )
+  const untrackedFocusMinutes =
+    focusMinutes > 0 && !hasActiveFocusGoal ? focusMinutes : null
 
-  return enriched
+  return { deltas: enriched, untrackedFocusMinutes }
 }

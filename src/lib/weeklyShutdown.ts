@@ -1,6 +1,7 @@
 import { addDays, parseISO } from 'date-fns'
 import type { AppSettings } from '@/types'
-import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
+import type { DailyLog, Goal, MetricKey, Workout, WeeklyShutdownCheckGroup } from '@/types'
+import { normalizeHabits } from '@/types'
 import {
   BUILTIN_METRICS,
   getActiveGoals,
@@ -8,8 +9,18 @@ import {
   goalLogPeriod,
   hasTarget,
 } from '@/lib/goals'
-import { calculateProgress, getWeeklyDailyAverage, getWeeklyMetricValue } from '@/lib/metrics'
-import { getWeeklyLogHabitTypes, habitWeeklyLogKey } from '@/lib/habitTypes'
+import {
+  getGoalTimeHorizon,
+  isCustomTargetPeriod,
+  isGoalLongerThanWeek,
+} from '@/lib/goalPeriod'
+import {
+  calculateProgress,
+  getCustomPeriodMetricValue,
+  getWeeklyDailyAverage,
+  getWeeklyMetricValue,
+} from '@/lib/metrics'
+import { getWeeklyLogHabitTypes, getDailyLogHabitTypes, habitWeeklyLogKey } from '@/lib/habitTypes'
 import { formatWeightStepper } from '@/lib/settingsStore'
 import {
   formatWeightGoalRange,
@@ -18,20 +29,14 @@ import {
   weightGoalMode,
 } from '@/lib/weightGoal'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
-import { getWeekDates } from '@/lib/utils'
+import { goalProgressPeriodLabel } from '@/lib/goalLabels'
+import { getPreviousWeekDates } from '@/lib/weightGoal'
+import { getWeekDates, generateId } from '@/lib/utils'
+import { formatMetricAmount, usesTimedMetricDisplay } from '@/lib/timedMetrics'
+
+import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 
 const STORAGE_KEY = 'personal-os-weekly-shutdown-completed'
-
-export interface WeeklyShutdownCheckItem {
-  id: string
-  label: string
-}
-
-export interface WeeklyShutdownCheckGroup {
-  id: string
-  label: string
-  items: WeeklyShutdownCheckItem[]
-}
 
 export const WEEKLY_SHUTDOWN_CHECKLIST: WeeklyShutdownCheckGroup[] = [
   {
@@ -50,9 +55,45 @@ export const WEEKLY_SHUTDOWN_CHECKLIST: WeeklyShutdownCheckGroup[] = [
   },
 ]
 
+export const DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST: WeeklyShutdownCheckGroup[] = WEEKLY_SHUTDOWN_CHECKLIST
+
+export function normalizeWeeklyShutdownChecklist(
+  checklist: WeeklyShutdownCheckGroup[] | undefined,
+): WeeklyShutdownCheckGroup[] {
+  if (!checklist || !Array.isArray(checklist)) {
+    return DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({ ...item })),
+    }))
+  }
+  return checklist
+    .filter((group) => group && typeof group.label === 'string')
+    .map((group) => ({
+      id: group.id || generateId(),
+      label: group.label.trim() || 'Section',
+      items: (group.items ?? [])
+        .filter((item) => item && typeof item.label === 'string' && item.label.trim())
+        .map((item) => ({
+          id: item.id || generateId(),
+          label: item.label.trim(),
+        })),
+    }))
+}
+
+export function activeWeeklyShutdownChecklist(
+  checklist: WeeklyShutdownCheckGroup[],
+): WeeklyShutdownCheckGroup[] {
+  return checklist.filter((group) => group.items.length > 0)
+}
+
+export function allWeeklyShutdownItemIds(groups: WeeklyShutdownCheckGroup[]): string[] {
+  return groups.flatMap((group) => group.items.map((item) => item.id))
+}
+
 export interface WeeklyShutdownGoalSummary {
   id: string
   name: string
+  metricKey: string
   unit: string
   current: number
   target: number
@@ -65,6 +106,12 @@ export interface WeeklyShutdownGoalSummary {
   isWeight?: boolean
   weightMode?: 'bulk' | 'cut'
   weightLabel?: string
+  /** Share of goal period elapsed (for pace bar). */
+  timeElapsedPercent?: number
+  /** Multi-week goals: win when completion % >= elapsed time %. */
+  usesPaceReview?: boolean
+  /** Hide pace bar for standard weekly goals (always 100% at review). */
+  showPaceBar?: boolean
 }
 
 export interface WeeklyReviewStat {
@@ -72,6 +119,68 @@ export interface WeeklyReviewStat {
   label: string
   value: string
   detail: string
+}
+
+export interface WeeklyHabitDayReview {
+  date: string
+  dayLabel: string
+  done: boolean
+}
+
+export interface WeeklyHabitReviewSummary {
+  id: string
+  label: string
+  logPeriod: 'daily' | 'weekly'
+  days: WeeklyHabitDayReview[]
+}
+
+function dayLetterLabel(dateStr: string): string {
+  return parseISO(dateStr).toLocaleDateString(undefined, { weekday: 'narrow' })
+}
+
+/** Daily habits: one ring per day in the week. Weekly habits: single week ring. */
+export function buildWeeklyHabitReviewSummaries(
+  logs: DailyLog[],
+  weekDates: string[],
+): WeeklyHabitReviewSummary[] {
+  if (weekDates.length === 0) return []
+
+  const logsByDate = new Map(logs.map((l) => [l.date, l]))
+  const weekKey = getWeeklyShutdownWeekKey(weekDates)
+  const weeklyLog = getWeeklyLog(weekKey)
+  const summaries: WeeklyHabitReviewSummary[] = []
+
+  for (const habit of getDailyLogHabitTypes()) {
+    summaries.push({
+      id: habit.id,
+      label: habit.label,
+      logPeriod: 'daily',
+      days: weekDates.map((date) => ({
+        date,
+        dayLabel: dayLetterLabel(date),
+        done: normalizeHabits(logsByDate.get(date)?.habits)[habit.id] ?? false,
+      })),
+    })
+  }
+
+  for (const habit of getWeeklyLogHabitTypes()) {
+    const key = habitWeeklyLogKey(habit.id)
+    if (!(key in weeklyLog)) continue
+    summaries.push({
+      id: habit.id,
+      label: habit.label,
+      logPeriod: 'weekly',
+      days: [
+        {
+          date: weekKey,
+          dayLabel: 'Wk',
+          done: weeklyLog[key] === 1,
+        },
+      ],
+    })
+  }
+
+  return summaries
 }
 
 export function isWeeklyShutdownDay(date: Date): boolean {
@@ -96,7 +205,7 @@ export function getWeeklyShutdownWeekKey(weekDates: string[]): string {
 
 function readCompletedWeeks(): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = storageGetItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as string[]
       if (Array.isArray(parsed)) return parsed
@@ -114,7 +223,7 @@ export function isWeeklyShutdownCompleted(weekKey: string): boolean {
 
 export function markWeeklyShutdownCompleted(weekKey: string) {
   if (!weekKey) return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...new Set([...readCompletedWeeks(), weekKey])]))
+  storageSetItem(STORAGE_KEY, JSON.stringify([...new Set([...readCompletedWeeks(), weekKey])]))
 }
 
 function formatNum(n: number, decimals = 1): string {
@@ -131,47 +240,120 @@ function logForDate(logs: DailyLog[], date: string): DailyLog | undefined {
   return logs.find((l) => l.date === date)
 }
 
+function buildPaceReviewGoalSummary(
+  goal: Goal,
+  logs: DailyLog[],
+  workouts: Workout[],
+  lastDate: string,
+  prevLastDate: string,
+  weekStartsOn: 0 | 1,
+  opts: { isWorkout?: boolean; weeklyTotal?: number } = {},
+): WeeklyShutdownGoalSummary {
+  const target = goal.target_value ?? 0
+  const current = getCustomPeriodMetricValue(goal, logs, workouts, lastDate, weekStartsOn)
+  const prevCurrent = getCustomPeriodMetricValue(goal, logs, workouts, prevLastDate, weekStartsOn)
+  const percent = target > 0 ? (current / target) * 100 : 0
+  const percentBefore = target > 0 ? (prevCurrent / target) * 100 : 0
+  const timeElapsedPercent = getGoalTimeHorizon(goal, lastDate, weekStartsOn)?.elapsedPercent
+  const hit = timeElapsedPercent != null ? percent >= timeElapsedPercent : percent >= 100
+  const periodLabel = goalProgressPeriodLabel(goal, lastDate, weekStartsOn)
+  let detail = `${periodLabel} · ${formatGoalProgressDetail(current, target, goal.unit, goal.metric_key)}`
+  if (opts.isWorkout && opts.weeklyTotal != null) {
+    detail += ` · ${formatNum(opts.weeklyTotal)} min this week`
+  }
+
+  return {
+    id: goal.id,
+    name: goal.name,
+    metricKey: goal.metric_key,
+    unit: opts.isWorkout ? 'min' : goal.unit,
+    current,
+    target,
+    percent,
+    percentBefore,
+    hit,
+    kind: goalLogPeriod(goal) === 'weekly' ? 'weekly' : 'daily',
+    isWorkout: opts.isWorkout,
+    detail,
+    timeElapsedPercent,
+    usesPaceReview: true,
+    showPaceBar: true,
+  }
+}
+
 function buildWorkoutGoalSummary(
   goal: Goal,
   logs: DailyLog[],
   workouts: Workout[],
   weekDates: string[],
   weekKey: string,
+  prevWeekDates: string[],
+  prevWeekKey: string,
+  weekStartsOn: 0 | 1,
 ): WeeklyShutdownGoalSummary {
   const weeklyTotal = getWeeklyMetricValue(goal.metric_key, logs, workouts, weekDates, weekKey)
   const target = goal.target_value ?? 0
   const weeklyTarget = goalLogPeriod(goal) === 'weekly'
+  const lastDate = weekDates[weekDates.length - 1]
+  const prevLastDate = prevWeekDates[prevWeekDates.length - 1]
+  const periodLabel = goalProgressPeriodLabel(goal, lastDate, weekStartsOn)
+  const timeElapsedPercent = getGoalTimeHorizon(goal, lastDate, weekStartsOn)?.elapsedPercent
+
+  if (isCustomTargetPeriod(goal) && isGoalLongerThanWeek(goal, lastDate)) {
+    return buildPaceReviewGoalSummary(goal, logs, workouts, lastDate, prevLastDate, weekStartsOn, {
+      isWorkout: true,
+      weeklyTotal,
+    })
+  }
 
   if (weeklyTarget) {
     const percent = target > 0 ? (weeklyTotal / target) * 100 : 0
+    const prevTotal = getWeeklyMetricValue(goal.metric_key, logs, workouts, prevWeekDates, prevWeekKey)
+    const percentBefore = target > 0 ? (prevTotal / target) * 100 : 0
     return {
       id: goal.id,
       name: goal.name,
+      metricKey: goal.metric_key,
       unit: 'min',
       current: weeklyTotal,
       target,
       percent,
+      percentBefore,
       hit: percent >= 100,
       kind: 'weekly',
       isWorkout: true,
-      detail: `${formatNum(weeklyTotal)} / ${formatNum(target)} min this week`,
+      detail: `${periodLabel} · ${formatNum(weeklyTotal)} / ${formatNum(target)} min`,
+      timeElapsedPercent,
+      showPaceBar: false,
     }
   }
 
-  const avg = getWeeklyDailyAverage(goal.metric_key, logs, workouts, weekDates, weekDates[weekDates.length - 1])
+  const avg = getWeeklyDailyAverage(goal.metric_key, logs, workouts, weekDates, lastDate)
+  const prevAvg = getWeeklyDailyAverage(
+    goal.metric_key,
+    logs,
+    workouts,
+    prevWeekDates,
+    prevLastDate,
+  )
   const percent = target > 0 ? (avg / target) * 100 : 0
+  const percentBefore = target > 0 ? (prevAvg / target) * 100 : 0
 
   return {
     id: goal.id,
     name: goal.name,
+    metricKey: goal.metric_key,
     unit: 'min',
     current: avg,
     target,
     percent,
+    percentBefore,
     hit: percent >= 100,
     kind: 'daily',
     isWorkout: true,
-    detail: `Week avg: ${formatNum(avg)} / ${formatNum(target)} min · ${formatNum(weeklyTotal)} min total`,
+    detail: `${periodLabel} · ${formatNum(avg)} / ${formatNum(target)} min · ${formatNum(weeklyTotal)} min total`,
+    timeElapsedPercent,
+    showPaceBar: false,
   }
 }
 
@@ -187,30 +369,56 @@ export function buildWeeklyShutdownSummaries(
   if (weekDates.length === 0) return []
 
   const weekKey = getWeeklyShutdownWeekKey(weekDates)
+  const prevWeekDates = getPreviousWeekDates(weekDates, weekStartsOn)
+  const prevWeekKey = getWeeklyShutdownWeekKey(prevWeekDates)
   const lastDate = weekDates[weekDates.length - 1]
+  const prevLastDate = prevWeekDates[prevWeekDates.length - 1] ?? lastDate
   const lastLog = logs.find((l) => l.date === lastDate)
+  const prevLastLog = logForDate(logs, prevLastDate)
   const targeted = getActiveGoals(goals).filter(hasTarget)
   const workoutGoals = targeted.filter((g) => g.metric_key.startsWith('workout_'))
   const metricGoals = targeted.filter((g) => !g.metric_key.startsWith('workout_'))
   const weightGoals = metricGoals.filter(isWeightGoal)
   const nonWeightMetrics = metricGoals.filter((g) => !isWeightGoal(g))
 
-  const weeklyGoals = nonWeightMetrics.filter((g) => goalLogPeriod(g) === 'weekly')
-  const dailyGoals = nonWeightMetrics.filter((g) => goalLogPeriod(g) === 'daily')
+  const weeklyGoals = nonWeightMetrics.filter(
+    (g) => goalLogPeriod(g) === 'weekly' && !isCustomTargetPeriod(g),
+  )
+  const dailyGoals = nonWeightMetrics.filter(
+    (g) => goalLogPeriod(g) === 'daily' && !isCustomTargetPeriod(g),
+  )
+  const customPeriodGoals = nonWeightMetrics.filter(
+    (g) => isCustomTargetPeriod(g) && isGoalLongerThanWeek(g, lastDate),
+  )
 
   const weeklySummaries: WeeklyShutdownGoalSummary[] = weeklyGoals.map((goal) => {
     const progress = calculateProgress(goal, lastLog, workouts, lastDate, weekDates, logs, weekKey)
+    const prevProgress = calculateProgress(
+      goal,
+      prevLastLog,
+      workouts,
+      prevLastDate,
+      prevWeekDates,
+      logs,
+      prevWeekKey,
+    )
     const percent = progress.target && progress.target > 0 ? progress.percent : 0
+    const percentBefore =
+      prevProgress.target && prevProgress.target > 0 ? prevProgress.percent : 0
     return {
       id: goal.id,
       name: goal.name,
+      metricKey: goal.metric_key,
       unit: goal.unit,
       current: progress.current,
       target: progress.target ?? 0,
       percent,
+      percentBefore,
       hit: percent >= 100,
       kind: 'weekly',
-      detail: `${formatNum(progress.current)} / ${formatNum(progress.target ?? 0)} ${goal.unit} this week`,
+      detail: `${goalProgressPeriodLabel(goal, lastDate, weekStartsOn)} · ${formatGoalProgressDetail(progress.current, progress.target ?? 0, goal.unit, goal.metric_key)}`,
+      timeElapsedPercent: getGoalTimeHorizon(goal, lastDate, weekStartsOn)?.elapsedPercent,
+      showPaceBar: false,
     }
   })
 
@@ -222,21 +430,37 @@ export function buildWeeklyShutdownSummaries(
       weekDates,
       lastDate,
     )
+    const prevAvg = getWeeklyDailyAverage(
+      goal.metric_key,
+      logs,
+      workouts,
+      prevWeekDates,
+      prevLastDate,
+    )
     const target = goal.target_value ?? 0
     const percent = target > 0 ? (avg / target) * 100 : 0
+    const percentBefore = target > 0 ? (prevAvg / target) * 100 : 0
 
     return {
       id: goal.id,
       name: goal.name,
+      metricKey: goal.metric_key,
       unit: goal.unit,
       current: avg,
       target,
       percent,
+      percentBefore,
       hit: percent >= 100,
       kind: 'daily',
-      detail: `Week avg: ${formatNum(avg)} / ${formatNum(target)} ${goal.unit}`,
+      detail: `${goalProgressPeriodLabel(goal, lastDate, weekStartsOn)} · ${formatGoalProgressDetail(avg, target, goal.unit, goal.metric_key)}`,
+      timeElapsedPercent: getGoalTimeHorizon(goal, lastDate, weekStartsOn)?.elapsedPercent,
+      showPaceBar: false,
     }
   })
+
+  const customPeriodSummaries: WeeklyShutdownGoalSummary[] = customPeriodGoals.map((goal) =>
+    buildPaceReviewGoalSummary(goal, logs, workouts, lastDate, prevLastDate, weekStartsOn),
+  )
 
   const weightSummaries: WeeklyShutdownGoalSummary[] = weightGoals.map((goal) => {
     const start = goal.goal_weight_start!
@@ -248,6 +472,7 @@ export function buildWeeklyShutdownSummaries(
     return {
       id: goal.id,
       name: goal.name,
+      metricKey: goal.metric_key,
       unit,
       current: progress.thisWeekAvg,
       target,
@@ -258,18 +483,35 @@ export function buildWeeklyShutdownSummaries(
       isWeight: true,
       weightMode: mode,
       weightLabel: progress.label,
-      detail: `${progress.detail} · ${formatWeightGoalRange(start, target, unit as AppSettings['weightUnit'])} ${mode}`,
+      detail: `${goalProgressPeriodLabel(goal, lastDate, weekStartsOn)} · ${formatWeightGoalRange(start, target, unit as AppSettings['weightUnit'])} · ${progress.detail}`,
+      timeElapsedPercent: getGoalTimeHorizon(goal, lastDate, weekStartsOn)?.elapsedPercent,
     }
   })
 
   const workoutSummaries = workoutGoals.map((goal) =>
-    buildWorkoutGoalSummary(goal, logs, workouts, weekDates, weekKey),
+    buildWorkoutGoalSummary(
+      goal,
+      logs,
+      workouts,
+      weekDates,
+      weekKey,
+      prevWeekDates,
+      prevWeekKey,
+      weekStartsOn,
+    ),
   )
 
-  return [...weeklySummaries, ...weightSummaries, ...workoutSummaries, ...dailySummaries]
+  return [
+    ...weeklySummaries,
+    ...weightSummaries,
+    ...workoutSummaries,
+    ...dailySummaries,
+    ...customPeriodSummaries,
+  ]
 }
 
 function formatWeeklyReviewValue(metricKey: string, value: number, unit: string): string {
+  if (usesTimedMetricDisplay(unit, metricKey)) return formatMetricAmount(value, unit, metricKey)
   if (metricKey === 'steps') return Math.round(value).toLocaleString()
   if (metricKey === 'sleep') return `${formatNum(value, 1)} hrs`
   if (metricKey === 'screen_time' || metricKey === 'focus' || metricKey.startsWith('workout_')) {
@@ -277,6 +519,18 @@ function formatWeeklyReviewValue(metricKey: string, value: number, unit: string)
   }
   if (metricKey === 'weight') return `${formatNum(value, 1)} ${unit}`
   return `${formatNum(value)} ${unit}`
+}
+
+function formatGoalProgressDetail(
+  current: number,
+  target: number,
+  unit: string,
+  metricKey?: string,
+): string {
+  if (usesTimedMetricDisplay(unit, metricKey)) {
+    return `${formatMetricAmount(current, unit, metricKey)} / ${formatMetricAmount(target, unit, metricKey)}`
+  }
+  return `${formatNum(current)} / ${formatNum(target)} ${unit}`
 }
 
 function reviewStatValue(
@@ -326,10 +580,10 @@ export function buildWeeklyUntargetedStats(
       label: goal.name,
       value: formatWeeklyReviewValue(goal.metric_key, value, goal.unit),
       detail: weeklyLogged
-        ? 'Logged weekly · no target'
+        ? 'Logged weekly · no goal'
         : goal.metric_key === 'weight'
-          ? 'Latest this week · no target'
-          : 'Week avg · no target',
+          ? 'Latest this week · no goal'
+          : 'Tracked · no goal',
     })
   }
 
@@ -351,7 +605,7 @@ export function buildWeeklyUntargetedStats(
       label: builtin.label,
       value: formatWeeklyReviewValue(builtin.key, value, builtin.unit),
       detail:
-        builtin.key === 'weight' ? 'Latest this week' : 'Week avg · no goal set',
+        builtin.key === 'weight' ? 'Latest this week · no goal' : 'Tracked · no goal set',
     })
   }
 
@@ -371,19 +625,6 @@ export function buildWeeklyUntargetedStats(
         detail: `Mon ${formatWeightStepper(monWeight, weightUnit)} → Sun ${formatWeightStepper(sunWeight, weightUnit)} ${weightUnit}`,
       })
     }
-  }
-
-  const weeklyLog = getWeeklyLog(weekKey)
-  for (const habit of getWeeklyLogHabitTypes()) {
-    const key = habitWeeklyLogKey(habit.id)
-    if (!(key in weeklyLog)) continue
-    const done = weeklyLog[key] === 1
-    stats.push({
-      id: `__habit_${habit.id}__`,
-      label: habit.label,
-      value: done ? 'Done' : 'Not done',
-      detail: 'Logged at weekly review',
-    })
   }
 
   return stats

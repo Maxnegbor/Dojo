@@ -1,4 +1,11 @@
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/types'
+import {
+  DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST,
+  normalizeWeeklyShutdownChecklist,
+} from '@/lib/weeklyShutdown'
+import { normalizeDailyChecklist } from '@/lib/dailyChecklist'
+
+import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 
 const SETTINGS_KEY = 'personal-os-app-settings'
 
@@ -21,7 +28,7 @@ export function normalizeTimelineRange(
 
 export function getAppSettings(): AppSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
+    const raw = storageGetItem(SETTINGS_KEY)
     if (raw) {
       const parsed = { ...DEFAULT_APP_SETTINGS, ...JSON.parse(raw) } as AppSettings
       const timeline = normalizeTimelineRange(
@@ -34,13 +41,28 @@ export function getAppSettings(): AppSettings {
         timeFormat: parsed.timeFormat === '24h' ? '24h' : '12h',
         weightUnit: parsed.weightUnit === 'lb' ? 'lb' : 'kg',
         accentColor: parsed.accentColor in ACCENT_SET ? parsed.accentColor : 'amber',
+        showWorkoutMetrics: parsed.showWorkoutMetrics !== false,
+        weeklyShutdownChecklist: normalizeWeeklyShutdownChecklist(parsed.weeklyShutdownChecklist),
+        morningLogChecklist: normalizeDailyChecklist(parsed.morningLogChecklist),
+        dailyShutdownChecklist: normalizeDailyChecklist(parsed.dailyShutdownChecklist),
+        devMode: parsed.devMode === true,
         ...timeline,
       }
     }
   } catch {
     /* ignore */
   }
-  return { ...DEFAULT_APP_SETTINGS }
+  return getDefaultAppSettings()
+}
+
+export function getDefaultAppSettings(): AppSettings {
+  return {
+    ...DEFAULT_APP_SETTINGS,
+    weeklyShutdownChecklist: DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({ ...item })),
+    })),
+  }
 }
 
 const ACCENT_SET = {
@@ -52,7 +74,7 @@ const ACCENT_SET = {
 }
 
 export function saveAppSettings(settings: AppSettings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  storageSetItem(SETTINGS_KEY, JSON.stringify(settings))
 }
 
 export function kgToDisplay(kg: number, unit: AppSettings['weightUnit']): number {

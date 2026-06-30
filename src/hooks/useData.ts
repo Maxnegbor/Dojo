@@ -1,40 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/context/AuthContext'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import type { DailyLog, Workout } from '@/types'
 import { formatDate } from '@/lib/utils'
 
-export function useAuth() {
-  const [userId, setUserId] = useState<string | null>(
-    isSupabaseConfigured ? null : localStore.userId,
-  )
-  const [loading, setLoading] = useState(isSupabaseConfigured)
-
-  useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
-      setLoading(false)
-      return
-    }
-
-    supabase.auth.getSession().then(({ data }) => {
-      setUserId(data.session?.user.id ?? null)
-      setLoading(false)
-    })
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user.id ?? null)
-    })
-
-    return () => sub.subscription.unsubscribe()
-  }, [])
-
-  const signInAnonymously = useCallback(async () => {
-    if (!supabase) return
-    await supabase.auth.signInAnonymously()
-  }, [])
-
-  return { userId, loading, signInAnonymously, isConfigured: isSupabaseConfigured }
-}
+export { useAuth } from '@/context/AuthContext'
 
 export function useDailyLog(date: string) {
   const [log, setLog] = useState<DailyLog | null>(null)
@@ -43,7 +14,10 @@ export function useDailyLog(date: string) {
   const { userId } = useAuth()
 
   const refresh = useCallback(async () => {
-    if (!userId) return
+    if (!userId) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
 
     if (isSupabaseConfigured && supabase) {
@@ -53,6 +27,7 @@ export function useDailyLog(date: string) {
       setLog(dailyLog)
       setWorkouts(dayWorkouts)
     } else {
+      localStore.setUserId(userId)
       const dailyLog = localStore.getOrCreateDailyLog(date)
       const dayWorkouts = localStore.getWorkouts(date, date)
       setLog(dailyLog)
@@ -145,6 +120,7 @@ export function useStreak() {
         const { getStreakDates } = await import('@/lib/utils')
         setStreak(getStreakDates(logs.map((l) => l.date)))
       } else {
+        localStore.setUserId(userId!)
         const { getStreakDates } = await import('@/lib/utils')
         setStreak(getStreakDates(localStore.getLogDates()))
       }

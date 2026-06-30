@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { isToday, parseISO } from 'date-fns'
-import { ALLOW_WEEKLY_SHUTDOWN_ANY_DAY, WEEKLY_SHUTDOWN_TEST_MODE } from '@/lib/devFlags'
+import { useSettings } from '@/context/SettingsContext'
+import {
+  isWeeklyShutdownAnyDay,
+  isWeeklyShutdownDevAvailable,
+} from '@/lib/devMode'
 import {
   getWeeklyReviewWeekDates,
   getWeeklyShutdownWeekDates,
@@ -14,12 +18,13 @@ export function useWeeklyShutdownAvailable(
   viewDate: string,
   weekStartsOn: WeekStartDay,
 ): boolean {
+  const { settings } = useSettings()
   const [available, setAvailable] = useState(false)
 
   useEffect(() => {
     const tick = () => {
       const now = new Date()
-      if (WEEKLY_SHUTDOWN_TEST_MODE && isToday(parseISO(viewDate))) {
+      if (isWeeklyShutdownDevAvailable(settings) && isToday(parseISO(viewDate))) {
         setAvailable(true)
         return
       }
@@ -27,7 +32,7 @@ export function useWeeklyShutdownAvailable(
         setAvailable(false)
         return
       }
-      const weekDates = ALLOW_WEEKLY_SHUTDOWN_ANY_DAY
+      const weekDates = isWeeklyShutdownAnyDay(settings)
         ? getWeeklyReviewWeekDates(now, weekStartsOn)
         : getWeeklyShutdownWeekDates(now, weekStartsOn)
       if (weekDates.length === 0) {
@@ -40,7 +45,7 @@ export function useWeeklyShutdownAvailable(
     tick()
     const id = window.setInterval(tick, 60_000)
     return () => clearInterval(id)
-  }, [viewDate, weekStartsOn])
+  }, [viewDate, weekStartsOn, settings.devMode])
 
   return available
 }

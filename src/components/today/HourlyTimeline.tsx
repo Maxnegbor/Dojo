@@ -8,14 +8,12 @@ import { generateId, minutesToTime, parseTimeToMinutes, cn } from '@/lib/utils'
 const HOUR_HEIGHT = 88
 const TIMELINE_TOP_INSET = 12
 const COMPACT_BLOCK_MAX_MINUTES = 60
-const SCROLL_MARGIN_HOURS = 1
 
 interface ScheduleBlockTitleInputProps {
   value: string
   onChange: (value: string) => void
   onMouseDown?: (e: React.MouseEvent<HTMLInputElement>) => void
   placeholder?: string
-  compact?: boolean
 }
 
 function ScheduleBlockTitleInput({
@@ -23,17 +21,14 @@ function ScheduleBlockTitleInput({
   onChange,
   onMouseDown,
   placeholder = 'New Block',
-  compact = false,
 }: ScheduleBlockTitleInputProps) {
   const mirrorText = value || placeholder
 
-  const mirrorClass = compact
-    ? 'invisible col-start-1 row-start-1 whitespace-pre px-1 py-0 text-[11px] font-medium leading-tight'
-    : 'invisible col-start-1 row-start-1 whitespace-pre px-1.5 py-0.5 text-xs font-medium'
+  const mirrorClass =
+    'invisible col-start-1 row-start-1 whitespace-pre text-xs font-medium leading-tight'
 
-  const inputClass = compact
-    ? 'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text rounded bg-black/30 px-1 py-0 text-[11px] font-medium leading-tight text-zinc-100 outline-none ring-1 ring-black/20 focus:ring-white/15'
-    : 'col-start-1 row-start-1 min-w-[4ch] w-full cursor-text rounded bg-black/30 px-1.5 py-0.5 text-xs font-medium text-zinc-100 outline-none ring-1 ring-black/20 focus:ring-white/15'
+  const inputClass =
+    'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text bg-transparent px-0 py-0 text-xs font-medium leading-tight text-zinc-100 outline-none focus:outline-none'
 
   return (
     <div className="inline-grid w-fit max-w-full">
@@ -104,8 +99,6 @@ function snapToGrid(minutes: number) {
   return Math.round(minutes / 15) * 15
 }
 
-const MAX_SCHEDULE_BODY_HEIGHT = 640 - 72
-
 function formatScheduleHour(hour: number, formatTime: (date: Date) => string): string {
   if (hour === 24) {
     return formatTime(new Date(2000, 0, 1, 0, 0))
@@ -117,7 +110,6 @@ function getTimelineMetrics(startHour: number, endHour: number) {
   const slotCount = Math.max(0, endHour - startHour)
   const timelineHeight = slotCount * HOUR_HEIGHT
   const contentHeight = timelineHeight + TIMELINE_TOP_INSET
-  const cappedBodyHeight = Math.min(contentHeight, MAX_SCHEDULE_BODY_HEIGHT)
   const slotHours = Array.from({ length: slotCount }, (_, i) => startHour + i)
 
   return {
@@ -125,7 +117,6 @@ function getTimelineMetrics(startHour: number, endHour: number) {
     slotHours,
     timelineHeight,
     contentHeight,
-    cappedBodyHeight,
     endMinutes: endHour * 60,
   }
 }
@@ -151,7 +142,7 @@ export function HourlyTimeline({
 }: HourlyTimelineProps) {
   const { formatTime } = useSettings()
 
-  const { slotHours, timelineHeight, contentHeight, cappedBodyHeight, endMinutes } = useMemo(
+  const { slotHours, timelineHeight, contentHeight, endMinutes } = useMemo(
     () => getTimelineMetrics(startHour, endHour),
     [startHour, endHour],
   )
@@ -165,8 +156,11 @@ export function HourlyTimeline({
   )
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLDivElement>(null)
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const dragOffsetRef = useRef(0)
+  const [scrollAreaHeight, setScrollAreaHeight] = useState<number | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
   const [resizing, setResizing] = useState<string | null>(null)
   const [resizeMode, setResizeMode] = useState<ResizeMode>(null)
@@ -192,36 +186,111 @@ export function HourlyTimeline({
   }, [isActiveDay, startHour, endMinutes])
 
   const scrollToCurrentTime = useCallback(() => {
-    if (!isActiveDay) return
+    if (!isActiveDay) return false
 
     const scrollEl = scrollRef.current
-    if (!scrollEl) return
+    const anchor = scrollAnchorRef.current
+    if (!scrollEl || !anchor) return false
+
+    const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+    if (maxScroll <= 0) return false
 
     const now = new Date()
     const mins = now.getHours() * 60 + now.getMinutes()
-    const targetMins = Math.max(startHour * 60, mins - SCROLL_MARGIN_HOURS * 60)
-    const scrollTop = ((targetMins - startHour * 60) / 60) * HOUR_HEIGHT
-    const maxScroll = clampScrollTop(scrollEl)
 
-    if (maxScroll > 0) {
-      scrollEl.scrollTop = Math.max(0, Math.min(scrollTop, maxScroll))
+    if (mins < startHour * 60) {
+      scrollEl.scrollTop = 0
+      return true
     }
-  }, [isActiveDay, startHour, endHour])
+
+    if (mins > endMinutes) {
+      scrollEl.scrollTop = maxScroll
+      return true
+    }
+
+    // Align the now anchor with the top edge of the scroll viewport.
+    const scrollRect = scrollEl.getBoundingClientRect()
+    const anchorRect = anchor.getBoundingClientRect()
+    const nextScrollTop = scrollEl.scrollTop + (anchorRect.top - scrollRect.top)
+    scrollEl.scrollTop = Math.max(0, Math.min(nextScrollTop, maxScroll))
+    return true
+  }, [isActiveDay, startHour, endMinutes])
+
+  const scrollToCurrentTimeWithRetry = useCallback(() => {
+    if (!isActiveDay) return
+
+    let attempts = 0
+    const run = () => {
+      if (scrollToCurrentTime() || attempts >= 60) return
+      attempts += 1
+      requestAnimationFrame(run)
+    }
+    run()
+  }, [isActiveDay, scrollToCurrentTime])
+
+  useEffect(() => {
+    if (!isActiveDay) return
+
+    scrollToCurrentTimeWithRetry()
+
+    const now = new Date()
+    const msUntilNextHour =
+      (60 - now.getMinutes()) * 60_000 - now.getSeconds() * 1000 - now.getMilliseconds()
+
+    let hourInterval: number | undefined
+    const hourTimeout = window.setTimeout(() => {
+      scrollToCurrentTimeWithRetry()
+      hourInterval = window.setInterval(scrollToCurrentTimeWithRetry, 60 * 60 * 1000)
+    }, msUntilNextHour)
+
+    return () => {
+      clearTimeout(hourTimeout)
+      if (hourInterval !== undefined) clearInterval(hourInterval)
+    }
+  }, [isActiveDay, scrollToCurrentTimeWithRetry])
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+
+    const measure = () => {
+      const panelRect = panel.getBoundingClientRect()
+      const headerH = headerRef.current?.getBoundingClientRect().height ?? 0
+      const viewportRemaining = window.innerHeight - panelRect.top - 16
+      const panelH = isFullscreen ? panelRect.height : Math.min(panelRect.height, viewportRemaining)
+      const next = Math.floor(panelH - headerH)
+      setScrollAreaHeight(next > 0 ? next : null)
+    }
+
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(panel)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [isFullscreen])
+
+  useLayoutEffect(() => {
+    if (!isActiveDay || scrollAreaHeight == null) return
+    scrollToCurrentTimeWithRetry()
+  }, [isActiveDay, scrollAreaHeight, scrollToCurrentTimeWithRetry])
 
   useLayoutEffect(() => {
     if (!isActiveDay) return
 
-    scrollToCurrentTime()
-    const raf = requestAnimationFrame(scrollToCurrentTime)
-    const t1 = window.setTimeout(scrollToCurrentTime, 50)
-    const t2 = window.setTimeout(scrollToCurrentTime, 250)
+    scrollToCurrentTimeWithRetry()
+    const t1 = window.setTimeout(scrollToCurrentTimeWithRetry, 100)
+    const t2 = window.setTimeout(scrollToCurrentTimeWithRetry, 400)
+    const t3 = window.setTimeout(scrollToCurrentTimeWithRetry, 1000)
 
     return () => {
-      cancelAnimationFrame(raf)
       clearTimeout(t1)
       clearTimeout(t2)
+      clearTimeout(t3)
     }
-  }, [isActiveDay, startHour, endHour, date, timelineHeight, scrollToCurrentTime])
+  }, [isActiveDay, startHour, endHour, date, timelineHeight, scrollToCurrentTimeWithRetry])
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -235,7 +304,7 @@ export function HourlyTimeline({
       cancelAnimationFrame(raf)
       clearTimeout(t)
     }
-  }, [startHour, endHour, contentHeight, cappedBodyHeight, isFullscreen])
+  }, [startHour, endHour, contentHeight, isFullscreen])
 
   useEffect(() => {
     if (!isFullscreen) return
@@ -256,10 +325,31 @@ export function HourlyTimeline({
 
   useLayoutEffect(() => {
     if (!isFullscreen) return
-    scrollToCurrentTime()
-    const t = window.setTimeout(scrollToCurrentTime, 50)
+    scrollToCurrentTimeWithRetry()
+    const t = window.setTimeout(scrollToCurrentTimeWithRetry, 100)
     return () => clearTimeout(t)
-  }, [isFullscreen, scrollToCurrentTime])
+  }, [isFullscreen, scrollToCurrentTimeWithRetry])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const onWheel = (e: WheelEvent) => {
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
+      if (maxScroll <= 0) return
+
+      const nextScroll = el.scrollTop + e.deltaY
+      const clamped = Math.max(0, Math.min(maxScroll, nextScroll))
+      if (clamped === el.scrollTop) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      el.scrollTop = clamped
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [contentHeight, isFullscreen])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -269,15 +359,24 @@ export function HourlyTimeline({
 
     onScroll()
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [startHour, endHour, contentHeight, cappedBodyHeight, isFullscreen])
+
+    const ro = new ResizeObserver(() => {
+      clampScrollTop(el)
+      if (isActiveDay) scrollToCurrentTimeWithRetry()
+    })
+    ro.observe(el)
+
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      ro.disconnect()
+    }
+  }, [startHour, endHour, contentHeight, isFullscreen, isActiveDay, scrollToCurrentTimeWithRetry])
 
   const scrollAnchorTop = useMemo(() => {
     if (!isActiveDay) return 0
     const now = new Date()
     const mins = now.getHours() * 60 + now.getMinutes()
-    const targetMins = Math.max(startHour * 60, mins - SCROLL_MARGIN_HOURS * 60)
-    return ((targetMins - startHour * 60) / 60) * HOUR_HEIGHT + TIMELINE_TOP_INSET
+    return ((mins - startHour * 60) / 60) * HOUR_HEIGHT + TIMELINE_TOP_INSET
   }, [isActiveDay, startHour, endHour, date])
 
   const formatBlockTime = (time: string) => {
@@ -384,16 +483,19 @@ export function HourlyTimeline({
       className={cn(
         isFullscreen
           ? 'fixed inset-0 z-50 flex flex-col bg-[#0a0a0f]/95 p-4 backdrop-blur-md sm:p-6'
-          : 'contents',
+          : 'flex min-h-0 flex-1 flex-col',
       )}
     >
       <div
+        ref={panelRef}
         className={cn(
-          'relative isolate flex w-full flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/40',
-          isFullscreen ? 'min-h-0 flex-1' : 'h-fit',
+          'relative isolate flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/40',
         )}
       >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-3 py-2">
+        <div
+          ref={headerRef}
+          className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-3 py-2"
+        >
           <div>
             <p className="text-xs font-medium text-zinc-400">Schedule</p>
             <p className="text-[10px] text-zinc-600">
@@ -412,15 +514,8 @@ export function HourlyTimeline({
 
       <div
         ref={scrollRef}
-        className={cn(
-          'scrollbar-hidden overflow-y-auto overscroll-contain',
-          isFullscreen ? 'min-h-0 flex-1' : 'shrink-0',
-        )}
-        style={
-          isFullscreen
-            ? undefined
-            : { height: cappedBodyHeight, maxHeight: cappedBodyHeight }
-        }
+        className="scrollbar-hidden overflow-y-auto overscroll-contain"
+        style={scrollAreaHeight != null ? { height: scrollAreaHeight, flexShrink: 0 } : { minHeight: 0, flex: 1 }}
       >
         <div
           className="relative flex overflow-hidden"
@@ -515,12 +610,18 @@ export function HourlyTimeline({
           {blocks.map((block) => {
             const { durationMins, ...style } = getBlockStyle(block)
             const isCompact = durationMins <= COMPACT_BLOCK_MAX_MINUTES
+            const isShortInline = durationMins === 15 || durationMins === 30
+            const isMicro = durationMins <= 15
             return (
               <div
                 key={block.id}
                 className={cn(
-                  'absolute left-1 right-1 z-[2] overflow-hidden rounded-lg border border-white/10 shadow-md cursor-grab active:cursor-grabbing',
-                  isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1',
+                  'absolute left-1 right-1 z-[2] flex overflow-hidden rounded-lg border border-white/10 shadow-md cursor-grab active:cursor-grabbing',
+                  isShortInline
+                    ? 'items-center px-1.5'
+                    : isCompact
+                      ? 'px-1.5 py-0.5'
+                      : 'px-2 py-1',
                 )}
                 style={{
                   ...style,
@@ -542,37 +643,42 @@ export function HourlyTimeline({
               >
                 <div
                   data-resize-handle
-                  className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize"
+                  className={cn(
+                    'absolute inset-x-0 top-0 z-10 cursor-ns-resize',
+                    isMicro ? 'h-1' : 'h-2',
+                  )}
                   onMouseDown={(e) => { e.stopPropagation(); setResizing(block.id); setResizeMode('top') }}
                 />
-                <div className={cn(isCompact ? 'pt-1.5 pr-9' : 'pt-3 pr-10')}>
-                  <div className="min-w-0">
-                    {isCompact ? (
-                      <div className="flex items-center gap-1.5">
-                        <ScheduleBlockTitleInput
-                          compact
-                          value={block.title}
-                          onChange={(title) => onUpdate({ ...block, title })}
-                          onMouseDown={(e) => e.stopPropagation()}
-                        />
-                        <span className="pointer-events-none shrink-0 text-[9px] tabular-nums text-zinc-500">
-                          {formatBlockTime(block.start_time)}–{formatBlockTime(block.end_time)}
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        <ScheduleBlockTitleInput
-                          value={block.title}
-                          onChange={(title) => onUpdate({ ...block, title })}
-                          onMouseDown={(e) => e.stopPropagation()}
-                        />
-                        <p className="pointer-events-none text-[10px] text-zinc-400">
-                          {formatBlockTime(block.start_time)} – {formatBlockTime(block.end_time)}
-                        </p>
-                      </>
-                    )}
-                    <ScheduleBlockColorPicker block={block} onUpdate={onUpdate} compact={isCompact} />
-                  </div>
+                <div
+                  className={cn(
+                    'min-w-0 flex-1',
+                    isShortInline ? 'pr-9' : isCompact ? 'pt-1.5 pr-9' : 'pt-3 pr-10',
+                  )}
+                >
+                  {isShortInline ? (
+                    <div className="flex items-center gap-1.5">
+                      <ScheduleBlockTitleInput
+                        value={block.title}
+                        onChange={(title) => onUpdate({ ...block, title })}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      />
+                      <span className="pointer-events-none shrink-0 text-[10px] tabular-nums text-zinc-400">
+                        {formatBlockTime(block.start_time)}–{formatBlockTime(block.end_time)}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <ScheduleBlockTitleInput
+                        value={block.title}
+                        onChange={(title) => onUpdate({ ...block, title })}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      />
+                      <p className="pointer-events-none text-[10px] tabular-nums text-zinc-400">
+                        {formatBlockTime(block.start_time)} – {formatBlockTime(block.end_time)}
+                      </p>
+                    </>
+                  )}
+                  <ScheduleBlockColorPicker block={block} onUpdate={onUpdate} compact={isCompact} />
                 </div>
                 <button
                   type="button"
@@ -591,7 +697,10 @@ export function HourlyTimeline({
                 </button>
                 <div
                   data-resize-handle
-                  className="absolute inset-x-0 bottom-0 z-10 h-2 cursor-ns-resize"
+                  className={cn(
+                    'absolute inset-x-0 bottom-0 z-10 cursor-ns-resize',
+                    isMicro ? 'h-1' : 'h-2',
+                  )}
                   onMouseDown={(e) => { e.stopPropagation(); setResizing(block.id); setResizeMode('bottom') }}
                 />
               </div>

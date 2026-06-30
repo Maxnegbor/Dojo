@@ -7,9 +7,8 @@ import type {
 } from '@/types'
 import { defaultHabits } from '@/types'
 import { normalizeGoals } from '@/lib/goals'
+import { getLocalDataKey } from '@/lib/localAuth'
 import { generateId } from '@/lib/utils'
-
-const STORAGE_KEY = 'personal-os-data'
 
 interface LocalStore {
   dailyLogs: DailyLog[]
@@ -19,11 +18,15 @@ interface LocalStore {
   reminders: Reminder[]
 }
 
-const DEMO_USER = 'local-user'
+let activeUserId = 'local-user'
+
+function storageKey() {
+  return getLocalDataKey(activeUserId)
+}
 
 function loadStore(): LocalStore {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey())
     if (raw) return JSON.parse(raw) as LocalStore
   } catch {
     /* ignore */
@@ -38,11 +41,17 @@ function loadStore(): LocalStore {
 }
 
 function saveStore(store: LocalStore) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
+  localStorage.setItem(storageKey(), JSON.stringify(store))
 }
 
 export const localStore = {
-  userId: DEMO_USER,
+  get userId() {
+    return activeUserId
+  },
+
+  setUserId(userId: string) {
+    activeUserId = userId
+  },
 
   getDailyLog(date: string): DailyLog | undefined {
     return loadStore().dailyLogs.find((l) => l.date === date)
@@ -55,7 +64,7 @@ export const localStore = {
       const now = new Date().toISOString()
       log = {
         id: generateId(),
-        user_id: DEMO_USER,
+        user_id: activeUserId,
         date,
         sleep_hours: null,
         weight: null,
@@ -89,7 +98,7 @@ export const localStore = {
     } else {
       store.dailyLogs.push({
         id: generateId(),
-        user_id: DEMO_USER,
+        user_id: activeUserId,
         date,
         sleep_hours: null,
         weight: null,
@@ -209,5 +218,9 @@ export const localStore = {
 
   getLogDates(): string[] {
     return loadStore().dailyLogs.map((l) => l.date)
+  },
+
+  replaceStore(data: LocalStore) {
+    saveStore(data)
   },
 }
