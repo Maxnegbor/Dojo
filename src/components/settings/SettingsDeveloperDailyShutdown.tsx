@@ -36,7 +36,7 @@ import {
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import type { DailyLog, Goal, Reminder, ScheduleBlock } from '@/types'
 import { normalizeHabits } from '@/types'
-import { cn, formatDate } from '@/lib/utils'
+import { addDaysToDateString, cn, formatDate } from '@/lib/utils'
 
 function parseOptionalFloat(raw: string): number | null {
   const trimmed = raw.trim()
@@ -180,7 +180,7 @@ export function SettingsDeveloperDailyShutdown() {
   const { userId } = useAuth()
   const { settings } = useSettings()
   const today = formatDate(new Date())
-  const tomorrow = formatDate(addDays(parseISO(today), 1))
+  const tomorrow = addDaysToDateString(today, 1)
   const workoutTypes = useMemo(() => getWorkoutTypes(), [])
 
   const [beforeFields, setBeforeFields] = useState(() =>
@@ -436,7 +436,7 @@ export function SettingsDeveloperDailyShutdown() {
           todayBlocks={previewTodayBlocks}
           tomorrowBlocks={previewTomorrowBlocks}
           onUpdateTomorrowBlock={async (block) => {
-            const normalized = await persistScheduleBlock(block)
+            const normalized = await persistScheduleBlock({ ...block, date: tomorrow })
             setPreviewTomorrowBlocks((prev) => {
               const idx = prev.findIndex((b) => b.id === normalized.id)
               if (idx >= 0) {
@@ -452,7 +452,7 @@ export function SettingsDeveloperDailyShutdown() {
             setPreviewTomorrowBlocks((prev) => prev.filter((b) => b.id !== id))
           }}
           onCreateTomorrowBlock={async (block) => {
-            const normalized = await persistScheduleBlock(block)
+            const normalized = await persistScheduleBlock({ ...block, date: tomorrow })
             setPreviewTomorrowBlocks((prev) => [...prev, normalized])
           }}
           onPasteTodaySchedule={async () => {

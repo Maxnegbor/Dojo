@@ -21,7 +21,7 @@ export function TimelineRangePicker({ startHour, endHour, onChange }: TimelineRa
         onChange={(nextStart, nextEnd) => onChange(normalizeTimelineRange(nextStart, nextEnd))}
       />
       <p className="text-[11px] text-zinc-500">
-        {endHour - startHour} hour{endHour - startHour === 1 ? '' : 's'} on your Today schedule
+        {endHour - startHour} hour{endHour - startHour === 1 ? '' : 's'} on your Home schedule
         {' · '}
         <span className="text-zinc-400">
           {formatHourLabel(startHour, timeFormat, 'start')} – {formatHourLabel(endHour, timeFormat, 'end')}

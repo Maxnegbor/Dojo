@@ -9,9 +9,26 @@ export function formatDate(date: Date): string {
   return date.toISOString().split('T')[0]
 }
 
+/** Parse YYYY-MM-DD as local noon to avoid timezone day-shift bugs. */
+export function parseLocalDate(dateStr: string): Date {
+  return new Date(`${dateStr}T12:00:00`)
+}
+
+export function addDaysToDateString(dateStr: string, days: number): string {
+  const d = parseLocalDate(dateStr)
+  d.setDate(d.getDate() + days)
+  return formatDate(d)
+}
+
 export function parseTimeToMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number)
   return h * 60 + m
+}
+
+/** True when local time is at or past the schedule end hour (e.g. endHour 23 → from 11:00 PM). */
+export function isPastScheduleEndHour(endHour: number, now: Date = new Date()): boolean {
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  return nowMinutes >= endHour * 60
 }
 
 export function minutesToTime(minutes: number): string {
@@ -31,6 +48,20 @@ export function formatDuration(minutes: number): string {
 
 export function generateId(): string {
   return crypto.randomUUID()
+}
+
+/** Extract a user-facing message from thrown values (incl. Supabase PostgrestError). */
+export function formatUnknownError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    if (typeof record.message === 'string' && record.message.trim()) {
+      const details = typeof record.details === 'string' ? record.details.trim() : ''
+      return details ? `${record.message.trim()} (${details})` : record.message.trim()
+    }
+  }
+  if (typeof error === 'string' && error.trim()) return error.trim()
+  return fallback
 }
 
 export function getWeekdayLabels(weekStartsOn: 0 | 1 = getAppSettings().weekStartsOn): string[] {
@@ -55,22 +86,3 @@ export function getWeekDates(date: Date, weekStartsOn: 0 | 1 = getAppSettings().
   })
 }
 
-export function getStreakDates(logDates: string[]): number {
-  if (logDates.length === 0) return 0
-
-  const sorted = [...new Set(logDates)].sort().reverse()
-  const today = formatDate(new Date())
-  const yesterday = formatDate(new Date(Date.now() - 86400000))
-
-  if (sorted[0] !== today && sorted[0] !== yesterday) return 0
-
-  let streak = 1
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = new Date(sorted[i - 1])
-    const curr = new Date(sorted[i])
-    const diff = (prev.getTime() - curr.getTime()) / 86400000
-    if (diff === 1) streak++
-    else break
-  }
-  return streak
-}

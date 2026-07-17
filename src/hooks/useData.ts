@@ -3,7 +3,6 @@ import { useAuth } from '@/context/AuthContext'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import type { DailyLog, Workout } from '@/types'
-import { formatDate } from '@/lib/utils'
 
 export { useAuth } from '@/context/AuthContext'
 
@@ -13,12 +12,14 @@ export function useDailyLog(date: string) {
   const [loading, setLoading] = useState(true)
   const { userId } = useAuth()
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
     if (!userId) {
       setLoading(false)
       return
     }
-    setLoading(true)
+    if (!options?.silent) {
+      setLoading(true)
+    }
 
     if (isSupabaseConfigured && supabase) {
       const { getOrCreateDailyLog, fetchWorkouts } = await import('@/lib/supabase')
@@ -37,22 +38,38 @@ export function useDailyLog(date: string) {
     setLoading(false)
   }, [userId, date])
 
+  /** Re-read log/workouts from storage without toggling loading (after draft flush). */
+  const syncFromStore = useCallback(() => {
+    if (!userId) return
+    if (isSupabaseConfigured && supabase) {
+      void refresh({ silent: true })
+      return
+    }
+    localStore.setUserId(userId)
+    setLog(localStore.getOrCreateDailyLog(date))
+    setWorkouts(localStore.getWorkouts(date, date))
+  }, [userId, date, refresh])
+
   useEffect(() => {
     refresh()
   }, [refresh])
 
   const updateLog = useCallback(
     async (updates: Partial<DailyLog>) => {
-      if (!userId || !log) return
+      if (!userId || !log) {
+        throw new Error('Daily log not loaded')
+      }
 
       if (isSupabaseConfigured) {
-        const { updateDailyLog } = await import('@/lib/supabase')
-        const updated = await updateDailyLog(log.id, updates)
+        const { updateDailyLogForDate } = await import('@/lib/supabase')
+        const updated = await updateDailyLogForDate(userId, date, updates)
         setLog(updated)
-      } else {
-        const updated = localStore.updateDailyLog(date, updates)
-        setLog(updated)
+        return updated
       }
+
+      const updated = localStore.updateDailyLog(date, updates)
+      setLog(updated)
+      return updated
     },
     [userId, log, date],
   )
@@ -101,33 +118,5 @@ export function useDailyLog(date: string) {
     setWorkouts([])
   }, [userId, date, workouts])
 
-  return { log, workouts, loading, updateLog, addWorkout, removeWorkouts, refresh }
-}
-
-export function useStreak() {
-  const [streak, setStreak] = useState(0)
-  const { userId } = useAuth()
-
-  useEffect(() => {
-    if (!userId) return
-
-    async function load() {
-      if (isSupabaseConfigured && supabase) {
-        const { fetchDailyLogs } = await import('@/lib/supabase')
-        const end = formatDate(new Date())
-        const start = formatDate(new Date(Date.now() - 365 * 86400000))
-        const logs = await fetchDailyLogs(userId!, start, end)
-        const { getStreakDates } = await import('@/lib/utils')
-        setStreak(getStreakDates(logs.map((l) => l.date)))
-      } else {
-        localStore.setUserId(userId!)
-        const { getStreakDates } = await import('@/lib/utils')
-        setStreak(getStreakDates(localStore.getLogDates()))
-      }
-    }
-
-    load()
-  }, [userId])
-
-  return streak
+  return { log, workouts, loading, updateLog, addWorkout, removeWorkouts, refresh, syncFromStore }
 }

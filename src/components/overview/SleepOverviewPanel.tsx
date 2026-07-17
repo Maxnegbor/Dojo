@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { OverviewSection, OverviewStatCard } from '@/components/overview/OverviewStatCard'
 import { formatShortDate } from '@/lib/overviewPeriods'
 import {
+  averageBedtime,
   averageTime,
   formatMorningMinutes,
   formatTime12h,
@@ -52,12 +53,12 @@ export function SleepOverviewPanel({
     if (morningEntries.length > 0) {
       const avgInBed =
         morningEntries.reduce((s, e) => s + e.morning.in_bed_minutes, 0) / morningEntries.length
-      const avgAsleep =
+      const avgSleep =
         morningEntries.reduce((s, e) => s + e.morning.sleep_minutes, 0) / morningEntries.length
       const avgAlertness =
         morningEntries.reduce((s, e) => s + e.morning.alertness, 0) / morningEntries.length
       const latest = morningEntries[0]
-      const avgBedtime = averageTime(morningEntries.map((e) => e.morning.bedtime))
+      const avgBedtime = averageBedtime(morningEntries.map((e) => e.morning.bedtime))
       const avgWake = averageTime(morningEntries.map((e) => e.morning.wake_time))
 
       return (
@@ -68,8 +69,8 @@ export function SleepOverviewPanel({
             detail={`${morningEntries.length} mornings · ${periodLabel.toLowerCase()}`}
           />
           <OverviewStatCard
-            label="Avg asleep"
-            value={formatMorningMinutes(Math.round(avgAsleep))}
+            label="Avg sleep"
+            value={formatMorningMinutes(Math.round(avgSleep))}
             detail={`Alertness ${avgAlertness.toFixed(1)}/10`}
           />
           <OverviewStatCard
@@ -114,7 +115,7 @@ export function SleepOverviewPanel({
     return (
       <div className={gridClass}>
         <OverviewStatCard label="Avg in bed" value="—" detail="No sleep logged" />
-        <OverviewStatCard label="Avg asleep" value="—" detail="No sleep logged" />
+        <OverviewStatCard label="Avg sleep" value="—" detail="No sleep logged" />
         <OverviewStatCard label="Avg bedtime" value="—" detail="No sleep logged" />
         <OverviewStatCard label="Latest morning" value="—" detail="No sleep logged" />
       </div>

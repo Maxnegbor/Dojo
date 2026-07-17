@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { FlaskConical, Moon, Sun } from 'lucide-react'
 import { DailyChecklistModal } from '@/components/today/DailyChecklistModal'
 import { MorningLogModal } from '@/components/today/MorningLogModal'
@@ -7,9 +7,12 @@ import { Button } from '@/components/ui/Button'
 import { SettingsSection } from '@/components/settings/SettingsControls'
 import { useAuth } from '@/context/AuthContext'
 import { useSettings } from '@/context/SettingsContext'
+import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { computeMorningLogFields } from '@/lib/morningLog'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { localStore } from '@/lib/localStore'
 import { formatDate } from '@/lib/utils'
-import type { DailyLog } from '@/types'
+import type { DailyLog, Goal } from '@/types'
 
 function sampleMorningLogs(userId: string): DailyLog[] {
   const dates = [0, 1, 2, 3, 4, 5, 6].map((offset) => {
@@ -20,12 +23,12 @@ function sampleMorningLogs(userId: string): DailyLog[] {
 
   return dates.map((date, index) => {
     const bedtime = index % 2 === 0 ? '23:15' : '00:05'
-    const asleep = index % 2 === 0 ? '23:45' : '00:25'
     const wake = index % 3 === 0 ? '06:30' : '07:15'
+    const sleepMinutes = index % 2 === 0 ? 420 : 390
     const morning_log = computeMorningLogFields({
       bedtime,
-      asleep_time: asleep,
       wake_time: wake,
+      sleep_minutes: sleepMinutes,
       alertness: 6 + (index % 4),
     })
     return {
@@ -48,10 +51,25 @@ function sampleMorningLogs(userId: string): DailyLog[] {
 export function SettingsDeveloperMorningLog() {
   const { userId } = useAuth()
   const { settings } = useSettings()
+  const { config: sleepMetricsConfig } = useSleepMetricsConfig()
   const [showMorningModal, setShowMorningModal] = useState(false)
   const [showMorningChecklist, setShowMorningChecklist] = useState(false)
   const [showShutdownChecklist, setShowShutdownChecklist] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [goals, setGoals] = useState<Goal[]>([])
+
+  const loadGoals = useCallback(async () => {
+    if (isSupabaseConfigured) {
+      const { fetchGoals } = await import('@/lib/supabase')
+      if (userId) setGoals(await fetchGoals(userId))
+    } else {
+      setGoals(localStore.getGoals())
+    }
+  }, [userId])
+
+  useEffect(() => {
+    void loadGoals()
+  }, [loadGoals])
 
   const previewLogs = useMemo(() => sampleMorningLogs('dev-preview'), [])
 
@@ -102,15 +120,10 @@ export function SettingsDeveloperMorningLog() {
       {showMorningModal && userId && (
         <MorningLogModal
           date={formatDate(new Date())}
+          goals={goals}
+          yesterdayLog={null}
+          sleepMetricsConfig={sleepMetricsConfig}
           morningChecklist={settings.morningLogChecklist}
-          blocks={[]}
-          userId={userId}
-          isActiveDay
-          timelineStartHour={settings.timelineStartHour}
-          timelineEndHour={settings.timelineEndHour}
-          onUpdateBlock={async () => undefined}
-          onDeleteBlock={async () => undefined}
-          onCreateBlock={async () => undefined}
           onClose={() => setShowMorningModal(false)}
           onSave={async () => {
             flash('Morning log preview saved (not persisted).')

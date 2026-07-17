@@ -37,7 +37,10 @@ Open [http://localhost:5173](http://localhost:5173).
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Run `supabase/schema.sql` in the SQL editor (new projects)
-3. **Existing projects:** also run `supabase/migrations/001_user_storage_and_schema_updates.sql`
+3. **Existing projects:** also run migrations in order:
+   - `supabase/migrations/001_user_storage_and_schema_updates.sql`
+   - `supabase/migrations/002_sleep_metrics.sql`
+   - `supabase/migrations/003_delete_own_account.sql` (required for account deletion)
 4. Enable email auth (Authentication → Providers → Email)
 5. Copy your project URL and anon key into `.env`:
 

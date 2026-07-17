@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Flame, GripVertical, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { AddGhostCard } from '@/components/goals/AddGhostCard'
 import { formatHabitCardSubtitle } from '@/lib/habitRamp'
@@ -12,6 +13,9 @@ interface HabitMetricsReorderListProps {
   onReorder: (next: HabitTypeDefinition[]) => void
   onEdit: (habit: HabitTypeDefinition) => void
   onDelete: (habit: HabitTypeDefinition) => void
+  deleteConfirmId?: string | null
+  onConfirmDelete?: (habit: HabitTypeDefinition) => void
+  onCancelDelete?: () => void
   onAdd?: () => void
   addForm?: ReactNode
   editingHabitId?: string | null
@@ -37,6 +41,9 @@ export function HabitMetricsReorderList({
   onReorder,
   onEdit,
   onDelete,
+  deleteConfirmId = null,
+  onConfirmDelete,
+  onCancelDelete,
   onAdd,
   addForm,
   editingHabitId = null,
@@ -142,6 +149,27 @@ export function HabitMetricsReorderList({
               <div data-habit-card>
                 {editingHabitId === habit.id && renderInlineEditor ? (
                   <Card className="p-3 ring-1 ring-[var(--accent-500)]/25">{renderInlineEditor()}</Card>
+                ) : deleteConfirmId === habit.id ? (
+                  <Card className="border-red-900/40 bg-red-950/20">
+                    <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+                      <p className="text-xs leading-relaxed text-red-300">
+                        Delete <span className="font-medium text-zinc-100">{habit.label}</span>?
+                        All logged data for this metric will be permanently lost.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button variant="secondary" size="sm" onClick={onCancelDelete}>
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => onConfirmDelete?.(habit)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
                 ) : (
                   <Card
                     onClick={() => {

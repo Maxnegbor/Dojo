@@ -22,6 +22,8 @@ interface WorkoutGoalsWeeklyProgressGridProps {
   asOf: Date
   weekStartsOn: 0 | 1
   weekCount?: number
+  /** When false, cells show as empty tiles (no fill bars). */
+  showProgressFill?: boolean
 }
 
 function workoutGoalIntensity(percent: number): number {
@@ -30,8 +32,8 @@ function workoutGoalIntensity(percent: number): number {
 
 function workoutGoalFillBackground(color: string, intensity: number): string {
   if (intensity <= 0) return 'rgb(39 39 42)'
-  const mix = Math.round(22 + intensity * 78)
-  return `color-mix(in srgb, ${color} ${mix}%, rgb(39 39 42))`
+  const mix = Math.round(55 + intensity * 45)
+  return `color-mix(in srgb, ${color} ${mix}%, rgb(24 24 27))`
 }
 
 function WeekCell({
@@ -39,11 +41,13 @@ function WeekCell({
   color,
   title,
   isCurrentWeek,
+  showProgressFill,
 }: {
   percent: number
   color: string
   title: string
   isCurrentWeek: boolean
+  showProgressFill: boolean
 }) {
   const intensity = workoutGoalIntensity(percent)
   const fill = Math.min(100, Math.max(0, percent))
@@ -52,18 +56,20 @@ function WeekCell({
     <div
       title={title}
       className={cn(
-        'relative flex aspect-square w-full items-end overflow-hidden rounded-md border border-zinc-800/80',
+        'relative flex aspect-square w-full items-end overflow-hidden rounded-md border border-zinc-800/80 bg-zinc-800/90',
         isCurrentWeek && 'ring-1 ring-[var(--accent-500)] ring-offset-1 ring-offset-zinc-900',
       )}
-      style={{ backgroundColor: workoutGoalFillBackground(color, intensity * 0.35) }}
     >
-      <div
-        className="w-full rounded-sm transition-all"
-        style={{
-          height: `${fill}%`,
-          backgroundColor: workoutGoalFillBackground(color, Math.max(intensity, 0.2)),
-        }}
-      />
+      {showProgressFill && fill > 0 ? (
+        <div
+          className="w-full rounded-sm"
+          style={{
+            height: `${fill}%`,
+            backgroundColor: workoutGoalFillBackground(color, Math.max(intensity, 0.35)),
+            boxShadow: `0 0 10px color-mix(in srgb, ${color} 40%, transparent)`,
+          }}
+        />
+      ) : null}
     </div>
   )
 }
@@ -75,6 +81,7 @@ export function WorkoutGoalsWeeklyProgressGrid({
   asOf,
   weekStartsOn,
   weekCount = DEFAULT_WEEKS,
+  showProgressFill = true,
 }: WorkoutGoalsWeeklyProgressGridProps) {
   const { settings } = useSettings()
 
@@ -177,6 +184,7 @@ export function WorkoutGoalsWeeklyProgressGrid({
                   color={type.color}
                   title={cell.title}
                   isCurrentWeek={cell.isCurrentWeek}
+                  showProgressFill={showProgressFill}
                 />
               ))}
             </div>

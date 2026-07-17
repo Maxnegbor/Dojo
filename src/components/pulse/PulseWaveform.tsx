@@ -1,7 +1,6 @@
 import { format, parseISO } from 'date-fns'
 import type { DayPulse } from '@/lib/pulse'
 import { buildWavePath } from '@/lib/pulse'
-import { cn } from '@/lib/utils'
 
 interface PulseWaveformProps {
   series: DayPulse[]
@@ -63,28 +62,26 @@ export function PulseWaveform({ series, today }: PulseWaveformProps) {
               const maxScore = Math.max(...recent.map((d) => d.score), 1)
               const y = padding + (height - padding * 2) - (day.score / maxScore) * (height - padding * 2)
               const isToday = day.date === today
-              return (
-                <g key={day.date}>
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={isToday ? 5 : 3}
-                    className={cn(
-                      isToday ? 'fill-[var(--accent-400)]' : 'fill-zinc-600',
-                    )}
-                  />
-                  {isToday && (
+
+              if (isToday) {
+                return (
+                  <g key={day.date} transform={`translate(${x}, ${y})`}>
+                    <circle cx={0} cy={0} r={5} className="fill-[var(--accent-400)]" />
                     <circle
-                      cx={x}
-                      cy={y}
+                      cx={0}
+                      cy={0}
                       r={9}
                       fill="none"
                       stroke="var(--accent-500)"
-                      strokeOpacity="0.5"
-                      className="pulse-ring-1"
+                      strokeWidth={1.5}
+                      className="pulse-wave-dot-ring"
                     />
-                  )}
-                </g>
+                  </g>
+                )
+              }
+
+              return (
+                <circle key={day.date} cx={x} cy={y} r={3} className="fill-zinc-600" />
               )
             })}
           </svg>

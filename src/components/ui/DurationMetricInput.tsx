@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useImperativeHandle, useState, forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 import { minutesToHrsMinInput, parseHrsMinToMinutes, TIMED_METRIC_UNIT } from '@/lib/timedMetrics'
 
@@ -11,36 +11,50 @@ interface DurationMetricInputProps {
   placeholder?: string
 }
 
-export function DurationMetricInput({
-  label,
-  value,
-  onChange,
-  compact,
-  disabled,
-  placeholder = '0:00',
-}: DurationMetricInputProps) {
+export type DurationMetricInputHandle = {
+  /** Commit the current text and return parsed minutes (if valid). */
+  commit: () => number | null
+}
+
+export const DurationMetricInput = forwardRef<DurationMetricInputHandle, DurationMetricInputProps>(
+  function DurationMetricInput(
+    {
+      label,
+      value,
+      onChange,
+      compact,
+      disabled,
+      placeholder = '0:00',
+    },
+    ref,
+  ) {
   const [text, setText] = useState(() => minutesToHrsMinInput(value))
 
   useEffect(() => {
     setText(minutesToHrsMinInput(value))
   }, [value])
 
-  const commit = (raw: string) => {
+  const commit = (raw: string): number | null => {
     const trimmed = raw.trim()
     if (!trimmed) {
       setText('')
       onChange(null)
-      return
+      return null
     }
     const minutes = parseHrsMinToMinutes(trimmed)
     if (minutes == null) {
       setText(minutesToHrsMinInput(value))
-      return
+      return value ?? null
     }
     const formatted = minutesToHrsMinInput(minutes)
     setText(formatted)
     onChange(minutes)
+    return minutes
   }
+
+  useImperativeHandle(ref, () => ({
+    commit: () => commit(text),
+  }))
 
   return (
     <label className="block">
@@ -82,4 +96,5 @@ export function DurationMetricInput({
       </div>
     </label>
   )
-}
+  },
+)

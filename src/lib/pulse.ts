@@ -1,9 +1,21 @@
+import type { CSSProperties } from 'react'
 import { addDays, format, parseISO } from 'date-fns'
 import { getDraft, mergeDraftWithLog } from '@/lib/dailyLogDraft'
 import { getDailyLogHabitTypes, type HabitTypeDefinition } from '@/lib/habitTypes'
-import { getHabitStreak, getHabitCompletionRate } from '@/lib/habitStreaks'
+import { getHabitStreak } from '@/lib/habitStreaks'
 import { hasTarget } from '@/lib/goals'
-import { calculateProgress } from '@/lib/metrics'
+import {
+  computeExerciseRate,
+  getPulseFormulaForDate,
+  type PulseConfig,
+  type PulseFormula,
+} from '@/lib/pulseConfig'
+import {
+  computeSleepPulseRate,
+  getPulseSleepMetrics,
+  getSleepMetricsConfig,
+  type SleepMetricsConfig,
+} from '@/lib/sleepMetrics'
 import type { DailyLog, Goal, Workout } from '@/types'
 import { normalizeHabits } from '@/types'
 import { formatDate, getWeekDates } from '@/lib/utils'
@@ -13,7 +25,8 @@ export interface DayPulse {
   score: number
   habitRate: number
   focusRate: number
-  metricRate: number
+  sleepRate: number
+  exerciseRate: number
 }
 
 export interface PulseInsight {
@@ -21,21 +34,6 @@ export interface PulseInsight {
   tone: 'rise' | 'pattern' | 'streak' | 'tip'
   title: string
   body: string
-}
-
-export interface HabitStar {
-  id: string
-  label: string
-  streak: number
-  weekRate: number
-  angle: number
-  orbit: number
-}
-
-export interface WeekdayRhythm {
-  label: string
-  avgScore: number
-  samples: number
 }
 
 function logForDate(
@@ -59,6 +57,7 @@ function logForDate(
       steps: merged.steps ?? todayLog.steps,
       screen_time_minutes: merged.screen_time_minutes ?? todayLog.screen_time_minutes,
       custom_metrics: { ...todayLog.custom_metrics, ...merged.custom_metrics },
+      sleep_metrics: { ...todayLog.sleep_metrics, ...merged.sleep_metrics },
     }
   }
   return logs.find((l) => l.date === date)
@@ -70,67 +69,69 @@ export function computeDayPulse(
   habits: HabitTypeDefinition[],
   goals: Goal[],
   workouts: Workout[],
-  allLogs: DailyLog[] = [],
-  weekStartsOn: 0 | 1 = 1,
+  formula: PulseFormula | null,
+  sleepMetricsConfig?: SleepMetricsConfig,
 ): DayPulse {
+  const empty: DayPulse = {
+    date,
+    score: 0,
+    habitRate: 0,
+    focusRate: 0,
+    sleepRate: 0,
+    exerciseRate: 0,
+  }
+
+  if (!formula) return empty
+
+  const { weights } = formula
   let habitRate = 0
   let focusRate = 0
-  let metricRate = 0
+  let sleepRate = 0
+  let exerciseRate = 0
   const parts: { weight: number; value: number }[] = []
 
-  if (habits.length > 0) {
+  if (weights.habits > 0 && habits.length > 0) {
     const h = normalizeHabits(log?.habits)
     const done = habits.filter((habit) => h[habit.id]).length
     habitRate = (done / habits.length) * 100
-    parts.push({ weight: 0.45, value: habitRate })
+    parts.push({ weight: weights.habits, value: habitRate })
   }
 
-  const focusGoal = goals.find((g) => g.metric_key === 'focus' && hasTarget(g))
-  if (focusGoal) {
-    const mins = log?.focus_minutes ?? 0
-    const target = focusGoal.target_value ?? 1
-    focusRate = Math.min(100, (mins / target) * 100)
-    parts.push({ weight: 0.25, value: focusRate })
-  }
-
-  const metricGoals = goals.filter(
-    (g) =>
-      g.metric_key !== 'focus' &&
-      !g.metric_key.startsWith('workout_') &&
-      !g.metric_key.startsWith('custom:') &&
-      hasTarget(g) &&
-      g.metric_key !== 'weight',
-  )
-  if (metricGoals.length > 0) {
-    const weekDates = getWeekDates(parseISO(date + 'T12:00:00'), weekStartsOn)
-    const rates = metricGoals.map((goal) => {
-      const progress = calculateProgress(goal, log, workouts, date, weekDates, allLogs, undefined, weekStartsOn)
-      return progress.hasTarget ? Math.min(100, progress.percent) : 0
-    })
-    metricRate = rates.reduce((s, v) => s + v, 0) / rates.length
-    parts.push({ weight: 0.3, value: metricRate })
-  }
-
-  if (parts.length === 0) {
-    const logged =
-      !!log &&
-      (log.sleep_hours != null ||
-        log.focus_minutes != null ||
-        log.steps != null ||
-        Object.keys(normalizeHabits(log.habits)).some((k) => normalizeHabits(log.habits)[k]))
-    return {
-      date,
-      score: logged ? 55 : 0,
-      habitRate: 0,
-      focusRate: 0,
-      metricRate: logged ? 55 : 0,
+  if (weights.focus > 0) {
+    const focusGoal = goals.find((g) => g.metric_key === 'focus' && hasTarget(g))
+    if (focusGoal) {
+      const mins = log?.focus_minutes ?? 0
+      const target = focusGoal.target_value ?? 1
+      focusRate = Math.min(100, (mins / target) * 100)
+      parts.push({ weight: weights.focus, value: focusRate })
     }
   }
+
+  if (weights.sleep > 0) {
+    const sleepConfig = sleepMetricsConfig ?? getSleepMetricsConfig()
+    if (getPulseSleepMetrics(sleepConfig).length > 0) {
+      const sleepGoal = goals.find((g) => g.metric_key === 'sleep' && hasTarget(g))
+      sleepRate = computeSleepPulseRate(log, sleepGoal?.target_value ?? null, sleepConfig)
+      parts.push({ weight: weights.sleep, value: sleepRate })
+    }
+  }
+
+  if (weights.exercise > 0) {
+    const hasWorkoutGoal = goals.some(
+      (g) => g.is_active && g.metric_key.startsWith('workout_') && hasTarget(g),
+    )
+    if (hasWorkoutGoal) {
+      exerciseRate = computeExerciseRate(date, workouts, formula.exerciseDailyMinutes)
+      parts.push({ weight: weights.exercise, value: exerciseRate })
+    }
+  }
+
+  if (parts.length === 0) return { ...empty, habitRate, focusRate, sleepRate, exerciseRate }
 
   const totalWeight = parts.reduce((s, p) => s + p.weight, 0)
   const score = Math.round(parts.reduce((s, p) => s + p.value * p.weight, 0) / totalWeight)
 
-  return { date, score, habitRate, focusRate, metricRate }
+  return { date, score, habitRate, focusRate, sleepRate, exerciseRate }
 }
 
 export function computePulseSeries(
@@ -140,77 +141,16 @@ export function computePulseSeries(
   workouts: Workout[],
   today: string,
   todayLog: DailyLog | null,
-  weekStartsOn: 0 | 1 = 1,
+  pulseConfig: PulseConfig,
+  sleepMetricsConfig?: SleepMetricsConfig,
 ): DayPulse[] {
   const habits = getDailyLogHabitTypes()
+  const sleepConfig = sleepMetricsConfig ?? getSleepMetricsConfig()
   return dates.map((date) => {
+    const formula = getPulseFormulaForDate(pulseConfig, date)
     const log = logForDate(date, logs, today, todayLog, workouts)
-    const dayWorkouts = workouts.filter((w) => w.date === date)
-    return computeDayPulse(date, log, habits, goals, dayWorkouts, logs, weekStartsOn)
+    return computeDayPulse(date, log, habits, goals, workouts, formula, sleepConfig)
   })
-}
-
-export function buildHabitConstellation(
-  logs: DailyLog[],
-  weekDates: string[],
-  today: string,
-  todayLog: DailyLog | null,
-): HabitStar[] {
-  const habits = getDailyLogHabitTypes()
-  const todayHabits = todayLog
-    ? normalizeHabits(
-        mergeDraftWithLog(todayLog, getDraft(today), []).habits,
-      )
-    : undefined
-
-  return habits.map((habit, index) => {
-    const streak = getHabitStreak(logs, habit.id, today, todayHabits)
-    const weekRate = getHabitCompletionRate(logs, habit.id, weekDates, {
-      asOfDate: today,
-      todayHabits,
-    })
-    const angle = (index / Math.max(habits.length, 1)) * Math.PI * 2 - Math.PI / 2
-    const orbit = 0.35 + (weekRate / 100) * 0.55
-    return {
-      id: habit.id,
-      label: habit.label,
-      streak,
-      weekRate,
-      angle,
-      orbit,
-    }
-  })
-}
-
-export function computeWeekdayRhythm(
-  series: DayPulse[],
-  weekStartsOn: 0 | 1,
-): WeekdayRhythm[] {
-  const labels =
-    weekStartsOn === 0
-      ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
-  const buckets = labels.map((label) => ({ label, total: 0, count: 0 }))
-
-  for (const day of series) {
-    if (day.score <= 0) continue
-    const dow = parseISO(day.date + 'T12:00:00').getDay()
-    const idx =
-      weekStartsOn === 0
-        ? dow
-        : dow === 0
-          ? 6
-          : dow - 1
-    buckets[idx].total += day.score
-    buckets[idx].count++
-  }
-
-  return buckets.map((b) => ({
-    label: b.label,
-    avgScore: b.count > 0 ? Math.round(b.total / b.count) : 0,
-    samples: b.count,
-  }))
 }
 
 export function generatePulseInsights(
@@ -230,7 +170,7 @@ export function generatePulseInsights(
         id: 'empty',
         tone: 'tip',
         title: 'Your pulse is waiting',
-        body: 'Log habits, focus, or metrics on Today — this page turns your rhythm into patterns.',
+        body: 'Configure Pulse to choose what counts, then log habits, focus, sleep, or workouts on Home.',
       },
     ]
   }
@@ -377,6 +317,163 @@ export function pulseScoreLabel(score: number): string {
   if (score >= 25) return 'Quiet'
   if (score > 0) return 'Faint'
   return 'Dormant'
+}
+
+export type PulseScoreTier =
+  | 'dormant'
+  | 'faint'
+  | 'quiet'
+  | 'steady'
+  | 'strong'
+  | 'radiant'
+
+export function pulseScoreTier(score: number): PulseScoreTier {
+  if (score >= 85) return 'radiant'
+  if (score >= 70) return 'strong'
+  if (score >= 50) return 'steady'
+  if (score >= 25) return 'quiet'
+  if (score > 0) return 'faint'
+  return 'dormant'
+}
+
+export const PULSE_PREVIEW_LEVELS = [
+  { label: 'Dormant', score: 0 },
+  { label: 'Faint', score: 15 },
+  { label: 'Quiet', score: 35 },
+  { label: 'Steady', score: 64 },
+  { label: 'Strong', score: 77 },
+  { label: 'Radiant', score: 92 },
+] as const
+
+export function previewPulseBreakdown(score: number): Pick<
+  DayPulse,
+  'habitRate' | 'focusRate' | 'sleepRate' | 'exerciseRate'
+> {
+  if (score <= 0) return { habitRate: 0, focusRate: 0, sleepRate: 0, exerciseRate: 0 }
+  return {
+    habitRate: Math.min(100, Math.round(score * 1.05)),
+    focusRate: Math.min(100, Math.round(score * 0.85)),
+    sleepRate: Math.min(100, Math.round(score * 0.7)),
+    exerciseRate: Math.min(100, Math.round(score * 0.6)),
+  }
+}
+
+export const PULSE_CORE_PX = 96
+
+/** Scale factor for the compact pulse meter on Home. */
+export const PULSE_COMPACT_SCALE = 0.5
+
+/** Inline pulse in the Home header. */
+export const PULSE_HEADER_SCALE = 1.0
+
+export function pulseCorePx(scale = 1): number {
+  return PULSE_CORE_PX * scale
+}
+
+/** Fraction of one pulse cycle when the score outline hits minimum thickness (matches CSS keyframe %). */
+export const PULSE_OUTLINE_THIN_SYNC = 0.035
+
+/** Ring i launches at (i/3 + PULSE_OUTLINE_THIN_SYNC) through the cycle; negative delay pre-positions the ripple. */
+export function pulseRingAnimationDelay(ringIndex: number, duration: number): number {
+  return (ringIndex / 3 + PULSE_OUTLINE_THIN_SYNC - 1) * duration
+}
+
+export interface PulseMeterVisuals {
+  animationDuration: number
+  ringStartScale: number
+  ringExpandEnd: number
+  ringFadeAt: number
+  borderOpacity: number
+  coreGlowPx: number
+  glowMix: number
+  glowSpreadPercent: number
+  glowBlobPx: number
+  glowBlurPx: number
+  ringArenaPx: number
+  meterZonePx: number
+  ringBorderPx: number
+  coreBorderPx: number
+  coreBorderPeakPx: number
+  accentLightness: number
+}
+
+/** Maps score fraction [0,1] → animation intensity [0,1]. Low scores stay 1:1; 30+ gains compress so mid/high scores ramp slowly. */
+export function pulseIntensityT(t: number): number {
+  const x = Math.max(0, Math.min(1, t))
+  const knee = 0.3
+  if (x <= knee) return x
+
+  const u = (x - knee) / (1 - knee)
+  const maxI = 0.78
+  const ramp = Math.pow(u, 1.9)
+  return knee + (maxI - knee) * ramp
+}
+
+/** Higher score → faster pulse, brighter accent, stronger glow. */
+export function pulseMeterVisuals(score: number, scale = 1): PulseMeterVisuals {
+  const t = Math.max(0, Math.min(100, score)) / 100
+  const i = pulseIntensityT(t)
+  const ringArenaPx = (176 + t * 96) * scale
+  const ringExpandEnd = 1 + i * 0.45
+  const ringExtentPx = ringArenaPx * ringExpandEnd
+  const glowBleedPx = (24 + i * 40) * scale
+  const meterZonePx = ringExtentPx + glowBleedPx * 2
+  const coreBorderPx = (2.5 + t * 0.5) * scale
+  const coreBorderPeakPx = coreBorderPx + (2 + i * 2.5) * scale
+  const corePx = pulseCorePx(scale)
+  const ringStartOuterPx = corePx + 2 * coreBorderPx
+  return {
+    animationDuration: (5.4 - i * 3.6) * 1.5,
+    ringStartScale: ringStartOuterPx / ringArenaPx,
+    ringExpandEnd,
+    ringFadeAt: 0.28 + i * 0.72,
+    borderOpacity: 0.18 + i * 0.5,
+    coreGlowPx: (16 + i * 52) * scale,
+    glowMix: 10 + i * 58,
+    glowSpreadPercent: 62 + i * 38,
+    glowBlobPx: meterZonePx * 0.94,
+    glowBlurPx: (10 + i * 22) * scale,
+    ringArenaPx,
+    meterZonePx,
+    ringBorderPx: (2 + i * 2.5) * scale,
+    coreBorderPx,
+    coreBorderPeakPx,
+    accentLightness: i * 42,
+  }
+}
+
+/** Compact ring styling for calendar day cells — brighter glow and border at higher scores. */
+export function pulseCalendarCellVisuals(score: number): {
+  ringStyle: CSSProperties
+  scoreColor: string
+} {
+  const t = Math.max(0, Math.min(100, score)) / 100
+  const i = pulseIntensityT(t)
+  const accentLightness = i * 42
+  const accent = `color-mix(in srgb, var(--accent-500) ${100 - accentLightness}%, white ${accentLightness}%)`
+  const scoreColor = `color-mix(in srgb, var(--accent-300) ${100 - accentLightness * 0.7}%, white ${accentLightness * 0.7}%)`
+  const borderOpacity = 0.14 + i * 0.62
+  const glowPx = 3 + i * 12
+
+  if (score <= 0) {
+    return {
+      ringStyle: {
+        borderColor: 'color-mix(in srgb, var(--accent-500) 10%, rgb(63 63 70))',
+        borderWidth: '1px',
+        boxShadow: 'none',
+      },
+      scoreColor: 'rgb(113 113 122)',
+    }
+  }
+
+  return {
+    ringStyle: {
+      borderColor: `color-mix(in srgb, ${accent} ${borderOpacity * 100}%, transparent)`,
+      borderWidth: `${1 + i * 1.5}px`,
+      boxShadow: `0 0 ${glowPx}px color-mix(in srgb, ${accent} ${Math.round(borderOpacity * 55 + 12)}%, transparent)`,
+    },
+    scoreColor,
+  }
 }
 
 export function buildWavePath(

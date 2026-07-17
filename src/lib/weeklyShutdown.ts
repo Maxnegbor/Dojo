@@ -60,11 +60,8 @@ export const DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST: WeeklyShutdownCheckGroup[] = WEE
 export function normalizeWeeklyShutdownChecklist(
   checklist: WeeklyShutdownCheckGroup[] | undefined,
 ): WeeklyShutdownCheckGroup[] {
-  if (!checklist || !Array.isArray(checklist)) {
-    return DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST.map((group) => ({
-      ...group,
-      items: group.items.map((item) => ({ ...item })),
-    }))
+  if (!checklist || !Array.isArray(checklist) || checklist.length === 0) {
+    return []
   }
   return checklist
     .filter((group) => group && typeof group.label === 'string')
@@ -104,7 +101,7 @@ export interface WeeklyShutdownGoalSummary {
   detail: string
   isWorkout?: boolean
   isWeight?: boolean
-  weightMode?: 'bulk' | 'cut'
+  weightMode?: 'bulk' | 'cut' | 'maintain'
   weightLabel?: string
   /** Share of goal period elapsed (for pace bar). */
   timeElapsedPercent?: number

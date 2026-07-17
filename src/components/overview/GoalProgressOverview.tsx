@@ -6,9 +6,9 @@ import { formatGoalScheduleLabel, goalTimeHorizonEndLabel } from '@/lib/goalPeri
 import { formatFocusGoalTarget } from '@/lib/focusGoalSync'
 import { formatGoalTargetLabel } from '@/lib/timedMetrics'
 import {
-  getAllGoalCategories,
   resolveGoalCategoryId,
 } from '@/lib/goalCategories'
+import { getVisibleGoalCategories } from '@/lib/metricsSections'
 import { hasTarget } from '@/lib/goals'
 import { calculateProgress } from '@/lib/metrics'
 import { WorkoutGoalsProgressSection } from '@/components/overview/WorkoutGoalsProgressSection'
@@ -19,6 +19,7 @@ import {
   getWeightGoalProgress,
   isWeightGoal,
   weightGoalMode,
+  weightGoalModeLabel,
 } from '@/lib/weightGoal'
 import { getWeekDates } from '@/lib/utils'
 import type { DailyLog, Goal, Workout } from '@/types'
@@ -130,7 +131,7 @@ export function WeightProgressCard({
     <Card className={compact ? 'p-3.5' : 'p-4'}>
       <div className={compact ? 'mb-1 min-w-0' : 'mb-3 min-w-0'}>
         <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-          {mode === 'bulk' ? 'Bulk goal' : 'Cut goal'}
+          {weightGoalModeLabel(mode)} goal
         </p>
         {range && (
           <p
@@ -202,7 +203,7 @@ export function GoalProgressOverview(props: GoalProgressOverviewProps) {
       g.metric_key !== 'focus' &&
       !(excludeSleep && g.metric_key === 'sleep'),
   )
-  const goalCategories = getAllGoalCategories()
+  const goalCategories = getVisibleGoalCategories()
   const categorySections = goalCategories
     .map((category) => ({
       category,

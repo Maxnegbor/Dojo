@@ -2,11 +2,9 @@ import { format, isFuture, isToday, parseISO } from 'date-fns'
 import { ALLOW_FUTURE_DATES } from '@/lib/devFlags'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { LogStreak } from '@/components/today/LogStreak'
 
 interface DateNavigationHeaderProps {
   date: string
-  streak: number
   onPrev: () => void
   onNext: () => void
   onToday: () => void
@@ -14,7 +12,6 @@ interface DateNavigationHeaderProps {
 
 export function DateNavigationHeader({
   date,
-  streak,
   onPrev,
   onNext,
   onToday,
@@ -64,7 +61,6 @@ export function DateNavigationHeader({
             Future
           </span>
         )}
-        <LogStreak streak={streak} />
       </div>
     </header>
   )

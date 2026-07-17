@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -6,29 +6,48 @@ import {
   isSameMonth,
   startOfMonth,
 } from 'date-fns'
-import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
-import { isMandatoryLogComplete } from '@/lib/dailyLog'
-import { getDraft } from '@/lib/dailyLogDraft'
-import type { DailyLog } from '@/types'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { mergeLogWithDraftForDate } from '@/lib/dailyLogDraft'
+import { getDailyLogHabitTypes } from '@/lib/habitTypes'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { localStore } from '@/lib/localStore'
+import { computeDayPulse, pulseCalendarCellVisuals } from '@/lib/pulse'
+import { getPulseFormulaForDate } from '@/lib/pulseConfig'
+import { usePulseConfig } from '@/hooks/usePulseConfig'
+import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
+import { useDailyLogDraftRevision } from '@/hooks/useDailyLogDraftRevision'
+import type { DailyLog, Goal, Workout } from '@/types'
 import { useSettings } from '@/context/SettingsContext'
-import { cn, formatDate, formatDuration, getMonthStartPad, getWeekdayLabels } from '@/lib/utils'
+import { cn, formatDate, getMonthStartPad, getWeekdayLabels } from '@/lib/utils'
 
 interface MonthCalendarModalProps {
   month: Date
-  logs: DailyLog[]
+  goals: Goal[]
+  userId: string
+  todayLog: DailyLog | null
+  todayWorkouts: Workout[]
   onClose: () => void
   onSelectDate: (date: string) => void
 }
 
 export function MonthCalendarModal({
   month: initialMonth,
-  logs,
+  goals,
+  userId,
+  todayLog,
+  todayWorkouts,
   onClose,
   onSelectDate,
 }: MonthCalendarModalProps) {
   const { settings } = useSettings()
+  const { config: pulseConfig } = usePulseConfig()
+  const { config: sleepMetricsConfig } = useSleepMetricsConfig()
   const [month, setMonth] = useState(initialMonth)
+  const [logs, setLogs] = useState<DailyLog[]>([])
+  const [workouts, setWorkouts] = useState<Workout[]>([])
+  const [loading, setLoading] = useState(true)
   const today = formatDate(new Date())
+  const draftRevision = useDailyLogDraftRevision(today)
 
   const days = useMemo(() => {
     const start = startOfMonth(month)
@@ -36,16 +55,83 @@ export function MonthCalendarModal({
     return eachDayOfInterval({ start, end })
   }, [month])
 
+  const loadMonthData = useCallback(async () => {
+    setLoading(true)
+    const monthStart = formatDate(startOfMonth(month))
+    const monthEnd = formatDate(endOfMonth(month))
+    try {
+      if (isSupabaseConfigured) {
+        const { fetchDailyLogs, fetchWorkouts } = await import('@/lib/supabase')
+        const [nextLogs, nextWorkouts] = await Promise.all([
+          fetchDailyLogs(userId, monthStart, monthEnd),
+          fetchWorkouts(userId, monthStart, monthEnd),
+        ])
+        setLogs(nextLogs)
+        setWorkouts(nextWorkouts)
+      } else {
+        setLogs(localStore.getDailyLogs(monthStart, monthEnd))
+        setWorkouts(localStore.getWorkouts(monthStart, monthEnd))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [month, userId])
+
+  useEffect(() => {
+    void loadMonthData()
+  }, [loadMonthData])
+
   const logMap = useMemo(() => new Map(logs.map((l) => [l.date, l])), [logs])
 
-  const getDayStatus = (dateStr: string) => {
-    const log = logMap.get(dateStr)
-    const draft = getDraft(dateStr)
-    const merged = log && draft ? { ...log, ...draft } : log
-    if (!merged) return dateStr < today ? 'incomplete' : 'empty'
-    if (isMandatoryLogComplete(merged)) return 'complete'
-    return dateStr < today ? 'incomplete' : 'partial'
-  }
+  const workoutsByDate = useMemo(() => {
+    const map = new Map<string, Workout[]>()
+    for (const workout of workouts) {
+      const list = map.get(workout.date) ?? []
+      list.push(workout)
+      map.set(workout.date, list)
+    }
+    if (todayLog) {
+      const todayList = todayWorkouts.filter((w) => w.date === today)
+      if (todayList.length > 0) map.set(today, todayList)
+    }
+    return map
+  }, [workouts, today, todayLog, todayWorkouts])
+
+  const pulseByDate = useMemo(() => {
+    const habits = getDailyLogHabitTypes()
+    const map = new Map<string, number>()
+    for (const day of days) {
+      const dateStr = formatDate(day)
+      const formula = getPulseFormulaForDate(pulseConfig, dateStr)
+      const log =
+        dateStr === today && todayLog
+          ? mergeLogWithDraftForDate(todayLog, today, todayWorkouts)
+          : logMap.get(dateStr)
+      const dayWorkouts = workoutsByDate.get(dateStr) ?? []
+      const pulse = computeDayPulse(
+        dateStr,
+        log,
+        habits,
+        goals,
+        dayWorkouts,
+        formula,
+        sleepMetricsConfig,
+      )
+      map.set(dateStr, pulse.score)
+    }
+    return map
+  }, [
+    days,
+    pulseConfig,
+    sleepMetricsConfig,
+    goals,
+    logMap,
+    workoutsByDate,
+    today,
+    todayLog,
+    todayWorkouts,
+    draftRevision,
+  ])
 
   const startPad = getMonthStartPad(month, settings.weekStartsOn)
   const weekdayLabels = getWeekdayLabels(settings.weekStartsOn)
@@ -80,16 +166,17 @@ export function MonthCalendarModal({
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-1">
+        <div className={cn('grid grid-cols-7 gap-1', loading && 'opacity-60')}>
           {Array.from({ length: startPad }).map((_, i) => (
             <div key={`pad-${i}`} />
           ))}
           {days.map((day) => {
             const dateStr = formatDate(day)
-            const status = getDayStatus(dateStr)
-            const log = logMap.get(dateStr)
-            const focus = log?.focus_minutes ?? 0
+            const score = pulseByDate.get(dateStr) ?? 0
+            const { ringStyle, scoreColor } = pulseCalendarCellVisuals(score)
             const inMonth = isSameMonth(day, month)
+            const isFuture = dateStr > today
+            const isToday = dateStr === today
 
             return (
               <button
@@ -99,36 +186,31 @@ export function MonthCalendarModal({
                   onClose()
                 }}
                 className={cn(
-                  'flex min-h-[52px] flex-col items-center rounded-lg border p-1 text-[10px] transition-colors hover:bg-zinc-800/80',
-                  dateStr === today && 'border-indigo-500/50 bg-indigo-950/20',
+                  'relative flex min-h-[52px] flex-col items-center justify-center rounded-lg p-1 text-[10px] transition-colors hover:bg-zinc-800/80',
+                  isToday && 'bg-indigo-950/25',
                   !inMonth && 'opacity-40',
-                  status === 'complete' && 'border-emerald-900/40',
-                  status === 'incomplete' && 'border-red-900/40',
                 )}
               >
-                <span className="font-medium text-zinc-300">{format(day, 'd')}</span>
-                {focus > 0 && (
-                  <span className="text-[9px] text-indigo-400">{formatDuration(focus)}</span>
-                )}
-                {status === 'complete' && (
-                  <Check size={10} className="text-emerald-400" />
-                )}
-                {status === 'incomplete' && (
-                  <span className="text-[11px] font-bold text-red-400">✕</span>
+                <div
+                  className="pointer-events-none absolute h-9 w-9 rounded-full border border-solid"
+                  style={ringStyle}
+                />
+                <span className="relative z-10 font-medium text-zinc-300">{format(day, 'd')}</span>
+                {!isFuture && (
+                  <span
+                    className="relative z-10 text-[9px] font-medium tabular-nums"
+                    style={{ color: scoreColor }}
+                  >
+                    {score}
+                  </span>
                 )}
               </button>
             )
           })}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-zinc-500">
-          <span className="flex items-center gap-1">
-            <Check size={10} className="text-emerald-400" /> Logged
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="text-red-400">✕</span> Incomplete
-          </span>
-          <span className="text-indigo-400">Focus minutes shown</span>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-zinc-500">
+          <span>Pulse score — brighter ring = higher rhythm</span>
         </div>
       </div>
     </div>

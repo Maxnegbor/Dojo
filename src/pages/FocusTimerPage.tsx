@@ -304,6 +304,7 @@ export function FocusTimerPage() {
           showSettings ? 'flex-col lg:flex-row lg:justify-center' : 'justify-center',
         )}
       >
+        <div data-tour="focus-timer">
         <Card
           className={cn(
             'flex h-[35rem] w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-24',
@@ -426,6 +427,7 @@ export function FocusTimerPage() {
           </Button>
         </div>
       </Card>
+        </div>
 
         {showSettings && (
           <Card title="Timer settings" className="w-full shrink-0 space-y-5 lg:w-72">

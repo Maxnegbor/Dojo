@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addDays, format, parseISO } from 'date-fns'
-import { DayRhythmStrip } from '@/components/pulse/DayRhythmStrip'
-import { HabitConstellation } from '@/components/pulse/HabitConstellation'
+import { PulseConfigureModal } from '@/components/pulse/PulseConfigureModal'
 import { PulseEchoes } from '@/components/pulse/PulseEchoes'
+import { PulseDevPreviewControls } from '@/components/pulse/PulseDevPreviewControls'
 import { PulseHero } from '@/components/pulse/PulseHero'
 import { PulseWaveform } from '@/components/pulse/PulseWaveform'
+import { Button } from '@/components/ui/Button'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth, useDailyLog } from '@/hooks/useData'
+import { usePulseConfig } from '@/hooks/usePulseConfig'
+import { usePulseDevPreview } from '@/hooks/usePulseDevPreview'
+import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { localStore } from '@/lib/localStore'
 import {
-  buildHabitConstellation,
   computePulseSeries,
-  computeWeekdayRhythm,
   generatePulseInsights,
+  previewPulseBreakdown,
   pulseLoadRange,
 } from '@/lib/pulse'
+import type { PulseFormula } from '@/lib/pulseConfig'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { formatDate, getWeekDates } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import type { DailyLog, Goal, Workout } from '@/types'
 
 export function PulsePage() {
@@ -24,9 +28,14 @@ export function PulsePage() {
   const { userId } = useAuth()
   const { settings } = useSettings()
   const { log: todayLog } = useDailyLog(today)
+  const { config, configured, currentFormula, saveFormula } = usePulseConfig()
+  const { config: sleepMetricsConfig } = useSleepMetricsConfig()
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [workouts, setWorkouts] = useState<Workout[]>([])
+  const [previewScore, setPreviewScore] = usePulseDevPreview()
+  const [showConfigure, setShowConfigure] = useState(false)
+  const [formulaNotice, setFormulaNotice] = useState(false)
 
   const load = useCallback(async () => {
     if (!userId) return
@@ -67,36 +76,21 @@ export function PulsePage() {
 
   const series = useMemo(
     () =>
-      computePulseSeries(
-        dateRange,
-        logs,
-        goals,
-        workouts,
-        today,
-        todayLog,
-        settings.weekStartsOn,
-      ),
-    [dateRange, logs, goals, workouts, today, todayLog, settings.weekStartsOn],
+      computePulseSeries(dateRange, logs, goals, workouts, today, todayLog, config, sleepMetricsConfig),
+    [dateRange, logs, goals, workouts, today, todayLog, config, sleepMetricsConfig],
   )
 
   const todayPulse = useMemo(
-    () => series.find((d) => d.date === today) ?? { date: today, score: 0, habitRate: 0, focusRate: 0, metricRate: 0 },
+    () =>
+      series.find((d) => d.date === today) ?? {
+        date: today,
+        score: 0,
+        habitRate: 0,
+        focusRate: 0,
+        sleepRate: 0,
+        exerciseRate: 0,
+      },
     [series, today],
-  )
-
-  const weekDates = useMemo(
-    () => getWeekDates(parseISO(today + 'T12:00:00'), settings.weekStartsOn),
-    [today, settings.weekStartsOn],
-  )
-
-  const stars = useMemo(
-    () => buildHabitConstellation(logs, weekDates, today, todayLog),
-    [logs, weekDates, today, todayLog],
-  )
-
-  const weekdayRhythm = useMemo(
-    () => computeWeekdayRhythm(series, settings.weekStartsOn),
-    [series, settings.weekStartsOn],
   )
 
   const insights = useMemo(
@@ -104,36 +98,93 @@ export function PulsePage() {
     [series, logs, goals, workouts, today, todayLog],
   )
 
+  const heroPulse = useMemo(() => {
+    if (previewScore == null) return todayPulse
+    return {
+      ...todayPulse,
+      score: previewScore,
+      ...previewPulseBreakdown(previewScore),
+    }
+  }, [previewScore, todayPulse])
+
+  const handleSaveFormula = (formula: PulseFormula) => {
+    const { isReconfigure } = saveFormula(formula)
+    setShowConfigure(false)
+    if (isReconfigure) {
+      setFormulaNotice(true)
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-      <header className="space-y-1">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--accent-400)]">
-          Pulse
-        </p>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Your rhythm</h1>
-        <p className="max-w-lg text-sm text-zinc-500">
-          Not charts — a living read on how aligned your days feel. Built from habits, focus, and
-          the metrics you track.
-        </p>
-        <p className="text-[10px] text-zinc-600">{format(new Date(), 'EEEE, MMMM d')}</p>
+    <div className="space-y-6">
+      {settings.devMode && (
+        <PulseDevPreviewControls
+          previewScore={previewScore}
+          onPreviewScoreChange={setPreviewScore}
+        />
+      )}
+
+      <header className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--accent-400)]">
+            Pulse
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Your rhythm</h1>
+          <p className="max-w-lg text-sm text-zinc-500">
+            A living read on how aligned your days feel — shaped by the formula you choose.
+          </p>
+          <p className="text-[10px] text-zinc-600">{format(new Date(), 'EEEE, MMMM d')}</p>
+        </div>
+        {!configured && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setShowConfigure(true)}
+          >
+            Configure Pulse
+          </Button>
+        )}
       </header>
 
-      <PulseHero
-        score={todayPulse.score}
-        habitRate={todayPulse.habitRate}
-        focusRate={todayPulse.focusRate}
-        metricRate={todayPulse.metricRate}
-      />
+      {formulaNotice && (
+        <p className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-400">
+          Formula updated — past days keep their old weights.
+          <button
+            type="button"
+            className="ml-2 text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+            onClick={() => setFormulaNotice(false)}
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
+
+      <div data-tour="pulse-hero">
+        <PulseHero
+          score={heroPulse.score}
+          habitRate={heroPulse.habitRate}
+          focusRate={heroPulse.focusRate}
+          sleepRate={heroPulse.sleepRate}
+          exerciseRate={heroPulse.exerciseRate}
+          formula={currentFormula}
+          configured={configured}
+        />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PulseWaveform series={series} today={today} />
-        <DayRhythmStrip rhythm={weekdayRhythm} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <HabitConstellation stars={stars} />
         <PulseEchoes insights={insights} />
       </div>
+
+      {showConfigure && (
+        <PulseConfigureModal
+          goals={goals}
+          initialFormula={currentFormula}
+          isReconfigure={configured}
+          onClose={() => setShowConfigure(false)}
+          onSave={handleSaveFormula}
+        />
+      )}
     </div>
   )
 }

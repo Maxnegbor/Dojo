@@ -39,6 +39,7 @@ function goalKindLabel(summary: WeeklyShutdownGoalSummary): string {
     return summary.kind === 'weekly' ? 'Workout · weekly goal' : 'Workout · daily goal'
   }
   if (summary.isWeight) {
+    if (summary.weightMode === 'maintain') return 'Weight · maintain'
     return summary.weightMode === 'bulk' ? 'Weight · bulk' : 'Weight · cut'
   }
   return summary.kind === 'weekly' ? 'Weekly goal' : 'Daily goal'

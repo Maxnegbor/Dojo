@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ArrowRight, CalendarDays, Check, ClipboardCopy, Moon, X } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { Button } from '@/components/ui/Button'
@@ -6,7 +6,13 @@ import { CompletionWaveFill } from '@/components/ui/CompletionWaveFill'
 import { DailyLogForm } from '@/components/today/DailyLogForm'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { useSettings } from '@/context/SettingsContext'
+import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { useReminderDismissAnimation } from '@/hooks/useReminderDismissAnimation'
+import {
+  buildShutdownLogFilter,
+  getConfiguredShutdownLogItems,
+  hasShutdownLogFieldsConfigured,
+} from '@/lib/shutdownLogConfig'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import type { DailyLog, Goal, Reminder, ScheduleBlock, Workout } from '@/types'
 import { cn } from '@/lib/utils'
@@ -53,7 +59,18 @@ export function ShutdownModal({
   onCompleteReminder,
 }: ShutdownModalProps) {
   const { settings } = useSettings()
-  const showWorkouts = settings.showWorkoutMetrics && getWorkoutTypes().length > 0
+  const { config: sleepMetricsConfig } = useSleepMetricsConfig()
+  const shutdownMetricsFilter = useMemo(() => {
+    if (!hasShutdownLogFieldsConfigured()) return undefined
+    const items = getConfiguredShutdownLogItems(goals, sleepMetricsConfig)
+    return buildShutdownLogFilter(items)
+  }, [goals, sleepMetricsConfig])
+  const shutdownWorkoutsConfigured =
+    shutdownMetricsFilter != null && shutdownMetricsFilter.workoutCategories.size > 0
+  const showWorkouts =
+    settings.showWorkoutMetrics &&
+    getWorkoutTypes().length > 0 &&
+    (shutdownMetricsFilter == null || shutdownWorkoutsConfigured)
   const [step, setStep] = useState<ShutdownStep>('wrap-up')
   const [deferredIds, setDeferredIds] = useState<Set<string>>(() => new Set())
   const [completedIds, setCompletedIds] = useState<Set<string>>(() => new Set())
@@ -69,9 +86,10 @@ export function ShutdownModal({
     [onCompleteReminder],
   )
 
-  const { dismiss: dismissReminder, getPhase } = useReminderDismissAnimation({
-    onDismiss: handleReminderDismissed,
-  })
+  const { dismiss: dismissReminder, getPhase, onFillAnimationEnd, onExitTransitionEnd } =
+    useReminderDismissAnimation({
+      onDismiss: handleReminderDismissed,
+    })
 
   const openReminders = reminders.filter(
     (r) => !r.completed && r.due_date <= viewDate && r.kind !== 'note',
@@ -181,6 +199,7 @@ export function ShutdownModal({
                   workouts={workouts}
                   streakLogs={streakLogs}
                   embedded
+                  metricsFilter={shutdownMetricsFilter}
                   requireWorkoutSelection={showWorkouts}
                   onWorkoutSelectionChange={handleWorkoutSelectionChange}
                 />
@@ -206,11 +225,14 @@ export function ShutdownModal({
                         <li
                           key={item.id}
                           className={cn('reminder-row', exiting && 'reminder-row-exiting')}
+                          onTransitionEnd={(event) => {
+                            if (exiting) onExitTransitionEnd(item.id, event.propertyName)
+                          }}
                         >
                           <div className="reminder-row-inner">
                             <div
                               className={cn(
-                                'relative flex items-center gap-2 overflow-hidden rounded-lg px-2 py-2 transition-colors duration-200',
+                                'reminder-row-content relative flex items-center gap-2 overflow-hidden rounded-lg px-2 py-2 transition-colors duration-200',
                                 !completing &&
                                   !exiting &&
                                   (deferred ? 'bg-zinc-900/30' : 'bg-zinc-900/60'),
@@ -218,7 +240,10 @@ export function ShutdownModal({
                             >
                               <CompletionWaveFill
                                 plain
-                                phase={completing ? 'animating' : exiting ? 'done' : undefined}
+                                phase={completing ? 'animating' : phase ? 'done' : undefined}
+                                onAnimationEnd={
+                                  completing ? () => onFillAnimationEnd(item.id) : undefined
+                                }
                               />
                               <button
                                 type="button"

@@ -6,9 +6,10 @@ interface CompletionWaveFillProps {
   phase?: CompletionWavePhase
   /** No inset border on the fill — used for reminders. */
   plain?: boolean
+  onAnimationEnd?: () => void
 }
 
-export function CompletionWaveFill({ phase, plain }: CompletionWaveFillProps) {
+export function CompletionWaveFill({ phase, plain, onAnimationEnd }: CompletionWaveFillProps) {
   if (!phase) return null
 
   return (
@@ -20,6 +21,10 @@ export function CompletionWaveFill({ phase, plain }: CompletionWaveFillProps) {
         phase === 'done' && 'completion-wave-fill--done',
       )}
       aria-hidden
+      onAnimationEnd={(event) => {
+        if (event.animationName !== 'completion-wave-ripple') return
+        onAnimationEnd?.()
+      }}
     />
   )
 }

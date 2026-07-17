@@ -2,24 +2,35 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Maximize2, Minimize2, Trash2 } from 'lucide-react'
 import { BLOCK_COLOR_DEFAULT_TITLES, BLOCK_COLOR_HEX, SCHEDULE_BLOCK_COLORS, type ScheduleBlock } from '@/types'
 import { createScheduleBlock, isGreyBlock, setScheduleBlockColor } from '@/lib/scheduleBlock'
+import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
 import { useSettings } from '@/context/SettingsContext'
 import { generateId, minutesToTime, parseTimeToMinutes, cn } from '@/lib/utils'
 
 const HOUR_HEIGHT = 88
 const TIMELINE_TOP_INSET = 12
+const NOW_DOT_GUTTER = 16
 const COMPACT_BLOCK_MAX_MINUTES = 60
+/** Visible scroll viewport — hours of timeline shown before scrolling. */
+const SCHEDULE_VISIBLE_HOURS = 8
+const SCHEDULE_SCROLL_HEIGHT = HOUR_HEIGHT * SCHEDULE_VISIBLE_HOURS + TIMELINE_TOP_INSET
 
 interface ScheduleBlockTitleInputProps {
   value: string
   onChange: (value: string) => void
+  onFocus?: () => void
+  onBlur?: () => void
   onMouseDown?: (e: React.MouseEvent<HTMLInputElement>) => void
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
   placeholder?: string
 }
 
 function ScheduleBlockTitleInput({
   value,
   onChange,
+  onFocus,
+  onBlur,
   onMouseDown,
+  onKeyDown,
   placeholder = 'New Block',
 }: ScheduleBlockTitleInputProps) {
   const mirrorText = value || placeholder
@@ -40,7 +51,10 @@ function ScheduleBlockTitleInput({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onMouseDown={onMouseDown}
+        onKeyDown={onKeyDown}
         className={inputClass}
       />
     </div>
@@ -160,11 +174,12 @@ export function HourlyTimeline({
   const headerRef = useRef<HTMLDivElement>(null)
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const dragOffsetRef = useRef(0)
-  const [scrollAreaHeight, setScrollAreaHeight] = useState<number | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
   const [resizing, setResizing] = useState<string | null>(null)
   const [resizeMode, setResizeMode] = useState<ResizeMode>(null)
   const [creating, setCreating] = useState<{ start: number; end: number } | null>(null)
+  const [titleEdits, setTitleEdits] = useState<Record<string, string>>({})
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
   const [nowLine, setNowLine] = useState<number | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -185,7 +200,7 @@ export function HourlyTimeline({
     return () => clearInterval(id)
   }, [isActiveDay, startHour, endMinutes])
 
-  const scrollToCurrentTime = useCallback(() => {
+  const scrollToCurrentTime = useCallback((options?: { smooth?: boolean }) => {
     if (!isActiveDay) return false
 
     const scrollEl = scrollRef.current
@@ -195,16 +210,17 @@ export function HourlyTimeline({
     const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
     if (maxScroll <= 0) return false
 
+    const behavior = options?.smooth ? 'smooth' : 'auto'
     const now = new Date()
     const mins = now.getHours() * 60 + now.getMinutes()
 
     if (mins < startHour * 60) {
-      scrollEl.scrollTop = 0
+      scrollEl.scrollTo({ top: 0, behavior })
       return true
     }
 
     if (mins > endMinutes) {
-      scrollEl.scrollTop = maxScroll
+      scrollEl.scrollTo({ top: maxScroll, behavior })
       return true
     }
 
@@ -212,7 +228,10 @@ export function HourlyTimeline({
     const scrollRect = scrollEl.getBoundingClientRect()
     const anchorRect = anchor.getBoundingClientRect()
     const nextScrollTop = scrollEl.scrollTop + (anchorRect.top - scrollRect.top)
-    scrollEl.scrollTop = Math.max(0, Math.min(nextScrollTop, maxScroll))
+    scrollEl.scrollTo({
+      top: Math.max(0, Math.min(nextScrollTop, maxScroll)),
+      behavior,
+    })
     return true
   }, [isActiveDay, startHour, endMinutes])
 
@@ -233,6 +252,9 @@ export function HourlyTimeline({
 
     scrollToCurrentTimeWithRetry()
 
+    const onScrollRequest = () => scrollToCurrentTimeWithRetry()
+    window.addEventListener(SCHEDULE_SCROLL_TO_NOW, onScrollRequest)
+
     const now = new Date()
     const msUntilNextHour =
       (60 - now.getMinutes()) * 60_000 - now.getSeconds() * 1000 - now.getMilliseconds()
@@ -244,52 +266,15 @@ export function HourlyTimeline({
     }, msUntilNextHour)
 
     return () => {
+      window.removeEventListener(SCHEDULE_SCROLL_TO_NOW, onScrollRequest)
       clearTimeout(hourTimeout)
       if (hourInterval !== undefined) clearInterval(hourInterval)
     }
   }, [isActiveDay, scrollToCurrentTimeWithRetry])
 
   useLayoutEffect(() => {
-    const panel = panelRef.current
-    if (!panel) return
-
-    const measure = () => {
-      const panelRect = panel.getBoundingClientRect()
-      const headerH = headerRef.current?.getBoundingClientRect().height ?? 0
-      const viewportRemaining = window.innerHeight - panelRect.top - 16
-      const panelH = isFullscreen ? panelRect.height : Math.min(panelRect.height, viewportRemaining)
-      const next = Math.floor(panelH - headerH)
-      setScrollAreaHeight(next > 0 ? next : null)
-    }
-
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(panel)
-    window.addEventListener('resize', measure)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener('resize', measure)
-    }
-  }, [isFullscreen])
-
-  useLayoutEffect(() => {
-    if (!isActiveDay || scrollAreaHeight == null) return
-    scrollToCurrentTimeWithRetry()
-  }, [isActiveDay, scrollAreaHeight, scrollToCurrentTimeWithRetry])
-
-  useLayoutEffect(() => {
     if (!isActiveDay) return
-
     scrollToCurrentTimeWithRetry()
-    const t1 = window.setTimeout(scrollToCurrentTimeWithRetry, 100)
-    const t2 = window.setTimeout(scrollToCurrentTimeWithRetry, 400)
-    const t3 = window.setTimeout(scrollToCurrentTimeWithRetry, 1000)
-
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-      clearTimeout(t3)
-    }
   }, [isActiveDay, startHour, endHour, date, timelineHeight, scrollToCurrentTimeWithRetry])
 
   useLayoutEffect(() => {
@@ -362,7 +347,6 @@ export function HourlyTimeline({
 
     const ro = new ResizeObserver(() => {
       clampScrollTop(el)
-      if (isActiveDay) scrollToCurrentTimeWithRetry()
     })
     ro.observe(el)
 
@@ -370,7 +354,7 @@ export function HourlyTimeline({
       el.removeEventListener('scroll', onScroll)
       ro.disconnect()
     }
-  }, [startHour, endHour, contentHeight, isFullscreen, isActiveDay, scrollToCurrentTimeWithRetry])
+  }, [startHour, endHour, contentHeight, isFullscreen])
 
   const scrollAnchorTop = useMemo(() => {
     if (!isActiveDay) return 0
@@ -382,6 +366,38 @@ export function HourlyTimeline({
   const formatBlockTime = (time: string) => {
     const [h, m] = time.slice(0, 5).split(':').map(Number)
     return formatTime(new Date(2000, 0, 1, h, m))
+  }
+
+  const blockTitleValue = (block: ScheduleBlock) =>
+    editingTitleId === block.id && titleEdits[block.id] !== undefined
+      ? titleEdits[block.id]
+      : block.title
+
+  const beginTitleEdit = (block: ScheduleBlock) => {
+    setEditingTitleId(block.id)
+    setTitleEdits((prev) =>
+      prev[block.id] !== undefined ? prev : { ...prev, [block.id]: block.title },
+    )
+  }
+
+  const updateTitleDraft = (blockId: string, title: string) => {
+    setTitleEdits((prev) => ({ ...prev, [blockId]: title }))
+  }
+
+  const commitTitleEdit = (block: ScheduleBlock) => {
+    const draft = titleEdits[block.id]
+    setEditingTitleId((current) => (current === block.id ? null : current))
+    if (draft === undefined) return
+
+    setTitleEdits((prev) => {
+      const next = { ...prev }
+      delete next[block.id]
+      return next
+    })
+
+    if (draft !== block.title) {
+      onUpdate({ ...block, title: draft })
+    }
   }
 
   const getBlockStyle = (block: ScheduleBlock) => {
@@ -483,18 +499,20 @@ export function HourlyTimeline({
       className={cn(
         isFullscreen
           ? 'fixed inset-0 z-50 flex flex-col bg-[#0a0a0f]/95 p-4 backdrop-blur-md sm:p-6'
-          : 'flex min-h-0 flex-1 flex-col',
+          : 'flex shrink-0 flex-col pl-4',
       )}
     >
       <div
         ref={panelRef}
         className={cn(
-          'relative isolate flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/40',
+          'relative isolate flex w-full flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/40',
+          !isFullscreen && '-ml-4',
+          isFullscreen && 'h-full min-h-0 flex-1',
         )}
       >
         <div
           ref={headerRef}
-          className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-3 py-2"
+          className="flex shrink-0 items-start justify-between gap-3 overflow-hidden rounded-t-xl border-b border-zinc-800/80 px-3 py-2"
         >
           <div>
             <p className="text-xs font-medium text-zinc-400">Schedule</p>
@@ -502,29 +520,50 @@ export function HourlyTimeline({
               Drag grid to create · drag block body to move · drag edges to resize
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsFullscreen((open) => !open)}
-            className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Open schedule fullscreen'}
-          >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {isActiveDay && (
+              <button
+                type="button"
+                onClick={() => scrollToCurrentTime({ smooth: true })}
+                className="rounded-lg px-2 py-1 text-[10px] font-semibold text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                aria-label="Scroll to current time"
+              >
+                Now
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsFullscreen((open) => !open)}
+              className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Open schedule fullscreen'}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+          </div>
         </div>
 
       <div
         ref={scrollRef}
-        className="scrollbar-hidden overflow-y-auto overscroll-contain"
-        style={scrollAreaHeight != null ? { height: scrollAreaHeight, flexShrink: 0 } : { minHeight: 0, flex: 1 }}
+        className="scrollbar-hidden overflow-y-auto overscroll-contain rounded-b-xl"
+        style={
+          isFullscreen
+            ? { minHeight: 0, flex: 1 }
+            : { height: SCHEDULE_SCROLL_HEIGHT, flexShrink: 0 }
+        }
       >
         <div
-          className="relative flex overflow-hidden"
+          className="relative flex"
           style={{
             height: contentHeight,
             minHeight: contentHeight,
             maxHeight: contentHeight,
           }}
         >
+          <div
+            aria-hidden
+            className="shrink-0"
+            style={{ width: NOW_DOT_GUTTER, height: contentHeight }}
+          />
           <div
             className="relative w-11 shrink-0 border-r border-zinc-800/80"
             style={{
@@ -593,13 +632,6 @@ export function HourlyTimeline({
             </p>
           )}
 
-          {nowLine != null && (
-            <div className="pointer-events-none absolute left-0 right-0 z-[3] flex items-center" style={{ top: nowLine }}>
-              <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-              <div className="h-px flex-1 bg-red-500/70" />
-            </div>
-          )}
-
           {createPreview && (
             <div
               className="pointer-events-none absolute left-1 right-1 rounded-lg border-2 border-dashed border-[var(--accent-400)]/60 bg-[var(--accent-500)]/10"
@@ -658,9 +690,12 @@ export function HourlyTimeline({
                   {isShortInline ? (
                     <div className="flex items-center gap-1.5">
                       <ScheduleBlockTitleInput
-                        value={block.title}
-                        onChange={(title) => onUpdate({ ...block, title })}
+                        value={blockTitleValue(block)}
+                        onChange={(title) => updateTitleDraft(block.id, title)}
+                        onFocus={() => beginTitleEdit(block)}
+                        onBlur={() => commitTitleEdit(block)}
                         onMouseDown={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                       />
                       <span className="pointer-events-none shrink-0 text-[10px] tabular-nums text-zinc-400">
                         {formatBlockTime(block.start_time)}–{formatBlockTime(block.end_time)}
@@ -669,9 +704,12 @@ export function HourlyTimeline({
                   ) : (
                     <>
                       <ScheduleBlockTitleInput
-                        value={block.title}
-                        onChange={(title) => onUpdate({ ...block, title })}
+                        value={blockTitleValue(block)}
+                        onChange={(title) => updateTitleDraft(block.id, title)}
+                        onFocus={() => beginTitleEdit(block)}
+                        onBlur={() => commitTitleEdit(block)}
                         onMouseDown={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                       />
                       <p className="pointer-events-none text-[10px] tabular-nums text-zinc-400">
                         {formatBlockTime(block.start_time)} – {formatBlockTime(block.end_time)}
@@ -707,6 +745,25 @@ export function HourlyTimeline({
             )
           })}
           </div>
+
+          {nowLine != null && (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-10 flex items-center"
+              style={{ top: nowLine }}
+            >
+              <div
+                className="flex shrink-0 items-center justify-center"
+                style={{ width: NOW_DOT_GUTTER }}
+              >
+                <div className="schedule-now-dot schedule-now-dot--lg" aria-hidden>
+                  <span className="schedule-now-dot__ping" />
+                  <span className="schedule-now-dot__ping" />
+                  <div className="relative z-[1] h-3.5 w-3.5 rounded-full bg-red-500 shadow-[0_0_0_2px_rgb(10_10_15)]" />
+                </div>
+              </div>
+              <div className="h-0.5 min-w-0 flex-1 bg-red-500" />
+            </div>
+          )}
         </div>
       </div>
     </div>

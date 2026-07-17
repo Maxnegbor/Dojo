@@ -102,3 +102,11 @@ export async function localSignIn(email: string, password: string): Promise<Loca
   migrateLegacyDataForUser(user.id)
   return { userId: user.id, email: user.email }
 }
+
+/** Removes a local user, their data blob, and the active session. */
+export function deleteLocalAccount(userId: string) {
+  const users = loadUsers().filter((u) => u.id !== userId)
+  saveUsers(users)
+  localStorage.removeItem(getLocalDataKey(userId))
+  localSignOut()
+}

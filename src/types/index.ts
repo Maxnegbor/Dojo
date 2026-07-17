@@ -29,6 +29,7 @@ export type MetricKey =
   | 'screen_time'
   | 'focus'
   | `workout_${string}`
+  | `habit_${string}`
   | `custom:${string}`
 
 export type HabitKey = string
@@ -59,6 +60,7 @@ export interface DailyLog {
   notes: string
   habits?: DailyHabits
   custom_metrics?: Record<string, number | null>
+  sleep_metrics?: Record<string, number | null>
   morning_log?: MorningLog | null
   created_at: string
   updated_at: string
@@ -66,12 +68,11 @@ export interface DailyLog {
 
 export interface MorningLog {
   bedtime: string
-  asleep_time: string
   wake_time: string
   alertness: number
   /** Wake − bedtime (minutes). */
   in_bed_minutes: number
-  /** Wake − asleep (minutes). */
+  /** How long you actually slept (minutes). */
   sleep_minutes: number
 }
 
@@ -182,10 +183,18 @@ export interface AppSettings {
   weeklyShutdownChecklist: WeeklyShutdownCheckGroup[]
   /** Optional checklist after morning log. */
   morningLogChecklist: DailyCheckGroup[]
+  /** When true, blur-lock all screens until today's morning log is saved. */
+  requireMorningLog: boolean
+  /** First calendar day morning logging applies (e.g. day after signup). */
+  morningLogStartDate?: string
   /** Optional checklist after daily shutdown log. */
   dailyShutdownChecklist: DailyCheckGroup[]
   /** Temporary developer perspective — unlocks dev settings and test flows. */
   devMode: boolean
+  /** Set true after completing first-run onboarding. */
+  onboardingCompleted?: boolean
+  /** First day the user joined — missed-log prompts skip dates before this. */
+  memberSinceDate?: string
 }
 
 export interface DailyLogInput {
@@ -197,6 +206,7 @@ export interface DailyLogInput {
   notes?: string
   habits?: DailyHabits
   custom_metrics?: Record<string, number | null>
+  sleep_metrics?: Record<string, number | null>
   morning_log?: MorningLog | null
 }
 
@@ -258,9 +268,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   timelineStartHour: 6,
   timelineEndHour: 23,
   timerSoundEnabled: false,
-  showWorkoutMetrics: true,
+  showWorkoutMetrics: false,
   weeklyShutdownChecklist: [],
   morningLogChecklist: [],
+  requireMorningLog: false,
   dailyShutdownChecklist: [],
   devMode: false,
 }

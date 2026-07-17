@@ -74,6 +74,7 @@ export const localStore = {
         notes: '',
         habits: defaultHabits(),
         custom_metrics: {},
+        sleep_metrics: {},
         created_at: now,
         updated_at: now,
       }
@@ -108,6 +109,7 @@ export const localStore = {
         notes: '',
         habits: defaultHabits(),
         custom_metrics: {},
+        sleep_metrics: {},
         created_at: now,
         updated_at: now,
         ...updates,
@@ -216,8 +218,36 @@ export const localStore = {
     saveStore(store)
   },
 
+  updateWorkout(id: string, updates: Partial<Pick<Workout, 'duration_minutes' | 'notes'>>) {
+    const store = loadStore()
+    const idx = store.workouts.findIndex((w) => w.id === id)
+    if (idx < 0) return
+    store.workouts[idx] = { ...store.workouts[idx], ...updates }
+    saveStore(store)
+  },
+
+  deleteWorkout(id: string) {
+    const store = loadStore()
+    store.workouts = store.workouts.filter((w) => w.id !== id)
+    saveStore(store)
+  },
+
   getLogDates(): string[] {
     return loadStore().dailyLogs.map((l) => l.date)
+  },
+
+  clearAllMorningLogs(): number {
+    const store = loadStore()
+    let count = 0
+    for (const log of store.dailyLogs) {
+      if (log.morning_log) {
+        log.morning_log = null
+        log.sleep_hours = null
+        count++
+      }
+    }
+    if (count > 0) saveStore(store)
+    return count
   },
 
   replaceStore(data: LocalStore) {

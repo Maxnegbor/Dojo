@@ -14,11 +14,14 @@ import {
   migrateLegacyDataForUser,
 } from '@/lib/localAuth'
 import { localStore } from '@/lib/localStore'
+import { deleteAccount as performDeleteAccount } from '@/lib/deleteAccount'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
   clearUserStorageSession,
   initUserStorage,
 } from '@/lib/userStorage'
+import { migrateMorningLogToSleepDuration } from '@/lib/morningLog'
+import { getAppSettings, saveAppSettings } from '@/lib/settingsStore'
 
 interface AuthContextValue {
   userId: string | null
@@ -29,6 +32,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  deleteAccount: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -84,6 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void initUserStorage(userId).finally(() => setStorageReady(true))
   }, [userId])
 
+  useEffect(() => {
+    if (!userId || !storageReady) return
+    void migrateMorningLogToSleepDuration(userId)
+  }, [userId, storageReady])
+
   const signIn = useCallback(async (rawEmail: string, password: string) => {
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.auth.signInWithPassword({
@@ -100,6 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setEmail(session.email)
   }, [])
 
+  const markNewAccountForOnboarding = useCallback(() => {
+    saveAppSettings({ ...getAppSettings(), onboardingCompleted: false })
+  }, [])
+
   const signUp = useCallback(async (rawEmail: string, password: string) => {
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.auth.signUp({
@@ -107,14 +120,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       })
       if (error) throw error
+      markNewAccountForOnboarding()
       return
     }
 
     const session = await localSignUp(rawEmail, password)
     localStore.setUserId(session.userId)
+    markNewAccountForOnboarding()
     setUserId(session.userId)
     setEmail(session.email)
-  }, [])
+  }, [markNewAccountForOnboarding])
 
   const signOut = useCallback(async () => {
     clearUserStorageSession()
@@ -128,6 +143,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setEmail(null)
   }, [])
 
+  const deleteAccount = useCallback(async () => {
+    clearUserStorageSession()
+    await performDeleteAccount(userId)
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut()
+      return
+    }
+
+    setUserId(null)
+    setEmail(null)
+  }, [userId])
+
   return (
     <AuthContext.Provider
       value={{
@@ -139,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signIn,
         signUp,
         signOut,
+        deleteAccount,
       }}
     >
       {children}

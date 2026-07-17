@@ -53,7 +53,7 @@ export function getWorkoutTypes(): WorkoutTypeDefinition[] {
   } catch {
     /* ignore */
   }
-  return [...DEFAULT_WORKOUT_TYPES]
+  return []
 }
 
 export function saveWorkoutTypes(types: WorkoutTypeDefinition[]) {

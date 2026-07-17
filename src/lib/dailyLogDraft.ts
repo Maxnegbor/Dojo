@@ -1,4 +1,4 @@
-import type { DailyHabits, Workout, WorkoutCategory } from '@/types'
+import type { DailyHabits, DailyLog, Workout, WorkoutCategory } from '@/types'
 import { normalizeHabits } from '@/types'
 import { localStore } from '@/lib/localStore'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
@@ -7,6 +7,8 @@ import { formatDate } from '@/lib/utils'
 import { storageGetItem, storageKeys, storageRemoveItem, storageSetItem } from '@/lib/userStorage'
 
 const DRAFT_PREFIX = 'personal-os-log-draft-'
+
+export const DAILY_LOG_DRAFT_CHANGED = 'personal-os-daily-log-draft-changed'
 
 export type WorkoutDrafts = Partial<Record<WorkoutCategory, number | null>>
 
@@ -20,6 +22,7 @@ export interface DailyLogDraft {
   focusMode?: 'additive' | 'total'
   habits?: DailyHabits
   custom_metrics?: Record<string, number | null>
+  sleep_metrics?: Record<string, number | null>
   workouts?: WorkoutDrafts
   /** When `additive`, `workouts` are minutes to add today (not day totals). */
   workoutMode?: 'additive' | 'total'
@@ -111,6 +114,7 @@ export function getDraft(date: string): DailyLogDraft | null {
 export function setDraft(date: string, draft: DailyLogDraft) {
   try {
     storageSetItem(draftKey(date), JSON.stringify(draft))
+    window.dispatchEvent(new CustomEvent(DAILY_LOG_DRAFT_CHANGED, { detail: { date } }))
   } catch {
     /* ignore */
   }
@@ -144,6 +148,7 @@ export function draftFromLog(
     focus_minutes: number
     habits?: DailyHabits
     custom_metrics?: Record<string, number | null>
+    sleep_metrics?: Record<string, number | null>
   },
   workouts: Workout[] = [],
 ): DailyLogDraft {
@@ -158,6 +163,7 @@ export function draftFromLog(
     screen_time_minutes: log.screen_time_minutes,
     habits: normalizeHabits(log.habits),
     custom_metrics: log.custom_metrics ?? {},
+    sleep_metrics: log.sleep_metrics ?? {},
     workouts: log.date && usesAdditiveTodayDraft(log.date) ? {} : storedForDay,
     focus_minutes: log.date && usesAdditiveTodayDraft(log.date) ? undefined : log.focus_minutes,
   }
@@ -226,6 +232,7 @@ export function mergeDraftWithLog(
     focus_minutes: number
     habits?: DailyHabits
     custom_metrics?: Record<string, number | null>
+    sleep_metrics?: Record<string, number | null>
   },
   draft: DailyLogDraft | null,
   workouts: Workout[] = [],
@@ -244,6 +251,7 @@ export function mergeDraftWithLog(
     ...base,
     ...restDraft,
     custom_metrics: { ...base.custom_metrics, ...normalizedDraft.custom_metrics },
+    sleep_metrics: { ...base.sleep_metrics, ...normalizedDraft.sleep_metrics },
     habits: normalizeHabits({ ...base.habits, ...normalizedDraft.habits }),
     focus_minutes: additive
       ? hasDraftFocus
@@ -355,4 +363,26 @@ export function msUntilMidnight(): number {
   const midnight = new Date(now)
   midnight.setHours(24, 0, 0, 0)
   return midnight.getTime() - now.getTime()
+}
+
+/** Applies in-progress daily log draft on top of a stored log (for live pulse, etc.). */
+export function mergeLogWithDraftForDate(
+  log: DailyLog,
+  date: string,
+  workouts: Workout[] = [],
+): DailyLog {
+  const draft = getDraft(date)
+  if (!draft) return log
+
+  const merged = mergeDraftWithLog(log, draft, workouts.filter((w) => w.date === date))
+  return {
+    ...log,
+    habits: normalizeHabits(merged.habits),
+    focus_minutes: merged.focus_minutes ?? log.focus_minutes,
+    sleep_hours: merged.sleep_hours ?? log.sleep_hours,
+    steps: merged.steps ?? log.steps,
+    screen_time_minutes: merged.screen_time_minutes ?? log.screen_time_minutes,
+    custom_metrics: { ...log.custom_metrics, ...merged.custom_metrics },
+    sleep_metrics: { ...log.sleep_metrics, ...merged.sleep_metrics },
+  }
 }

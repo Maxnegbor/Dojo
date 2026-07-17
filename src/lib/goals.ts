@@ -4,7 +4,7 @@ import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
 /** Weekly totals derived from daily logs — never prompt for manual entry at shutdown. */
 export function isAggregatedFromDailyLogs(metricKey: MetricKey): boolean {
   if (metricKey.startsWith('workout_')) return true
-  return ['focus', 'steps', 'screen_time', 'sleep'].includes(metricKey)
+  return ['focus', 'sleep'].includes(metricKey)
 }
 
 export const BUILTIN_METRICS: {
@@ -15,8 +15,6 @@ export const BUILTIN_METRICS: {
 }[] = [
   { key: 'sleep', label: 'Sleep', unit: 'hrs', defaultLogPeriod: 'daily' },
   { key: 'weight', label: 'Weight', unit: 'kg', defaultLogPeriod: 'weekly' },
-  { key: 'steps', label: 'Steps', unit: 'steps', defaultLogPeriod: 'daily' },
-  { key: 'screen_time', label: 'Screentime', unit: 'hrs:min', defaultLogPeriod: 'daily' },
   { key: 'focus', label: 'Focus', unit: 'min', defaultLogPeriod: 'daily' },
 ]
 

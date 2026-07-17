@@ -68,16 +68,18 @@ export function FitnessOverviewSection({
       ) : null}
 
       {period === 'week' && hasWorkoutGoals ? (
-        <>
-          <WorkoutGoalsProgressSection compact hideTitle {...goalProps} />
-          <WorkoutGoalsWeeklyProgressGrid
-            goals={goals}
-            logs={allLogs}
-            workouts={workouts}
-            asOf={asOf}
-            weekStartsOn={weekStartsOn}
-          />
-        </>
+        <WorkoutGoalsProgressSection compact hideTitle {...goalProps} />
+      ) : null}
+
+      {period === 'month' && hasWorkoutGoals ? (
+        <WorkoutGoalsWeeklyProgressGrid
+          goals={goals}
+          logs={allLogs}
+          workouts={workouts}
+          asOf={asOf}
+          weekStartsOn={weekStartsOn}
+          showProgressFill
+        />
       ) : null}
 
       {period !== 'week' && hasWorkoutStats ? (

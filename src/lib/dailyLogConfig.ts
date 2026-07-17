@@ -1,4 +1,4 @@
-export type DailyLogBuiltinMetric = 'sleep' | 'weight' | 'steps' | 'screen_time'
+export type DailyLogBuiltinMetric = 'sleep' | 'weight'
 
 export const BUILTIN_DAILY_LOG_METRICS: {
   id: DailyLogBuiltinMetric
@@ -6,8 +6,6 @@ export const BUILTIN_DAILY_LOG_METRICS: {
 }[] = [
   { id: 'sleep', label: 'Sleep' },
   { id: 'weight', label: 'Weight' },
-  { id: 'steps', label: 'Steps' },
-  { id: 'screen_time', label: 'Screentime' },
 ]
 
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'

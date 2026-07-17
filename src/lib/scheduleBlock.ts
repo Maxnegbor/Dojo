@@ -28,10 +28,11 @@ const LEGACY_ACTIVITY_TO_COLOR: Record<string, ScheduleBlockColor> = {
 
 export function normalizeScheduleBlock(block: ScheduleBlock): ScheduleBlock {
   if (block.activity_type === 'grey') {
+    const trimmed = block.title.trim()
     return {
       ...block,
       color: BLOCK_COLOR_HEX.grey,
-      title: block.title.trim() || GREY_BLOCK_TITLE,
+      title: trimmed.length > 0 ? block.title : GREY_BLOCK_TITLE,
     }
   }
 

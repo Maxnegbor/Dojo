@@ -5,7 +5,9 @@ import { saveCustomGoalCategories } from '@/lib/goalCategories'
 import { saveFocusSettings } from '@/lib/focusStore'
 import { saveHabitTypes } from '@/lib/habitTypes'
 import { localStore } from '@/lib/localStore'
+import { saveEnabledMetricsSections } from '@/lib/metricsSections'
 import { saveWorkoutTypes } from '@/lib/workoutTypes'
+import { saveAppSettings, getDefaultAppSettings } from '@/lib/settingsStore'
 import { formatDate, generateId } from '@/lib/utils'
 
 const HISTORY_DAYS = 420
@@ -44,6 +46,20 @@ export function seedDemoData(userId: string): { logs: number; workouts: number }
     { id: 'business', label: 'Business' },
     { id: 'personal', label: 'Personal' },
   ])
+
+  saveEnabledMetricsSections([
+    'habits',
+    'default',
+    'business',
+    'personal',
+    'weight',
+    'workouts',
+  ])
+
+  saveAppSettings({
+    ...getDefaultAppSettings(),
+    showWorkoutMetrics: true,
+  })
 
   saveFocusSettings({
     ...DEFAULT_FOCUS_SETTINGS,

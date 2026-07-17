@@ -1,7 +1,6 @@
 import type { Goal } from '@/types'
 import { goalTargetPeriod, goalTimeHorizonEndLabel } from '@/lib/goalPeriod'
-import { isWeightGoal } from '@/lib/weightGoal'
-import { weightGoalMode } from '@/lib/weightGoal'
+import { isWeightGoal, weightGoalMode, weightGoalModeLabel } from '@/lib/weightGoal'
 
 /** User-facing goal period label — never "average". */
 export function goalProgressPeriodLabel(
@@ -10,7 +9,7 @@ export function goalProgressPeriodLabel(
   weekStartsOn: 0 | 1 = 1,
 ): string {
   if (isWeightGoal(goal)) {
-    const mode = weightGoalMode(goal) === 'bulk' ? 'Bulk' : 'Cut'
+    const mode = weightGoalModeLabel(weightGoalMode(goal))
     if (goal.period_start_date && goal.period_end_date) {
       const range = goalTimeHorizonEndLabel(goal, asOfDate ?? goal.period_start_date, weekStartsOn)
       return range ? `${mode} · ${range}` : `${mode} goal`

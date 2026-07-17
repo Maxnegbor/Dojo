@@ -51,15 +51,68 @@ export async function updateDailyLog(
 ): Promise<DailyLog> {
   if (!supabase) throw new Error('Supabase not configured')
 
+  const payload = {
+    ...input,
+    updated_at: new Date().toISOString(),
+  }
+
   const { data, error } = await supabase
     .from('daily_logs')
-    .update({ ...input, updated_at: new Date().toISOString() })
+    .update(payload)
     .eq('id', id)
     .select()
     .single()
 
-  if (error) throw error
-  return data as DailyLog
+  if (!error) return data as DailyLog
+
+  if (input.sleep_metrics != null && isMissingSleepMetricsColumn(error)) {
+    const { sleep_metrics: _removed, ...withoutSleepMetrics } = input
+    const { data: retryData, error: retryError } = await supabase
+      .from('daily_logs')
+      .update({ ...withoutSleepMetrics, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (!retryError) return retryData as DailyLog
+    throw retryError
+  }
+
+  if (isMissingRowError(error)) {
+    throw new Error(
+      'Daily log record not found. Refresh the page and try again.',
+    )
+  }
+
+  throw error
+}
+
+export async function updateDailyLogForDate(
+  userId: string,
+  date: string,
+  input: DailyLogInput,
+): Promise<DailyLog> {
+  const log = await getOrCreateDailyLog(userId, date)
+  return updateDailyLog(log.id, input)
+}
+
+function isMissingSleepMetricsColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const record = error as Record<string, unknown>
+  const message = typeof record.message === 'string' ? record.message : ''
+  const details = typeof record.details === 'string' ? record.details : ''
+  const combined = `${message} ${details}`.toLowerCase()
+  return (
+    record.code === '42703' ||
+    record.code === 'PGRST204' ||
+    combined.includes('sleep_metrics')
+  )
+}
+
+function isMissingRowError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const record = error as Record<string, unknown>
+  return record.code === 'PGRST116'
 }
 
 export async function fetchDailyLogs(
@@ -79,6 +132,28 @@ export async function fetchDailyLogs(
 
   if (error) throw error
   return (data ?? []) as DailyLog[]
+}
+
+export async function clearAllMorningLogs(userId: string): Promise<void> {
+  if (!supabase) return
+
+  const { data, error } = await supabase
+    .from('daily_logs')
+    .select('id')
+    .eq('user_id', userId)
+    .not('morning_log', 'is', null)
+
+  if (error) throw error
+  if (!data?.length) return
+
+  const now = new Date().toISOString()
+  const { error: updateError } = await supabase
+    .from('daily_logs')
+    .update({ morning_log: null, sleep_hours: null, updated_at: now })
+    .eq('user_id', userId)
+    .not('morning_log', 'is', null)
+
+  if (updateError) throw updateError
 }
 
 export async function fetchWorkouts(
@@ -113,6 +188,21 @@ export async function addWorkout(
 
   if (error) throw error
   return data as Workout
+}
+
+export async function updateWorkout(
+  id: string,
+  updates: Partial<Pick<Workout, 'duration_minutes' | 'notes'>>,
+): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+  const { error } = await supabase.from('workouts').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteWorkout(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+  const { error } = await supabase.from('workouts').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function fetchGoals(userId: string): Promise<Goal[]> {
@@ -273,4 +363,30 @@ export async function clearUserStorage(userId: string): Promise<void> {
   if (!supabase) throw new Error('Supabase not configured')
   const { error } = await supabase.from('user_storage').delete().eq('user_id', userId)
   if (error) throw error
+}
+
+/** Deletes the signed-in Supabase auth user (app data cascades via FK). */
+export async function deleteSupabaseAccount(): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+
+  const { error } = await supabase.rpc('delete_own_account')
+  if (error) throw error
+}
+
+/** Deletes all rows owned by the user across core tables and user_storage. */
+export async function clearAllUserData(userId: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+
+  await clearUserStorage(userId)
+
+  for (const table of [
+    'daily_logs',
+    'workouts',
+    'goals',
+    'schedule_blocks',
+    'reminders',
+  ] as const) {
+    const { error } = await supabase.from(table).delete().eq('user_id', userId)
+    if (error) throw error
+  }
 }

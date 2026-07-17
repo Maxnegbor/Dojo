@@ -67,7 +67,7 @@ export function getHabitTypes(): HabitTypeDefinition[] {
   } catch {
     /* ignore */
   }
-  return [...DEFAULT_HABIT_TYPES]
+  return []
 }
 
 export function saveHabitTypes(types: HabitTypeDefinition[]) {

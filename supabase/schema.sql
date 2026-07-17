@@ -14,6 +14,7 @@ create table if not exists daily_logs (
   notes text default '',
   habits jsonb default '{}',
   custom_metrics jsonb default '{}',
+  sleep_metrics jsonb default '{}',
   morning_log jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
@@ -115,6 +116,25 @@ create policy "Users manage own reminders" on reminders
 
 create policy "Users manage own user_storage" on user_storage
   for all using (auth.uid() = user_id);
+
+-- Account deletion (run delete_own_account as authenticated user)
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+
+revoke all on function public.delete_own_account() from public;
+grant execute on function public.delete_own_account() to authenticated;
 
 -- Indexes
 create index if not exists idx_daily_logs_user_date on daily_logs (user_id, date);

@@ -1,13 +1,12 @@
-import { clearAllUserStorage } from '@/lib/userStorage'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { clearAllUserData, isSupabaseConfigured } from '@/lib/supabase'
 
 const APP_PREFIX = 'personal-os-'
 const LEGACY_DATA_KEY = 'personal-os-data'
 
-/** Wipes all Dojo config keys and user storage (Supabase when configured). */
+/** Wipes all Dojo config keys and user data (Supabase when configured). */
 export async function resetAllAppData(userId?: string | null) {
   if (isSupabaseConfigured && userId) {
-    await clearAllUserStorage(userId)
+    await clearAllUserData(userId)
   }
 
   const keys: string[] = []

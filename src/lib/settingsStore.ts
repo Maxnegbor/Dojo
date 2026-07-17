@@ -1,8 +1,5 @@
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/types'
-import {
-  DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST,
-  normalizeWeeklyShutdownChecklist,
-} from '@/lib/weeklyShutdown'
+import { normalizeWeeklyShutdownChecklist } from '@/lib/weeklyShutdown'
 import { normalizeDailyChecklist } from '@/lib/dailyChecklist'
 
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
@@ -41,9 +38,10 @@ export function getAppSettings(): AppSettings {
         timeFormat: parsed.timeFormat === '24h' ? '24h' : '12h',
         weightUnit: parsed.weightUnit === 'lb' ? 'lb' : 'kg',
         accentColor: parsed.accentColor in ACCENT_SET ? parsed.accentColor : 'amber',
-        showWorkoutMetrics: parsed.showWorkoutMetrics !== false,
+        showWorkoutMetrics: parsed.showWorkoutMetrics === true,
         weeklyShutdownChecklist: normalizeWeeklyShutdownChecklist(parsed.weeklyShutdownChecklist),
         morningLogChecklist: normalizeDailyChecklist(parsed.morningLogChecklist),
+        requireMorningLog: parsed.requireMorningLog === true,
         dailyShutdownChecklist: normalizeDailyChecklist(parsed.dailyShutdownChecklist),
         devMode: parsed.devMode === true,
         ...timeline,
@@ -58,10 +56,7 @@ export function getAppSettings(): AppSettings {
 export function getDefaultAppSettings(): AppSettings {
   return {
     ...DEFAULT_APP_SETTINGS,
-    weeklyShutdownChecklist: DEFAULT_WEEKLY_SHUTDOWN_CHECKLIST.map((group) => ({
-      ...group,
-      items: group.items.map((item) => ({ ...item })),
-    })),
+    weeklyShutdownChecklist: [],
   }
 }
 

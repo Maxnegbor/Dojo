@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { addDays, parseISO } from 'date-fns'
-import { FlaskConical, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react'
+import { FlaskConical, RefreshCw, Rocket, TrendingDown, TrendingUp } from 'lucide-react'
 import { HabitRampFailureModal } from '@/components/today/HabitRampFailureModal'
 import { SettingsDeveloperDailyShutdown } from '@/components/settings/SettingsDeveloperDailyShutdown'
 import { SettingsDeveloperMorningLog } from '@/components/settings/SettingsDeveloperMorningLog'
@@ -20,9 +21,11 @@ import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habi
 import { localStore } from '@/lib/localStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
+import { startOnboardingPreview } from '@/lib/onboarding'
 
 export function SettingsDeveloperTab() {
   const { userId } = useAuth()
+  const navigate = useNavigate()
   const [message, setMessage] = useState<string | null>(null)
   const [previewPrompt, setPreviewPrompt] = useState<HabitRampFailurePrompt | null>(null)
 
@@ -99,6 +102,27 @@ export function SettingsDeveloperTab() {
           {message}
         </p>
       )}
+
+      <SettingsSection
+        title="New user onboarding"
+        description="Walk through the exact intake flow a new account sees after sign-up."
+      >
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            startOnboardingPreview()
+            navigate('/onboarding')
+          }}
+        >
+          <Rocket size={14} />
+          Preview onboarding flow
+        </Button>
+        <p className="text-xs text-zinc-500">
+          Opens the same screens as a new user — track selection, preferences, goals, and app tour.
+          Nothing is saved when you finish in preview mode.
+        </p>
+      </SettingsSection>
 
       <SettingsSection
         title="Habit ramping"

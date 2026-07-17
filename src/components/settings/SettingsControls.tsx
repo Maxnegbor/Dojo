@@ -107,3 +107,28 @@ export function SettingsSection({ title, description, children }: SettingsSectio
     </section>
   )
 }
+
+export function SettingsNavButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full shrink-0 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors sm:w-full',
+        active
+          ? 'bg-[var(--accent-950)] text-[var(--accent-300)] ring-1 ring-[var(--accent-ring)]'
+          : 'text-zinc-400 ring-1 ring-transparent hover:bg-zinc-900/80 hover:text-zinc-200',
+      )}
+    >
+      {label}
+    </button>
+  )
+}

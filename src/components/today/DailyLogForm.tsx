@@ -27,6 +27,7 @@ import { getAppSettings } from '@/lib/settingsStore'
 import { playHabitCheckSound, warmAudioContext } from '@/lib/timerSound'
 import { useHabitCompleteAnimation } from '@/hooks/useHabitCompleteAnimation'
 import { useSettings } from '@/context/SettingsContext'
+import type { ShutdownLogFilter } from '@/lib/shutdownLogConfig'
 import { cn, formatDate } from '@/lib/utils'
 
 interface DailyLogFormProps {
@@ -39,6 +40,8 @@ interface DailyLogFormProps {
   habitsOnly?: boolean
   /** Require explicit workout / none selection (shutdown flow). */
   requireWorkoutSelection?: boolean
+  /** When set, only show metrics configured for shutdown logging. */
+  metricsFilter?: ShutdownLogFilter
   onWorkoutSelectionChange?: (ready: boolean) => void
   userId?: string
   onSaved?: () => void
@@ -54,6 +57,7 @@ export function DailyLogForm({
   embedded = false,
   habitsOnly = false,
   requireWorkoutSelection = false,
+  metricsFilter,
   onWorkoutSelectionChange,
   userId,
   onSaved,
@@ -68,17 +72,52 @@ export function DailyLogForm({
   const dailyHabits = useDailyLogHabitTypes()
   const weeklyHabits = useWeeklyLogHabitTypes()
   const workoutTypes = useMemo(() => getWorkoutTypes(), [])
-  const showWorkouts = embedded && settings.showWorkoutMetrics && !habitsOnly
+  const filteredDailyHabits = useMemo(() => {
+    if (!metricsFilter) return dailyHabits
+    return dailyHabits.filter((habit) => metricsFilter.habitIds.has(habit.id))
+  }, [dailyHabits, metricsFilter])
+  const filteredWorkoutTypes = useMemo(() => {
+    if (!metricsFilter) return workoutTypes
+    return workoutTypes.filter((type) => metricsFilter.workoutCategories.has(type.id))
+  }, [workoutTypes, metricsFilter])
+  const filteredScalarGoals = useMemo(() => {
+    const base = dailyGoals.filter(
+      (goal) =>
+        goal.metric_key !== 'focus' &&
+        !goal.metric_key.startsWith('workout_'),
+    )
+    if (!metricsFilter) {
+      return base.filter(
+        (goal) =>
+          goal.metric_key !== 'sleep' &&
+          goal.metric_key !== 'steps' &&
+          goal.metric_key !== 'screen_time',
+      )
+    }
+    return base.filter((goal) => metricsFilter.goalKeys.has(goal.metric_key))
+  }, [dailyGoals, metricsFilter])
+  const showWorkouts =
+    embedded &&
+    settings.showWorkoutMetrics &&
+    !habitsOnly &&
+    (!metricsFilter || filteredWorkoutTypes.length > 0)
+  const showWeeklyHabits = weeklyHabits.length > 0 && !metricsFilter
   const hasDailyLogItems = habitsOnly
     ? dailyHabits.length > 0 || weeklyHabits.length > 0
-    : dailyGoals.some(
-        (g) =>
-          g.metric_key !== 'focus' &&
-          g.metric_key !== 'sleep' &&
-          !g.metric_key.startsWith('workout_'),
-      ) ||
-      dailyHabits.length > 0 ||
-      (showWorkouts && workoutTypes.length > 0)
+    : metricsFilter
+      ? filteredDailyHabits.length > 0 ||
+        filteredScalarGoals.length > 0 ||
+        (showWorkouts && filteredWorkoutTypes.length > 0)
+      : dailyGoals.some(
+          (g) =>
+            g.metric_key !== 'focus' &&
+            g.metric_key !== 'sleep' &&
+            g.metric_key !== 'steps' &&
+            g.metric_key !== 'screen_time' &&
+            !g.metric_key.startsWith('workout_'),
+        ) ||
+        dailyHabits.length > 0 ||
+        (showWorkouts && workoutTypes.length > 0)
 
   const buildDraft = useCallback((): DailyLogDraft => {
     if (!isEditableDay) {
@@ -135,14 +174,14 @@ export function DailyLogForm({
   }
 
   const habitStreaks = useMemo(() => {
-    return dailyHabits.reduce(
+    return filteredDailyHabits.reduce(
       (acc, habit) => {
         acc[habit.id] = getHabitStreak(streakLogs, habit.id, log.date, draft.habits)
         return acc
       },
       {} as Record<string, number>,
     )
-  }, [dailyHabits, streakLogs, log.date, draft.habits])
+  }, [filteredDailyHabits, streakLogs, log.date, draft.habits])
 
   useEffect(() => {
     resetAll()
@@ -264,16 +303,16 @@ export function DailyLogForm({
   }
 
   const { pendingHabits, completedHabits } = useMemo(() => {
-    const pending: typeof dailyHabits = []
-    const completed: typeof dailyHabits = []
-    for (const habit of dailyHabits) {
+    const pending: typeof filteredDailyHabits = []
+    const completed: typeof filteredDailyHabits = []
+    for (const habit of filteredDailyHabits) {
       const isDone = !!draft.habits?.[habit.id]
       const animating = isAnimating(habit.id)
       if (isDone && !animating) completed.push(habit)
       else pending.push(habit)
     }
     return { pendingHabits: pending, completedHabits: completed }
-  }, [dailyHabits, draft.habits, isAnimating])
+  }, [filteredDailyHabits, draft.habits, isAnimating])
 
   useLayoutEffect(() => {
     if (completedHabits.length > prevCompletedCountRef.current && !userOpenedDoneListRef.current) {
@@ -282,7 +321,7 @@ export function DailyLogForm({
     prevCompletedCountRef.current = completedHabits.length
   }, [completedHabits.length])
 
-  const renderHabitRow = (habit: (typeof dailyHabits)[number]) => (
+  const renderHabitRow = (habit: (typeof filteredDailyHabits)[number]) => (
     <HabitLogRow
       habit={habit}
       done={!!draft.habits?.[habit.id]}
@@ -311,14 +350,27 @@ export function DailyLogForm({
       )
     }
 
+    if (key === 'weight') {
+      return (
+        <GoalMetricInput
+          key={goal.id}
+          label={goal.name}
+          unit={goal.unit}
+          disabled={!isEditableDay}
+          value={draft.weight}
+          onChange={(value) => updateDraft({ weight: value })}
+        />
+      )
+    }
+
     if (key === 'steps') {
       return (
         <GoalMetricInput
           key={goal.id}
           label={goal.name}
           unit={goal.unit}
-          value={draft.steps}
           disabled={!isEditableDay}
+          value={draft.steps}
           onChange={(value) => updateDraft({ steps: value })}
         />
       )
@@ -330,9 +382,8 @@ export function DailyLogForm({
           key={goal.id}
           label={goal.name}
           unit={goal.unit}
-          metricKey={key}
-          value={draft.screen_time_minutes}
           disabled={!isEditableDay}
+          value={draft.screen_time_minutes}
           onChange={(value) => updateDraft({ screen_time_minutes: value })}
         />
       )
@@ -361,36 +412,31 @@ export function DailyLogForm({
     return null
   }
 
-  const scalarGoals = dailyGoals.filter(
-    (g) =>
-      g.metric_key !== 'focus' &&
-      g.metric_key !== 'sleep' &&
-      !g.metric_key.startsWith('workout_'),
-  )
+  const emptyLogHint = metricsFilter
+    ? 'No shutdown log fields configured yet. Add metrics in Settings → Routines → Daily shutdown.'
+    : 'Nothing to log today yet. Add metrics on the Metrics page to start tracking.'
 
   const formBody = (
     <div className="space-y-4">
       {!hasDailyLogItems ? (
-        <p className="py-6 text-center text-sm text-zinc-500">
-          Nothing to log today yet. Add metrics on the Metrics page to start tracking.
-        </p>
+        <p className="py-6 text-center text-sm text-zinc-500">{emptyLogHint}</p>
       ) : (
         <>
-          {dailyHabits.length > 0 && (
+          {filteredDailyHabits.length > 0 && (
             <div>
-              {weeklyHabits.length > 0 && (
+              {showWeeklyHabits && (
                 <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                   Daily habits
                 </p>
               )}
-              {dailyHabits.length > 0 && weeklyHabits.length === 0 && (
+              {filteredDailyHabits.length > 0 && !showWeeklyHabits && (
                 <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                   Habits
                 </p>
               )}
               {embedded ? (
                 <div className="grid grid-cols-2 gap-1.5">
-                  {dailyHabits.map((habit) => (
+                  {filteredDailyHabits.map((habit) => (
                     <div key={habit.id}>{renderHabitRow(habit)}</div>
                   ))}
                 </div>
@@ -436,7 +482,7 @@ export function DailyLogForm({
             </div>
           )}
 
-          {weeklyHabits.length > 0 && (
+          {showWeeklyHabits && (
             <WeeklyHabitsLogSection
               date={log.date}
               weekStartsOn={settings.weekStartsOn}
@@ -445,19 +491,19 @@ export function DailyLogForm({
             />
           )}
 
-          {scalarGoals.length > 0 && !habitsOnly && (
+          {filteredScalarGoals.length > 0 && !habitsOnly && (
             <div className="grid grid-cols-2 gap-3">
-              {scalarGoals.map(renderGoalInput)}
+              {filteredScalarGoals.map(renderGoalInput)}
             </div>
           )}
 
-          {showWorkouts && workoutTypes.length > 0 && (
+          {showWorkouts && filteredWorkoutTypes.length > 0 && (
             <div>
               <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                 Workouts
               </p>
               <div className="flex items-start gap-1">
-                {workoutTypes.map((type) => {
+                {filteredWorkoutTypes.map((type) => {
                   const selected = type.id in workoutDrafts
                   return (
                     <button

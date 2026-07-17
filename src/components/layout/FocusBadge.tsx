@@ -9,16 +9,19 @@ export function FocusBadge() {
   const { focusToday, focusWeekExceptToday, liveFocusSeconds } = useFocus()
   const focusSettings = getFocusSettings()
 
-  const currentMinutes = useMemo(() => {
-    const live = liveFocusSeconds / 60
+  const liveMinutes = liveFocusSeconds / 60
+  const dailyMinutes = focusToday + liveMinutes
+
+  const progressMinutes = useMemo(() => {
     if (focusSettings.focusGoalEnabled && focusSettings.focusGoalPeriod === 'weekly') {
-      return focusWeekExceptToday + focusToday + live
+      return focusWeekExceptToday + focusToday + liveMinutes
     }
-    return focusToday + live
+    return dailyMinutes
   }, [
+    dailyMinutes,
     focusToday,
     focusWeekExceptToday,
-    liveFocusSeconds,
+    liveMinutes,
     focusSettings.focusGoalEnabled,
     focusSettings.focusGoalPeriod,
   ])
@@ -27,7 +30,7 @@ export function FocusBadge() {
     focusSettings.focusGoalEnabled ? focusGoalTargetMinutes(focusSettings) : null
   const percent =
     targetMinutes && targetMinutes > 0
-      ? Math.min(100, (currentMinutes / targetMinutes) * 100)
+      ? Math.min(100, (progressMinutes / targetMinutes) * 100)
       : null
   const isLive = liveFocusSeconds > 0
 
@@ -45,7 +48,7 @@ export function FocusBadge() {
       <div className="relative flex items-center gap-2 px-3 py-1.5">
         <Brain size={14} className="shrink-0 text-[var(--accent-400)]" />
         <span className="text-xs font-medium tabular-nums text-[var(--accent-200)]">
-          {formatDuration(currentMinutes)}
+          {formatDuration(dailyMinutes)}
         </span>
       </div>
     </div>

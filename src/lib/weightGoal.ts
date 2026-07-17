@@ -6,7 +6,21 @@ import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeekDates } from '@/lib/utils'
 import { formatGoalEndDate } from '@/lib/goalPeriod'
 
-export type WeightGoalMode = 'bulk' | 'cut'
+export type WeightGoalMode = 'bulk' | 'cut' | 'maintain'
+
+const MAINTAIN_WEIGHT_EPSILON_KG = 0.01
+const MAINTAIN_WEEKLY_TOLERANCE_KG = 0.2
+const MAINTAIN_TARGET_TOLERANCE_KG = 0.5
+
+export function weightGoalModeLabel(mode: WeightGoalMode): string {
+  if (mode === 'bulk') return 'Bulk'
+  if (mode === 'cut') return 'Cut'
+  return 'Maintain'
+}
+
+export function isMaintainWeightGoal(goal: Goal): boolean {
+  return weightGoalMode(goal) === 'maintain'
+}
 
 export interface WeightGoalProgress {
   lastWeekAvg: number
@@ -29,6 +43,7 @@ export function isWeightGoal(goal: Goal): boolean {
 export function weightGoalMode(goal: Goal): WeightGoalMode {
   const start = goal.goal_weight_start ?? 0
   const target = goal.goal_weight_target ?? 0
+  if (Math.abs(target - start) <= MAINTAIN_WEIGHT_EPSILON_KG) return 'maintain'
   return target > start ? 'bulk' : 'cut'
 }
 
@@ -77,7 +92,17 @@ export function weeklyWeightHit(
   thisWeekAvg: number,
 ): boolean {
   if (mode === 'bulk') return thisWeekAvg > lastWeekAvg
-  return thisWeekAvg < lastWeekAvg
+  if (mode === 'cut') return thisWeekAvg < lastWeekAvg
+  return Math.abs(thisWeekAvg - lastWeekAvg) <= MAINTAIN_WEEKLY_TOLERANCE_KG
+}
+
+function maintainProximityPercent(weightKg: number, targetKg: number): number {
+  const drift = Math.abs(weightKg - targetKg)
+  if (drift <= MAINTAIN_TARGET_TOLERANCE_KG) {
+    return Math.round(100 - (drift / MAINTAIN_TARGET_TOLERANCE_KG) * 15)
+  }
+  const maxDrift = 3
+  return Math.max(0, Math.round(100 - (drift / maxDrift) * 100))
 }
 
 export function formatWeightDelta(
@@ -111,9 +136,19 @@ export function getWeightGoalProgress(
   const lastWeekAvg = lastLogged ?? start
   const thisWeekAvg = thisLogged ?? lastWeekAvg
 
-  const percentBefore = weightToCampaignPercent(lastWeekAvg, start, target)
-  const percentAfter = weightToCampaignPercent(thisWeekAvg, start, target)
-  const hit = weeklyWeightHit(mode, lastWeekAvg, thisWeekAvg)
+  const percentBefore =
+    mode === 'maintain'
+      ? maintainProximityPercent(lastWeekAvg, target)
+      : weightToCampaignPercent(lastWeekAvg, start, target)
+  const percentAfter =
+    mode === 'maintain'
+      ? maintainProximityPercent(thisWeekAvg, target)
+      : weightToCampaignPercent(thisWeekAvg, start, target)
+  const hit =
+    mode === 'maintain'
+      ? weeklyWeightHit(mode, lastWeekAvg, thisWeekAvg) &&
+        Math.abs(thisWeekAvg - target) <= MAINTAIN_TARGET_TOLERANCE_KG
+      : weeklyWeightHit(mode, lastWeekAvg, thisWeekAvg)
 
   const detail = `${formatWeightStepper(lastWeekAvg, unit)} → ${formatWeightStepper(thisWeekAvg, unit)} ${unit} avg`
   const label = `${formatWeightDelta(lastWeekAvg, thisWeekAvg, unit)} this week`
@@ -134,6 +169,9 @@ export function formatWeightGoalRange(
   targetKg: number,
   unit: AppSettings['weightUnit'],
 ): string {
+  if (Math.abs(targetKg - startKg) <= MAINTAIN_WEIGHT_EPSILON_KG) {
+    return `${formatWeightStepper(startKg, unit)} ${unit} target`
+  }
   return `${formatWeightStepper(startKg, unit)} → ${formatWeightStepper(targetKg, unit)} ${unit}`
 }
 

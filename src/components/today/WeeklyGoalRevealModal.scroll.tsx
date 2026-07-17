@@ -168,9 +168,11 @@ function GoalRevealCard({
                   ? 'Workout · weekly total'
                   : 'Workout · daily avg'
                 : summary.isWeight
-                  ? summary.weightMode === 'bulk'
-                    ? 'Weight · bulk'
-                    : 'Weight · cut'
+                  ? summary.weightMode === 'maintain'
+                    ? 'Weight · maintain'
+                    : summary.weightMode === 'bulk'
+                      ? 'Weight · bulk'
+                      : 'Weight · cut'
                   : summary.kind === 'weekly'
                     ? 'Weekly'
                     : 'Daily goal'}
