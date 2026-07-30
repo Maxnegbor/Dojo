@@ -19,7 +19,7 @@ import { getWeeklyLog, setWeeklyLogValue } from '@/lib/weeklyLogStore'
 import { workoutMetricKey } from '@/lib/workoutTypes'
 import { isWeightGoal } from '@/lib/weightGoal'
 import { formatDate } from '@/lib/utils'
-import type { DailyLog, Goal, Workout } from '@/types'
+import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
 import { normalizeHabits } from '@/types'
 import type { HabitTypeDefinition } from '@/lib/habitTypes'
 import type { WorkoutTypeDefinition } from '@/lib/workoutTypes'
@@ -156,7 +156,7 @@ export function getDailyHistoryValue(
   }
 
   if (context.metricKey?.startsWith('workout_')) {
-    const total = getMetricValue(context.metricKey, log, workouts, date)
+    const total = getMetricValue(context.metricKey as MetricKey, log, workouts, date)
     return total > 0 ? total : null
   }
 
@@ -267,7 +267,7 @@ export async function persistMetricHistoryEntry(options: {
   sleepConfig: SleepMetricsConfig
   weightUnit: 'kg' | 'lb'
 }): Promise<void> {
-  const { userId, context, date, weekKey, value, log, workouts, sleepConfig, weightUnit } = options
+  const { userId, context, date, weekKey, value, log, workouts, weightUnit } = options
 
   if (context.period === 'weekly') {
     if (!weekKey) return

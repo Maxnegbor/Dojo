@@ -40,7 +40,6 @@ function summarizeWeek(
   shortLabel: string,
   asOfDate: string,
 ): WeeklyPulseWeekSummary {
-  const lastDay = weekDates[weekDates.length - 1] ?? asOfDate
   const series = computePulseSeries(
     weekDates,
     logs,

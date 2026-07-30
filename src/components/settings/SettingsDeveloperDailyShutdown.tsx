@@ -477,6 +477,9 @@ export function SettingsDeveloperDailyShutdown() {
           onClose={closeShutdownPreview}
           onComplete={completeShutdownPreview}
           onCompleteReminder={() => undefined}
+          onAddReminder={() => undefined}
+          onUpdateReminder={() => undefined}
+          onRemoveReminder={() => undefined}
         />
       )}
 

@@ -844,10 +844,6 @@ export function MetricsEditor({
     setForm(emptyForm('weight', 'add'))
   }
 
-  const openAddSleep = () => {
-    setForm(emptyForm('sleep', 'add'))
-  }
-
   const openAddFocus = () => {
     setForm(emptyForm('focus', 'add'))
   }

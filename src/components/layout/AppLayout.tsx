@@ -90,13 +90,15 @@ function SidebarMainNav({
     const aside = navRef.current?.closest('aside')
     if (!aside) return
 
+    const panel = aside.querySelector(':scope > div')
+    if (!(panel instanceof HTMLElement)) return
+
     const onWidthTransitionEnd = (event: TransitionEvent) => {
       if (event.propertyName === 'width') updateIndicator()
     }
 
-    const panel = aside.querySelector(':scope > div')
-    panel?.addEventListener('transitionend', onWidthTransitionEnd)
-    return () => panel?.removeEventListener('transitionend', onWidthTransitionEnd)
+    panel.addEventListener('transitionend', onWidthTransitionEnd)
+    return () => panel.removeEventListener('transitionend', onWidthTransitionEnd)
   }, [updateIndicator])
 
   return (

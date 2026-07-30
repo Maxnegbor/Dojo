@@ -156,7 +156,7 @@ export function MetricHistoryModal({
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
-  const [weekLogRevision, setWeekLogRevision] = useState(0)
+  const [, setWeekLogRevision] = useState(0)
   const [editingRow, setEditingRow] = useState<HistoryRow | null>(null)
   const [editValue, setEditValue] = useState<number | boolean | null>(null)
   const [saving, setSaving] = useState(false)
@@ -684,9 +684,7 @@ export function MetricHistoryModal({
                             : null
                         const isDone = value === true
                         const hasValue =
-                          value != null &&
-                          (typeof value !== 'boolean' || value) &&
-                          value !== false
+                          value != null && (typeof value !== 'boolean' || value === true)
                         const isToday = row.kind === 'daily' && row.date === today
                         const parts = row.kind === 'daily' ? shortDayParts(row.date) : null
                         const fullDateLabel =

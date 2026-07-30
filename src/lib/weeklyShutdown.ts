@@ -410,7 +410,7 @@ export function buildWeeklyShutdownSummaries(
   const prevLastLog = logForDate(logs, prevLastDate)
   const focusEnabled = getFocusSettings().focusGoalEnabled
   const knownWorkoutKeys = new Set(
-    getWorkoutTypes().map((type) => workoutMetricKey(type.id)),
+    getWorkoutTypes().map((type) => workoutMetricKey(type.id) as string),
   )
   const targeted = dedupeActiveGoalsByMetricKey(goals).filter((goal) => {
     if (!hasTarget(goal)) return false

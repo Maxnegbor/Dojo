@@ -144,7 +144,7 @@ export function dedupeActiveGoalsByMetricKey(goals: Goal[]): Goal[] {
  */
 export function getStaleDuplicateGoals(goals: Goal[]): Goal[] {
   const knownWorkoutKeys = new Set(
-    getWorkoutTypes().map((type) => workoutMetricKey(type.id)),
+    getWorkoutTypes().map((type) => workoutMetricKey(type.id) as string),
   )
   const keepIds = new Set(dedupeActiveGoalsByMetricKey(goals).map((goal) => goal.id))
   return getActiveGoals(goals).filter((goal) => {
