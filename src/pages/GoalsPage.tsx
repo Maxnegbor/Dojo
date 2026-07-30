@@ -7,6 +7,7 @@ import {
 } from '@/lib/goalTargetSnapshots'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
+import { cleanupStaleGoals } from '@/lib/goalCleanup'
 import type { Goal } from '@/types'
 import { useAuth } from '@/hooks/useData'
 
@@ -15,16 +16,28 @@ export function GoalsPage() {
   const { settings } = useSettings()
   const [goals, setGoals] = useState<Goal[]>([])
 
+  const persistGoal = useCallback(async (goal: Goal) => {
+    if (isSupabaseConfigured) {
+      const { upsertGoal } = await import('@/lib/supabase')
+      await upsertGoal(goal)
+    } else {
+      localStore.upsertGoal(goal)
+    }
+  }, [])
+
   const load = useCallback(async () => {
     if (!userId) return
 
-    if (isSupabaseConfigured) {
-      const { fetchGoals } = await import('@/lib/supabase')
-      setGoals(await fetchGoals(userId))
-    } else {
-      setGoals(localStore.getGoals())
+    const loaded = isSupabaseConfigured
+      ? await (await import('@/lib/supabase')).fetchGoals(userId)
+      : localStore.getGoals()
+
+    const { goals: cleaned, toRetire } = cleanupStaleGoals(loaded)
+    setGoals(cleaned)
+    for (const duplicate of toRetire) {
+      await persistGoal(duplicate)
     }
-  }, [userId])
+  }, [userId, persistGoal])
 
   useEffect(() => { load() }, [load])
 
@@ -38,12 +51,7 @@ export function GoalsPage() {
       backfillPastWeekSnapshotsOnGoalEdit(existing, settings.weekStartsOn)
     }
 
-    if (isSupabaseConfigured) {
-      const { upsertGoal } = await import('@/lib/supabase')
-      await upsertGoal(goal)
-    } else {
-      localStore.upsertGoal(goal)
-    }
+    await persistGoal(goal)
     setGoals((prev) => {
       const idx = prev.findIndex((g) => g.id === goal.id)
       if (idx >= 0) { const next = [...prev]; next[idx] = goal; return next }

@@ -77,6 +77,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html {
+  background: #0a0a0f;
+}
+
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -155,8 +159,8 @@ input[type="number"] {
 
 .habit-wave-fill--animating,
 .completion-wave-fill--animating {
-  background: rgb(16 185 129 / 0.14);
-  box-shadow: inset 0 0 0 1px rgb(16 185 129 / 0.28);
+  background: color-mix(in srgb, var(--accent-500) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-500) 28%, transparent);
   clip-path: circle(0 at 1.125rem 50%);
   animation: completion-wave-ripple 900ms cubic-bezier(0.25, 0.85, 0.35, 1) forwards;
 }
@@ -167,10 +171,120 @@ input[type="number"] {
   }
 }
 
+@keyframes pulse-breakdown-open {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.pulse-breakdown-open {
+  animation: pulse-breakdown-open 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.metric-history-grid-row {
+  --metric-history-cols: 7;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.metric-history-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: calc(
+    (100% - (var(--metric-history-cols) - 1) * 0.5rem) / var(--metric-history-cols)
+  );
+  transition:
+    flex-grow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    min-width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 200ms ease,
+    background-color 200ms ease,
+    box-shadow 280ms ease;
+}
+
+@keyframes metric-history-cell-open {
+  from {
+    opacity: 0.88;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.metric-history-cell-expand {
+  flex: 0 0 42%;
+  width: 42%;
+  min-width: 8.75rem;
+  max-width: 48%;
+  transform-origin: right center;
+  animation: metric-history-cell-open 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Prefer compressing cells on the left; keep right-side neighbors near their normal width. */
+.metric-history-cell-after {
+  flex: 0 1 calc(
+    (100% - (var(--metric-history-cols) - 1) * 0.5rem) / var(--metric-history-cols)
+  );
+  min-width: 0;
+  max-width: calc(
+    (100% - (var(--metric-history-cols) - 1) * 0.5rem) / var(--metric-history-cols)
+  );
+}
+
+.metric-history-cell-before {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+}
+
+@media (min-width: 640px) {
+  .metric-history-cell-expand {
+    flex-basis: 36%;
+    width: 36%;
+    min-width: 10rem;
+    max-width: 42%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metric-history-cell,
+  .metric-history-cell-expand {
+    transition: none;
+    animation: none;
+  }
+}
+
+@keyframes pulse-breakdown-close {
+  from {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+.pulse-breakdown-close {
+  animation: pulse-breakdown-close 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .habit-wave-fill--done,
 .completion-wave-fill--done {
-  background: rgb(16 185 129 / 0.14);
-  box-shadow: inset 0 0 0 1px rgb(16 185 129 / 0.28);
+  background: color-mix(in srgb, var(--accent-500) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-500) 28%, transparent);
   clip-path: circle(150% at 1.125rem 50%);
 }
 
@@ -269,7 +383,7 @@ input[type="number"] {
 @keyframes pulse-ring-ripple {
   0% {
     transform: scale(var(--pulse-ring-start, 0.5));
-    opacity: 1;
+    opacity: var(--pulse-ring-peak-opacity, 0.25);
   }
   50% {
     opacity: 0;
@@ -317,7 +431,7 @@ input[type="number"] {
   opacity: 0;
   border-style: solid;
   border-width: var(--pulse-ring-border, 2.5px);
-  border-color: var(--pulse-core-border-bright);
+  border-color: var(--pulse-ring-color, var(--pulse-core-border-bright));
   animation-fill-mode: backwards;
 }
 
@@ -382,7 +496,7 @@ input[type="number"] {
   margin-left: -0.25rem;
   margin-top: -0.25rem;
   border-radius: 9999px;
-  background-color: rgb(239 68 68);
+  background-color: var(--accent-500);
   transform-origin: center;
   animation: schedule-now-ping 4.4s ease-out infinite;
   pointer-events: none;
@@ -398,3 +512,106 @@ input[type="number"] {
 .schedule-now-dot__ping:nth-child(2) {
   animation-delay: 2.2s;
 }
+
+@keyframes today-btn-breathe-accent {
+  0%,
+  100% {
+    background-color: var(--accent-500);
+    box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--accent-500) 35%, transparent);
+  }
+  50% {
+    background-color: var(--accent-400);
+    box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--accent-400) 45%, transparent);
+  }
+}
+
+.today-btn-breathe-accent {
+  animation: today-btn-breathe-accent 2.8s ease-in-out infinite;
+}
+
+.today-btn-breathe-accent:hover {
+  animation: none;
+  background-color: var(--accent-400);
+}
+
+@keyframes pulse-radiant-burst-wave {
+  0% {
+    transform: translate(-50%, -50%) scale(0.12);
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(5.8);
+    opacity: 0;
+  }
+}
+
+.pulse-radiant-burst-wave {
+  position: absolute;
+  width: min(36vmin, 14rem);
+  height: min(36vmin, 14rem);
+  animation: pulse-radiant-burst-wave 1.6s cubic-bezier(0.16, 0.7, 0.25, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.pulse-radiant-burst-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  /* Doughnut trail: empty center, intense near the ring, fading inward behind it. */
+  background: radial-gradient(
+    circle,
+    transparent 0%,
+    transparent 42%,
+    color-mix(in srgb, var(--accent-600) 18%, transparent) 52%,
+    color-mix(in srgb, var(--accent-500) 48%, transparent) 62%,
+    color-mix(in srgb, var(--accent-400) 72%, white 8%) 72%,
+    color-mix(in srgb, var(--accent-300) 55%, transparent) 82%,
+    transparent 92%
+  );
+  filter: blur(14px);
+  transform: scale(0.92);
+}
+
+.pulse-radiant-burst-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 7px solid color-mix(in srgb, var(--accent-400) 88%, white 12%);
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.pulse-radiant-nova-soft {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent-300) 55%, white 18%) 0%,
+    color-mix(in srgb, var(--accent-500) 42%, transparent) 42%,
+    color-mix(in srgb, var(--accent-600) 12%, transparent) 68%,
+    transparent 78%
+  );
+  filter: blur(10px);
+  will-change: transform, opacity;
+}
+
+.pulse-radiant-nova-ring {
+  border: 2px solid color-mix(in srgb, var(--accent-300) 80%, white 20%);
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--accent-400) 55%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--accent-300) 35%, transparent);
+  will-change: transform, opacity;
+}
+
+.pulse-radiant-nova-flash {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent-200) 70%, white 30%) 0%,
+    color-mix(in srgb, var(--accent-400) 45%, transparent) 55%,
+    transparent 72%
+  );
+  filter: blur(4px);
+  will-change: opacity;
+}
+

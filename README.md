@@ -60,6 +60,60 @@ On first login, existing browser `personal-os-*` keys are migrated into `user_st
 
 Without Supabase credentials, the app runs in **local mode** using browser localStorage.
 
+## Host Dojo (GitHub + Supabase + Vercel)
+
+You do **not** need a local Node install for production. Host everything in the browser.
+
+### 1. GitHub
+
+Repo is already at [github.com/Maxnegbor/Dojo](https://github.com/Maxnegbor/Dojo).
+
+1. Open the repo on GitHub
+2. Commit/push your latest code (from this machine or GitHub web / Codespaces) so `main` is up to date
+
+### 2. Supabase (database + auth)
+
+1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) → **New project** (or open an existing one)
+2. Wait until the project is ready
+3. Open **SQL Editor** → New query → paste the full contents of [`supabase/schema.sql`](supabase/schema.sql) → **Run**
+4. If the project already existed without newer columns, also run each file in order under `supabase/migrations/`
+5. **Authentication → Providers → Email** → enable Email
+6. **Authentication → URL Configuration**
+   - **Site URL:** your Vercel URL (set after step 3), e.g. `https://dojo-xxxxx.vercel.app`
+   - **Redirect URLs:** add the same URL, plus `http://localhost:5173` if you develop locally later
+7. **Project Settings → API** — copy:
+   - Project URL → `VITE_SUPABASE_URL`
+   - `anon` `public` key → `VITE_SUPABASE_ANON_KEY`
+
+### 3. Vercel (host the app)
+
+1. Go to [vercel.com](https://vercel.com) → **Add New… → Project**
+2. **Import** the `Maxnegbor/Dojo` GitHub repo (authorize GitHub if asked)
+3. Framework preset: **Vite** (auto-detected). Build: `npm run build`, output: `dist`
+4. **Environment Variables** (Production + Preview):
+
+| Name | Value |
+|------|--------|
+| `VITE_SUPABASE_URL` | `https://YOUR_REF.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | your anon key |
+
+5. Click **Deploy**
+6. Copy the deployment URL (e.g. `https://dojo-xxx.vercel.app`)
+7. Paste that URL into Supabase **Site URL** / **Redirect URLs** (step 2.6) and save
+
+Every push to `main` redeploys automatically.
+
+### 4. Smoke test
+
+1. Open the Vercel URL
+2. Sign up with email/password
+3. Complete onboarding and log a metric
+4. Confirm data appears after refresh (Postgres, not only localStorage)
+
+### Optional: custom domain
+
+Vercel → Project → **Settings → Domains** → add your domain, then set that domain as Supabase Site URL.
+
 ## Project Structure
 
 ```

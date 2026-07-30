@@ -33,13 +33,19 @@ export function useHabitCompleteAnimation(options?: { onExitComplete?: (id: stri
   )
 
   const startComplete = useCallback(
-    (id: string) => {
+    (id: string, options?: { exit?: boolean }) => {
+      const shouldExit = options?.exit !== false
       clearPhase(id)
       setPhases((prev) => new Map(prev).set(id, 'filling'))
 
       timersRef.current.set(
         `${id}:fill`,
         window.setTimeout(() => {
+          if (!shouldExit) {
+            onExitCompleteRef.current?.(id)
+            clearPhase(id)
+            return
+          }
           setPhases((prev) => new Map(prev).set(id, 'exiting'))
           timersRef.current.set(
             `${id}:exit`,

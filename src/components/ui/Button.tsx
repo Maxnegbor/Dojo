@@ -24,7 +24,7 @@ export function Button({
         variant === 'primary' &&
           'bg-[var(--accent-600)] text-white hover:bg-[var(--accent-500)] active:bg-[var(--accent-700)]',
         variant === 'secondary' &&
-          'border border-zinc-700 bg-zinc-800/80 text-zinc-200 hover:bg-zinc-700/80',
+          'border border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:bg-zinc-800',
         variant === 'ghost' && 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200',
         variant === 'danger' &&
           'bg-red-600/20 text-red-400 hover:bg-red-600/30',

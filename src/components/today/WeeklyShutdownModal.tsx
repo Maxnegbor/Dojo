@@ -6,7 +6,7 @@ import { WeightStepper } from '@/components/ui/WeightStepper'
 import { HabitLogRow } from '@/components/today/HabitLogRow'
 import { useSettings } from '@/context/SettingsContext'
 import { useHabitCompleteAnimation } from '@/hooks/useHabitCompleteAnimation'
-import { getWeeklyLogGoals } from '@/lib/goals'
+import { getWeeklyShutdownLogGoals } from '@/lib/trackedLogsNet'
 import { getHabitTargetLabel } from '@/lib/habitRamp'
 import {
   getWeeklyLogHabitTypes,
@@ -21,7 +21,7 @@ import {
   weekDateRangeLabel,
 } from '@/lib/weeklyShutdown'
 import { resolvePriorWeeklyWeight } from '@/lib/weightAutofill'
-import { isWeightGoal } from '@/lib/weightGoal'
+import { getActiveWeightGoal, isWeightGoal } from '@/lib/weightGoal'
 import { getWeeklyLog, setWeeklyLog } from '@/lib/weeklyLogStore'
 import type { Goal } from '@/types'
 import { cn } from '@/lib/utils'
@@ -47,8 +47,8 @@ export function WeeklyShutdownModal({
     [settings.weeklyShutdownChecklist],
   )
   const itemIds = useMemo(() => allWeeklyShutdownItemIds(checklist), [checklist])
-  const weeklyLogGoals = useMemo(() => getWeeklyLogGoals(goals), [goals])
-  const weightGoal = useMemo(() => weeklyLogGoals.find(isWeightGoal), [weeklyLogGoals])
+  const weeklyLogGoals = useMemo(() => getWeeklyShutdownLogGoals(goals), [goals])
+  const weightGoal = useMemo(() => getActiveWeightGoal(weeklyLogGoals), [weeklyLogGoals])
   const otherWeeklyGoals = useMemo(
     () => weeklyLogGoals.filter((g) => !isWeightGoal(g)),
     [weeklyLogGoals],
@@ -65,7 +65,7 @@ export function WeeklyShutdownModal({
   const [weeklyValues, setWeeklyValues] = useState<Record<string, string>>(() => {
     const stored = getWeeklyLog(weekKey)
     const initial: Record<string, string> = {}
-    for (const goal of getWeeklyLogGoals(goals)) {
+    for (const goal of getWeeklyShutdownLogGoals(goals)) {
       if (isWeightGoal(goal)) continue
       const v = stored[goal.metric_key]
       if (v != null) initial[goal.metric_key] = String(v)

@@ -51,8 +51,11 @@ function WorkoutGoalProgressCard({
     <Card className={compact ? 'p-2.5' : undefined}>
       <div className={compact ? 'mb-1 flex items-center gap-1.5' : 'mb-2 flex items-start gap-2'}>
         <span
-          className={compact ? 'h-2.5 w-2.5 shrink-0 rounded-full' : 'mt-1 h-3 w-3 shrink-0 rounded-full'}
-          style={{ backgroundColor: type.color }}
+          className={
+            compact
+              ? 'h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent-500)]'
+              : 'mt-1 h-3 w-3 shrink-0 rounded-full bg-[var(--accent-500)]'
+          }
         />
         <div className="min-w-0">
           <h3 className={compact ? 'truncate text-xs font-medium text-zinc-200' : 'text-sm font-medium text-zinc-200'}>

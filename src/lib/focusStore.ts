@@ -21,6 +21,7 @@ export function getFocusSettings(): FocusTimerSettings {
         longBreakAfterCycles: Math.max(1, parsed.longBreakAfterCycles ?? DEFAULT_FOCUS_SETTINGS.longBreakAfterCycles),
         longBreakEnabled: Boolean(parsed.longBreakEnabled),
         allowPause: Boolean(parsed.allowPause),
+        promptFocusScore: Boolean(parsed.promptFocusScore),
         focusGoalEnabled: Boolean(parsed.focusGoalEnabled),
         focusGoalPeriod: parsed.focusGoalPeriod === 'weekly' ? 'weekly' : 'daily',
         focusGoalAmount: snapFocusGoalAmount(

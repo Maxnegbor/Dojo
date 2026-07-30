@@ -1,18 +1,31 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Maximize2, Minimize2, Trash2 } from 'lucide-react'
-import { BLOCK_COLOR_DEFAULT_TITLES, BLOCK_COLOR_HEX, SCHEDULE_BLOCK_COLORS, type ScheduleBlock } from '@/types'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Maximize2, Minimize2, Trash2, X } from 'lucide-react'
+import { GREY_BLOCK_TITLE, type ScheduleBlock, type WorkoutCategory } from '@/types'
 import { createScheduleBlock, isGreyBlock, setScheduleBlockColor } from '@/lib/scheduleBlock'
+import {
+  getScheduleColorPresets,
+  getWorkoutSchedulePreset,
+  SCHEDULE_COLORS_CHANGED,
+  type ScheduleColorPreset,
+} from '@/lib/scheduleColors'
 import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
+import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
-import { generateId, minutesToTime, parseTimeToMinutes, cn } from '@/lib/utils'
+import { generateId, formatDuration, minutesToTime, parseTimeToMinutes, cn } from '@/lib/utils'
 
 const HOUR_HEIGHT = 88
 const TIMELINE_TOP_INSET = 12
 const NOW_DOT_GUTTER = 16
-const COMPACT_BLOCK_MAX_MINUTES = 60
-/** Visible scroll viewport — hours of timeline shown before scrolling. */
-const SCHEDULE_VISIBLE_HOURS = 8
-const SCHEDULE_SCROLL_HEIGHT = HOUR_HEIGHT * SCHEDULE_VISIBLE_HOURS + TIMELINE_TOP_INSET
+/** Schedule snap + minimum block length (minutes). */
+const GRID_MINUTES = 30
+/** Blocks at or under this use the tight layout; 60+ matches the tall layout. */
+const COMPACT_BLOCK_MAX_MINUTES = GRID_MINUTES
+/** Minimum scroll viewport when the screen budget is tiny. */
+const SCHEDULE_MIN_VIEWPORT = HOUR_HEIGHT + TIMELINE_TOP_INSET
+/** Fallback until the first layout measurement (≈6 hours). */
+const SCHEDULE_FALLBACK_VIEWPORT = HOUR_HEIGHT * 6 + TIMELINE_TOP_INSET
+/** Gap between schedule bottom and the viewport / height host edge. */
+const SCHEDULE_VIEWPORT_GAP = 16
 
 interface ScheduleBlockTitleInputProps {
   value: string
@@ -22,6 +35,8 @@ interface ScheduleBlockTitleInputProps {
   onMouseDown?: (e: React.MouseEvent<HTMLInputElement>) => void
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
   placeholder?: string
+  inputRef?: React.Ref<HTMLInputElement>
+  autoFocus?: boolean
 }
 
 function ScheduleBlockTitleInput({
@@ -32,6 +47,8 @@ function ScheduleBlockTitleInput({
   onMouseDown,
   onKeyDown,
   placeholder = 'New Block',
+  inputRef,
+  autoFocus,
 }: ScheduleBlockTitleInputProps) {
   const mirrorText = value || placeholder
 
@@ -47,9 +64,11 @@ function ScheduleBlockTitleInput({
         {mirrorText}
       </span>
       <input
+        ref={inputRef}
         type="text"
         value={value}
         placeholder={placeholder}
+        autoFocus={autoFocus}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
         onBlur={onBlur}
@@ -73,44 +92,128 @@ interface HourlyTimelineProps {
   onUpdate: (block: ScheduleBlock) => void
   onDelete: (id: string) => void
   onCreate: (block: ScheduleBlock) => void
+  /** When amber is chosen on a grey block, pick a workout type for the exercise plan. */
+  onAssignExercise?: (block: ScheduleBlock, category: WorkoutCategory) => void
+  /** Extra controls in the schedule card header (e.g. template menu). */
+  headerActions?: ReactNode
+}
+
+function isDefaultGreyTitle(title: string) {
+  const trimmed = title.trim()
+  return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
 }
 
 function ScheduleBlockColorPicker({
   block,
   onUpdate,
+  onAssignExercise,
   compact = false,
+  presets,
 }: {
   block: ScheduleBlock
   onUpdate: (block: ScheduleBlock) => void
+  onAssignExercise?: (block: ScheduleBlock, category: WorkoutCategory) => void
   compact?: boolean
+  presets: ScheduleColorPreset[]
 }) {
+  const [pickingExercise, setPickingExercise] = useState(false)
+  const workoutTypes = useMemo(() => getWorkoutTypes(), [])
+  const workoutPresetId = useMemo(() => getWorkoutSchedulePreset().id, [presets])
+
+  useEffect(() => {
+    setPickingExercise(false)
+  }, [block.id, block.activity_type])
+
   if (!isGreyBlock(block)) return null
 
-  return (
-    <div className={cn('flex items-center gap-1.5', compact ? 'mt-1' : 'mt-1.5')}>
-      {SCHEDULE_BLOCK_COLORS.map((blockColor) => (
+  if (pickingExercise) {
+    return (
+      <div
+        className={cn('flex flex-wrap items-center gap-1', compact ? 'mt-1' : 'mt-1.5')}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {workoutTypes.map((type) => (
+          <button
+            key={type.id}
+            type="button"
+            title={type.label}
+            className="max-w-[5.5rem] truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-black shadow-sm transition-transform hover:scale-105"
+            style={{ backgroundColor: 'var(--accent-500)' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAssignExercise?.(block, type.id)
+              setPickingExercise(false)
+            }}
+          >
+            {type.label}
+          </button>
+        ))}
         <button
-          key={blockColor}
           type="button"
-          title={BLOCK_COLOR_DEFAULT_TITLES[blockColor]}
-          className={cn(
-            'rounded-full border-2 border-transparent opacity-80 transition-transform hover:scale-110 hover:opacity-100',
-            compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
-          )}
-          style={{ backgroundColor: BLOCK_COLOR_HEX[blockColor] }}
+          aria-label="Cancel workout pick"
+          className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
           onClick={(e) => {
             e.stopPropagation()
-            onUpdate(setScheduleBlockColor(block, blockColor))
+            setPickingExercise(false)
           }}
-          onMouseDown={(e) => e.stopPropagation()}
-        />
-      ))}
+        >
+          <X size={11} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn('flex flex-wrap items-center gap-1.5', compact ? 'mt-1' : 'mt-1.5')}>
+      {presets.map((preset) => {
+        const isWorkout = preset.role === 'workout' || preset.id === workoutPresetId
+        return (
+          <button
+            key={preset.id}
+            type="button"
+            title={
+              isWorkout && onAssignExercise && workoutTypes.length > 0
+                ? `${preset.label} — choose workout`
+                : preset.label
+            }
+            className={cn(
+              'rounded-full border-2 border-transparent opacity-80 transition-transform hover:scale-110 hover:opacity-100',
+              compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+            )}
+            style={{ backgroundColor: preset.hex }}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (isWorkout && onAssignExercise && workoutTypes.length > 0) {
+                setPickingExercise(true)
+                return
+              }
+              onUpdate(setScheduleBlockColor(block, preset.id))
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        )
+      })}
     </div>
   )
 }
 
 function snapToGrid(minutes: number) {
-  return Math.round(minutes / 15) * 15
+  return Math.round(minutes / GRID_MINUTES) * GRID_MINUTES
+}
+
+function minutesToStyle(
+  startMin: number,
+  endMin: number,
+  timelineStartHour: number,
+): { top: number; height: number; durationMins: number } {
+  const durationMins = Math.max(1, endMin - startMin)
+  const start = startMin - timelineStartHour * 60
+  const end = endMin - timelineStartHour * 60
+  return {
+    top: (start / 60) * HOUR_HEIGHT + TIMELINE_TOP_INSET,
+    height: Math.max(((end - start) / 60) * HOUR_HEIGHT, durationMins <= GRID_MINUTES ? 28 : 32),
+    durationMins,
+  }
 }
 
 function formatScheduleHour(hour: number, formatTime: (date: Date) => string): string {
@@ -153,18 +256,31 @@ export function HourlyTimeline({
   onUpdate,
   onDelete,
   onCreate,
+  onAssignExercise,
+  headerActions,
 }: HourlyTimelineProps) {
   const { formatTime } = useSettings()
+  const [colorPresets, setColorPresets] = useState(() => getScheduleColorPresets())
+
+  useEffect(() => {
+    const refresh = () => setColorPresets(getScheduleColorPresets())
+    window.addEventListener(SCHEDULE_COLORS_CHANGED, refresh)
+    window.addEventListener('user-storage-ready', refresh)
+    return () => {
+      window.removeEventListener(SCHEDULE_COLORS_CHANGED, refresh)
+      window.removeEventListener('user-storage-ready', refresh)
+    }
+  }, [])
 
   const { slotHours, timelineHeight, contentHeight, endMinutes } = useMemo(
     () => getTimelineMetrics(startHour, endHour),
     [startHour, endHour],
   )
 
-  const yToMinutes = useCallback(
+  const yToRawMinutes = useCallback(
     (y: number) => {
       const raw = ((y - TIMELINE_TOP_INSET) / HOUR_HEIGHT) * 60 + startHour * 60
-      return snapToGrid(Math.max(startHour * 60, Math.min(endMinutes, raw)))
+      return Math.max(startHour * 60, Math.min(endMinutes, raw))
     },
     [startHour, endMinutes],
   )
@@ -174,14 +290,72 @@ export function HourlyTimeline({
   const headerRef = useRef<HTMLDivElement>(null)
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const dragOffsetRef = useRef(0)
+  const interactionBlockRef = useRef<ScheduleBlock | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
   const [resizing, setResizing] = useState<string | null>(null)
   const [resizeMode, setResizeMode] = useState<ResizeMode>(null)
+  const [hoverResize, setHoverResize] = useState<{ id: string; edge: 'top' | 'bottom' } | null>(
+    null,
+  )
+  const [preview, setPreview] = useState<{
+    id: string
+    startMin: number
+    endMin: number
+  } | null>(null)
   const [creating, setCreating] = useState<{ start: number; end: number } | null>(null)
   const [titleEdits, setTitleEdits] = useState<Record<string, string>>({})
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
+  const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
+  const titleInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [nowLine, setNowLine] = useState<number | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [maxViewportHeight, setMaxViewportHeight] = useState<number | null>(null)
+
+  const scrollAreaHeight = Math.min(
+    contentHeight,
+    maxViewportHeight ?? SCHEDULE_FALLBACK_VIEWPORT,
+  )
+
+  useLayoutEffect(() => {
+    if (isFullscreen) return
+
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+
+    const measure = () => {
+      const top = scrollEl.getBoundingClientRect().top
+      const host = scrollEl.closest('[data-schedule-height-host]') as HTMLElement | null
+      let available: number
+      if (host) {
+        available = Math.floor(host.getBoundingClientRect().bottom - top)
+      } else {
+        const main = scrollEl.closest('main')
+        if (main) {
+          const padBottom = parseFloat(getComputedStyle(main).paddingBottom) || 0
+          available = Math.floor(main.getBoundingClientRect().bottom - top - padBottom)
+        } else {
+          const bottom = window.visualViewport?.height ?? window.innerHeight
+          available = Math.floor(bottom - top - SCHEDULE_VIEWPORT_GAP)
+        }
+      }
+      setMaxViewportHeight(Math.max(SCHEDULE_MIN_VIEWPORT, available))
+    }
+
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(document.documentElement)
+    const host = scrollEl.closest('[data-schedule-height-host]')
+    if (host) ro.observe(host)
+    if (headerRef.current) ro.observe(headerRef.current)
+    window.addEventListener('resize', measure)
+    window.visualViewport?.addEventListener('resize', measure)
+
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+      window.visualViewport?.removeEventListener('resize', measure)
+    }
+  }, [isFullscreen, startHour, endHour, contentHeight])
 
   useEffect(() => {
     if (!isActiveDay) {
@@ -289,7 +463,7 @@ export function HourlyTimeline({
       cancelAnimationFrame(raf)
       clearTimeout(t)
     }
-  }, [startHour, endHour, contentHeight, isFullscreen])
+  }, [startHour, endHour, contentHeight, isFullscreen, scrollAreaHeight])
 
   useEffect(() => {
     if (!isFullscreen) return
@@ -387,6 +561,7 @@ export function HourlyTimeline({
   const commitTitleEdit = (block: ScheduleBlock) => {
     const draft = titleEdits[block.id]
     setEditingTitleId((current) => (current === block.id ? null : current))
+    setFocusTitleId((current) => (current === block.id ? null : current))
     if (draft === undefined) return
 
     setTitleEdits((prev) => {
@@ -400,15 +575,23 @@ export function HourlyTimeline({
     }
   }
 
+  useLayoutEffect(() => {
+    if (!focusTitleId) return
+    if (!blocks.some((block) => block.id === focusTitleId)) return
+    const input = titleInputRefs.current[focusTitleId]
+    if (!input) return
+    input.focus()
+    input.select()
+    setFocusTitleId(null)
+  }, [blocks, focusTitleId, editingTitleId, titleEdits])
+
   const getBlockStyle = (block: ScheduleBlock) => {
-    const start = parseTimeToMinutes(block.start_time) - startHour * 60
-    const end = parseTimeToMinutes(block.end_time) - startHour * 60
-    const durationMins = parseTimeToMinutes(block.end_time) - parseTimeToMinutes(block.start_time)
-    return {
-      top: (start / 60) * HOUR_HEIGHT + TIMELINE_TOP_INSET,
-      height: Math.max(((end - start) / 60) * HOUR_HEIGHT, durationMins <= 15 ? 24 : 32),
-      durationMins,
+    if (preview?.id === block.id) {
+      return minutesToStyle(preview.startMin, preview.endMin, startHour)
     }
+    const startMin = parseTimeToMinutes(block.start_time)
+    const endMin = parseTimeToMinutes(block.end_time)
+    return minutesToStyle(startMin, endMin, startHour)
   }
 
   const handleMouseMove = useCallback(
@@ -416,15 +599,18 @@ export function HourlyTimeline({
       if (!containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
       const y = e.clientY - rect.top
-      const minutes = yToMinutes(y)
+      const rawMinutes = yToRawMinutes(y)
 
       if (creating) {
-        setCreating({ start: creating.start, end: minutes })
+        setCreating({
+          start: creating.start,
+          end: snapToGrid(rawMinutes),
+        })
         return
       }
 
       if (!dragging && !resizing) return
-      const block = blocks.find((b) => b.id === (dragging || resizing))
+      const block = interactionBlockRef.current
       if (!block) return
 
       if (dragging) {
@@ -432,47 +618,139 @@ export function HourlyTimeline({
           parseTimeToMinutes(block.end_time) - parseTimeToMinutes(block.start_time)
         const newStart = Math.max(
           startHour * 60,
-          Math.min(endMinutes - duration, minutes - dragOffsetRef.current),
+          Math.min(
+            endMinutes - duration,
+            snapToGrid(rawMinutes - dragOffsetRef.current),
+          ),
         )
-        onUpdate({
-          ...block,
-          start_time: minutesToTime(newStart),
-          end_time: minutesToTime(newStart + duration),
+        setPreview((prev) => {
+          if (
+            prev?.id === block.id &&
+            prev.startMin === newStart &&
+            prev.endMin === newStart + duration
+          ) {
+            return prev
+          }
+          return {
+            id: block.id,
+            startMin: newStart,
+            endMin: newStart + duration,
+          }
         })
       } else if (resizing && resizeMode === 'bottom') {
         const start = parseTimeToMinutes(block.start_time)
-        const newEnd = Math.max(start + 15, Math.min(endMinutes, minutes))
-        onUpdate({ ...block, end_time: minutesToTime(newEnd) })
+        const newEnd = Math.max(start + GRID_MINUTES, Math.min(endMinutes, snapToGrid(rawMinutes)))
+        setPreview((prev) => {
+          if (prev?.id === block.id && prev.startMin === start && prev.endMin === newEnd) {
+            return prev
+          }
+          return { id: block.id, startMin: start, endMin: newEnd }
+        })
       } else if (resizing && resizeMode === 'top') {
         const end = parseTimeToMinutes(block.end_time)
-        const newStart = Math.max(startHour * 60, Math.min(end - 15, minutes))
-        onUpdate({ ...block, start_time: minutesToTime(newStart) })
+        const newStart = Math.max(
+          startHour * 60,
+          Math.min(end - GRID_MINUTES, snapToGrid(rawMinutes)),
+        )
+        setPreview((prev) => {
+          if (prev?.id === block.id && prev.startMin === newStart && prev.endMin === end) {
+            return prev
+          }
+          return { id: block.id, startMin: newStart, endMin: end }
+        })
       }
     },
-    [blocks, creating, dragging, resizing, resizeMode, onUpdate, startHour, endMinutes, yToMinutes],
+    [
+      creating,
+      dragging,
+      resizing,
+      resizeMode,
+      startHour,
+      endMinutes,
+      yToRawMinutes,
+    ],
   )
 
   const handleMouseUp = useCallback(() => {
-    if (creating && containerRef.current) {
-      const startMin = Math.min(creating.start, creating.end)
-      const endMin = Math.max(creating.start, creating.end)
-      if (endMin - startMin >= 15) {
-        onCreate(
-          createScheduleBlock({
-            id: generateId(),
-            user_id: userId,
-            date,
-            start_time: minutesToTime(startMin),
-            end_time: minutesToTime(endMin),
-          }),
-        )
+    if (creating) {
+      const startMin = snapToGrid(Math.min(creating.start, creating.end))
+      const endMin = snapToGrid(Math.max(creating.start, creating.end))
+      if (endMin - startMin >= GRID_MINUTES) {
+        const block = createScheduleBlock({
+          id: generateId(),
+          user_id: userId,
+          date,
+          start_time: minutesToTime(startMin),
+          end_time: minutesToTime(endMin),
+        })
+        onCreate(block)
+        setEditingTitleId(block.id)
+        setTitleEdits((prev) => ({ ...prev, [block.id]: block.title }))
+        setFocusTitleId(block.id)
       }
+      setCreating(null)
+      setHoverResize(null)
+      return
     }
-    setCreating(null)
+
+    const block = interactionBlockRef.current
+    if (block && preview && (dragging || resizing)) {
+      const startMin = snapToGrid(preview.startMin)
+      let endMin = snapToGrid(preview.endMin)
+      if (endMin - startMin < GRID_MINUTES) {
+        endMin = startMin + GRID_MINUTES
+      }
+      endMin = Math.min(endMinutes, endMin)
+      const nextStart = Math.max(startHour * 60, Math.min(endMinutes - GRID_MINUTES, startMin))
+      const nextEnd = Math.max(nextStart + GRID_MINUTES, Math.min(endMinutes, endMin))
+
+      setPreview({ id: block.id, startMin: nextStart, endMin: nextEnd })
+      if (
+        nextStart !== parseTimeToMinutes(block.start_time) ||
+        nextEnd !== parseTimeToMinutes(block.end_time)
+      ) {
+        onUpdate({
+          ...block,
+          start_time: minutesToTime(nextStart),
+          end_time: minutesToTime(nextEnd),
+        })
+      }
+    } else {
+      setPreview(null)
+    }
+
+    interactionBlockRef.current = null
     setDragging(null)
     setResizing(null)
     setResizeMode(null)
-  }, [creating, date, onCreate, userId])
+    setHoverResize(null)
+  }, [
+    creating,
+    date,
+    onCreate,
+    onUpdate,
+    userId,
+    preview,
+    dragging,
+    resizing,
+    startHour,
+    endMinutes,
+  ])
+
+  useEffect(() => {
+    if (!preview || dragging || resizing) return
+    const block = blocks.find((entry) => entry.id === preview.id)
+    if (!block) {
+      setPreview(null)
+      return
+    }
+    if (
+      parseTimeToMinutes(block.start_time) === preview.startMin &&
+      parseTimeToMinutes(block.end_time) === preview.endMin
+    ) {
+      setPreview(null)
+    }
+  }, [blocks, preview, dragging, resizing])
 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove)
@@ -488,9 +766,13 @@ export function HourlyTimeline({
     (() => {
       const startMin = Math.min(creating.start, creating.end)
       const endMin = Math.max(creating.start, creating.end)
+      const durationMins = Math.max(0, endMin - startMin)
       return {
         top: ((startMin - startHour * 60) / 60) * HOUR_HEIGHT + TIMELINE_TOP_INSET,
-        height: Math.max(((endMin - startMin) / 60) * HOUR_HEIGHT, 32),
+        height: Math.max((durationMins / 60) * HOUR_HEIGHT, 8),
+        durationMins,
+        startMin,
+        endMin,
       }
     })()
 
@@ -499,38 +781,40 @@ export function HourlyTimeline({
       className={cn(
         isFullscreen
           ? 'fixed inset-0 z-50 flex flex-col bg-[#0a0a0f]/95 p-4 backdrop-blur-md sm:p-6'
-          : 'flex shrink-0 flex-col pl-4',
+          : 'flex h-full max-h-full min-h-0 flex-col pl-4',
       )}
     >
       <div
         ref={panelRef}
         className={cn(
-          'relative isolate flex w-full flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/40',
+          'relative isolate flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900',
           !isFullscreen && '-ml-4',
-          isFullscreen && 'h-full min-h-0 flex-1',
+          isFullscreen && 'flex-1',
         )}
       >
         <div
           ref={headerRef}
           className="flex shrink-0 items-start justify-between gap-3 overflow-hidden rounded-t-xl border-b border-zinc-800/80 px-3 py-2"
         >
-          <div>
-            <p className="text-xs font-medium text-zinc-400">Schedule</p>
+          <div className="min-w-0">
+            {isActiveDay ? (
+              <button
+                type="button"
+                onClick={() => scrollToCurrentTime({ smooth: true })}
+                className="rounded-lg px-2 py-0.5 text-xs font-semibold text-[var(--accent-400)] transition-colors hover:bg-[var(--accent-500)]/10 hover:text-[var(--accent-300)]"
+                aria-label="Scroll to current time"
+              >
+                Now
+              </button>
+            ) : (
+              <span className="block h-5" aria-hidden />
+            )}
             <p className="text-[10px] text-zinc-600">
               Drag grid to create · drag block body to move · drag edges to resize
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {isActiveDay && (
-              <button
-                type="button"
-                onClick={() => scrollToCurrentTime({ smooth: true })}
-                className="rounded-lg px-2 py-1 text-[10px] font-semibold text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
-                aria-label="Scroll to current time"
-              >
-                Now
-              </button>
-            )}
+            {headerActions}
             <button
               type="button"
               onClick={() => setIsFullscreen((open) => !open)}
@@ -548,7 +832,7 @@ export function HourlyTimeline({
         style={
           isFullscreen
             ? { minHeight: 0, flex: 1 }
-            : { height: SCHEDULE_SCROLL_HEIGHT, flexShrink: 0 }
+            : { height: scrollAreaHeight, flexShrink: 0 }
         }
       >
         <div
@@ -603,7 +887,10 @@ export function HourlyTimeline({
             onMouseDown={(e) => {
               if (e.target !== e.currentTarget || !containerRef.current) return
               const rect = containerRef.current.getBoundingClientRect()
-              setCreating({ start: yToMinutes(e.clientY - rect.top), end: yToMinutes(e.clientY - rect.top) })
+              setCreating({
+                start: snapToGrid(yToRawMinutes(e.clientY - rect.top)),
+                end: snapToGrid(yToRawMinutes(e.clientY - rect.top)),
+              })
             }}
           >
             <div
@@ -634,21 +921,49 @@ export function HourlyTimeline({
 
           {createPreview && (
             <div
-              className="pointer-events-none absolute left-1 right-1 rounded-lg border-2 border-dashed border-[var(--accent-400)]/60 bg-[var(--accent-500)]/10"
-              style={createPreview}
-            />
+              className="pointer-events-none absolute left-0 right-1 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--accent-400)]/60 bg-[var(--accent-500)]/10 transition-[top,height] duration-150 ease-out"
+              style={{ top: createPreview.top, height: createPreview.height }}
+            >
+              {createPreview.durationMins >= GRID_MINUTES && (
+                <div className="flex flex-col items-center gap-0.5 px-2 text-center">
+                  <span className="text-sm font-semibold tabular-nums text-[var(--accent-300)]">
+                    {formatDuration(createPreview.durationMins)}
+                  </span>
+                  <span className="text-[10px] tabular-nums text-[var(--accent-300)]/75">
+                    {formatBlockTime(minutesToTime(createPreview.startMin))}
+                    {' – '}
+                    {formatBlockTime(minutesToTime(createPreview.endMin))}
+                  </span>
+                </div>
+              )}
+            </div>
           )}
 
           {blocks.map((block) => {
             const { durationMins, ...style } = getBlockStyle(block)
             const isCompact = durationMins <= COMPACT_BLOCK_MAX_MINUTES
-            const isShortInline = durationMins === 15 || durationMins === 30
-            const isMicro = durationMins <= 15
+            const isShortInline = durationMins === GRID_MINUTES
+            const isMicro = durationMins <= GRID_MINUTES
+            const isLiveGesture = dragging === block.id || resizing === block.id
+            const isInteracting = preview?.id === block.id
+            const displayStart = isInteracting
+              ? minutesToTime(Math.round(preview.startMin))
+              : block.start_time
+            const displayEnd = isInteracting
+              ? minutesToTime(Math.round(preview.endMin))
+              : block.end_time
+            const topEdgeActive =
+              (hoverResize?.id === block.id && hoverResize.edge === 'top') ||
+              (resizing === block.id && resizeMode === 'top')
+            const bottomEdgeActive =
+              (hoverResize?.id === block.id && hoverResize.edge === 'bottom') ||
+              (resizing === block.id && resizeMode === 'bottom')
             return (
               <div
                 key={block.id}
                 className={cn(
-                  'absolute left-1 right-1 z-[2] flex overflow-hidden rounded-lg border border-white/10 shadow-md cursor-grab active:cursor-grabbing',
+                  'absolute left-0 right-1 z-[2] flex overflow-hidden rounded-lg border-2 bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
+                  isLiveGesture && 'z-[3] shadow-lg shadow-black/40',
                   isShortInline
                     ? 'items-center px-1.5'
                     : isCompact
@@ -657,9 +972,10 @@ export function HourlyTimeline({
                 )}
                 style={{
                   ...style,
-                  backgroundColor: `${block.color}40`,
-                  borderLeftColor: block.color,
-                  borderLeftWidth: 3,
+                  borderColor: `color-mix(in srgb, ${block.color} 55%, transparent)`,
+                  backgroundColor: `color-mix(in srgb, ${block.color} 12%, rgb(9 9 11))`,
+                  transition:
+                    'top 150ms cubic-bezier(0.22, 1, 0.36, 1), height 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms ease',
                 }}
                 onMouseDown={(e) => {
                   const target = e.target as HTMLElement
@@ -667,9 +983,12 @@ export function HourlyTimeline({
                   if (!containerRef.current) return
                   e.stopPropagation()
                   const rect = containerRef.current.getBoundingClientRect()
-                  const clickMinutes = yToMinutes(e.clientY - rect.top)
-                  dragOffsetRef.current =
-                    clickMinutes - parseTimeToMinutes(block.start_time)
+                  const clickMinutes = yToRawMinutes(e.clientY - rect.top)
+                  const startMin = parseTimeToMinutes(block.start_time)
+                  const endMin = parseTimeToMinutes(block.end_time)
+                  dragOffsetRef.current = clickMinutes - startMin
+                  interactionBlockRef.current = block
+                  setPreview({ id: block.id, startMin, endMin })
                   setDragging(block.id)
                 }}
               >
@@ -677,9 +996,38 @@ export function HourlyTimeline({
                   data-resize-handle
                   className={cn(
                     'absolute inset-x-0 top-0 z-10 cursor-ns-resize',
-                    isMicro ? 'h-1' : 'h-2',
+                    isMicro ? 'h-2' : 'h-2.5',
                   )}
-                  onMouseDown={(e) => { e.stopPropagation(); setResizing(block.id); setResizeMode('top') }}
+                  onMouseEnter={() => setHoverResize({ id: block.id, edge: 'top' })}
+                  onMouseLeave={() =>
+                    setHoverResize((prev) =>
+                      prev?.id === block.id && prev.edge === 'top' ? null : prev,
+                    )
+                  }
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    const startMin = parseTimeToMinutes(block.start_time)
+                    const endMin = parseTimeToMinutes(block.end_time)
+                    interactionBlockRef.current = block
+                    setPreview({ id: block.id, startMin, endMin })
+                    setHoverResize({ id: block.id, edge: 'top' })
+                    setResizing(block.id)
+                    setResizeMode('top')
+                  }}
+                />
+                <div
+                  aria-hidden
+                  className={cn(
+                    'pointer-events-none absolute inset-x-0 top-0 z-[11] rounded-t-[7px] transition-[height,opacity,background-color,box-shadow] duration-150',
+                    topEdgeActive
+                      ? 'h-[2.5px] opacity-100'
+                      : 'h-0 opacity-0',
+                  )}
+                  style={
+                    topEdgeActive
+                      ? { backgroundColor: `color-mix(in srgb, ${block.color} 55%, white)` }
+                      : undefined
+                  }
                 />
                 <div
                   className={cn(
@@ -696,9 +1044,12 @@ export function HourlyTimeline({
                         onBlur={() => commitTitleEdit(block)}
                         onMouseDown={(e) => e.stopPropagation()}
                         onKeyDown={(e) => e.stopPropagation()}
+                        inputRef={(el) => {
+                          titleInputRefs.current[block.id] = el
+                        }}
                       />
                       <span className="pointer-events-none shrink-0 text-[10px] tabular-nums text-zinc-400">
-                        {formatBlockTime(block.start_time)}–{formatBlockTime(block.end_time)}
+                        {formatBlockTime(displayStart)}–{formatBlockTime(displayEnd)}
                       </span>
                     </div>
                   ) : (
@@ -710,13 +1061,24 @@ export function HourlyTimeline({
                         onBlur={() => commitTitleEdit(block)}
                         onMouseDown={(e) => e.stopPropagation()}
                         onKeyDown={(e) => e.stopPropagation()}
+                        inputRef={(el) => {
+                          titleInputRefs.current[block.id] = el
+                        }}
                       />
                       <p className="pointer-events-none text-[10px] tabular-nums text-zinc-400">
-                        {formatBlockTime(block.start_time)} – {formatBlockTime(block.end_time)}
+                        {formatBlockTime(displayStart)} – {formatBlockTime(displayEnd)}
                       </p>
                     </>
                   )}
-                  <ScheduleBlockColorPicker block={block} onUpdate={onUpdate} compact={isCompact} />
+                  {isDefaultGreyTitle(blockTitleValue(block)) && (
+                    <ScheduleBlockColorPicker
+                      block={block}
+                      onUpdate={onUpdate}
+                      onAssignExercise={onAssignExercise}
+                      compact={isCompact}
+                      presets={colorPresets}
+                    />
+                  )}
                 </div>
                 <button
                   type="button"
@@ -737,9 +1099,38 @@ export function HourlyTimeline({
                   data-resize-handle
                   className={cn(
                     'absolute inset-x-0 bottom-0 z-10 cursor-ns-resize',
-                    isMicro ? 'h-1' : 'h-2',
+                    isMicro ? 'h-2' : 'h-2.5',
                   )}
-                  onMouseDown={(e) => { e.stopPropagation(); setResizing(block.id); setResizeMode('bottom') }}
+                  onMouseEnter={() => setHoverResize({ id: block.id, edge: 'bottom' })}
+                  onMouseLeave={() =>
+                    setHoverResize((prev) =>
+                      prev?.id === block.id && prev.edge === 'bottom' ? null : prev,
+                    )
+                  }
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    const startMin = parseTimeToMinutes(block.start_time)
+                    const endMin = parseTimeToMinutes(block.end_time)
+                    interactionBlockRef.current = block
+                    setPreview({ id: block.id, startMin, endMin })
+                    setHoverResize({ id: block.id, edge: 'bottom' })
+                    setResizing(block.id)
+                    setResizeMode('bottom')
+                  }}
+                />
+                <div
+                  aria-hidden
+                  className={cn(
+                    'pointer-events-none absolute inset-x-0 bottom-0 z-[11] rounded-b-[7px] transition-[height,opacity,background-color,box-shadow] duration-150',
+                    bottomEdgeActive
+                      ? 'h-[2.5px] opacity-100'
+                      : 'h-0 opacity-0',
+                  )}
+                  style={
+                    bottomEdgeActive
+                      ? { backgroundColor: `color-mix(in srgb, ${block.color} 55%, white)` }
+                      : undefined
+                  }
                 />
               </div>
             )
@@ -758,10 +1149,10 @@ export function HourlyTimeline({
                 <div className="schedule-now-dot schedule-now-dot--lg" aria-hidden>
                   <span className="schedule-now-dot__ping" />
                   <span className="schedule-now-dot__ping" />
-                  <div className="relative z-[1] h-3.5 w-3.5 rounded-full bg-red-500 shadow-[0_0_0_2px_rgb(10_10_15)]" />
+                  <div className="relative z-[1] h-3.5 w-3.5 rounded-full bg-[var(--accent-500)] shadow-[0_0_0_2px_rgb(10_10_15)]" />
                 </div>
               </div>
-              <div className="h-0.5 min-w-0 flex-1 bg-red-500" />
+              <div className="h-0.5 min-w-0 flex-1 bg-[var(--accent-500)]" />
             </div>
           )}
         </div>

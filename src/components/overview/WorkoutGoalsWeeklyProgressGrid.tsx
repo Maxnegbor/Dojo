@@ -2,9 +2,9 @@ import { useMemo } from 'react'
 import { format, parseISO } from 'date-fns'
 import { Card } from '@/components/ui/Card'
 import { useSettings } from '@/context/SettingsContext'
-import { hasTarget } from '@/lib/goals'
+import { getActiveGoalByMetricKey, hasTarget } from '@/lib/goals'
 import { resolveGoalForWeek, getWeekStartsBefore } from '@/lib/goalTargetSnapshots'
-import { calculateProgress } from '@/lib/metrics'
+import { getWorkoutGoalWeekProgress } from '@/lib/metrics'
 import { cn, getWeekDates } from '@/lib/utils'
 import {
   getWorkoutTypes,
@@ -30,21 +30,19 @@ function workoutGoalIntensity(percent: number): number {
   return Math.min(1, Math.max(0, percent / 100))
 }
 
-function workoutGoalFillBackground(color: string, intensity: number): string {
+function workoutGoalFillBackground(intensity: number): string {
   if (intensity <= 0) return 'rgb(39 39 42)'
   const mix = Math.round(55 + intensity * 45)
-  return `color-mix(in srgb, ${color} ${mix}%, rgb(24 24 27))`
+  return `color-mix(in srgb, var(--accent-500) ${mix}%, rgb(24 24 27))`
 }
 
 function WeekCell({
   percent,
-  color,
   title,
   isCurrentWeek,
   showProgressFill,
 }: {
   percent: number
-  color: string
   title: string
   isCurrentWeek: boolean
   showProgressFill: boolean
@@ -65,8 +63,8 @@ function WeekCell({
           className="w-full rounded-sm"
           style={{
             height: `${fill}%`,
-            backgroundColor: workoutGoalFillBackground(color, Math.max(intensity, 0.35)),
-            boxShadow: `0 0 10px color-mix(in srgb, ${color} 40%, transparent)`,
+            backgroundColor: workoutGoalFillBackground(Math.max(intensity, 0.35)),
+            boxShadow: '0 0 10px color-mix(in srgb, var(--accent-500) 40%, transparent)',
           }}
         />
       ) : null}
@@ -90,7 +88,7 @@ export function WorkoutGoalsWeeklyProgressGrid({
     return getWorkoutTypes()
       .map((type) => ({
         type,
-        goal: goals.find((g) => g.is_active && g.metric_key === workoutMetricKey(type.id)),
+        goal: getActiveGoalByMetricKey(goals, workoutMetricKey(type.id)),
       }))
       .filter(({ goal }) => goal && hasTarget(goal)) as Array<{
       type: WorkoutTypeDefinition
@@ -110,24 +108,18 @@ export function WorkoutGoalsWeeklyProgressGrid({
       const cells = weekStarts.map((weekStart) => {
         const weekDates = getWeekDates(parseISO(`${weekStart}T12:00:00`), weekStartsOn)
         const effectiveGoal = resolveGoalForWeek(goal, weekStart, weekStartsOn)
-        const weekWorkouts = workouts.filter((w) => weekDates.includes(w.date))
-        const weekLogs = logs.filter((l) => weekDates.includes(l.date))
-        const lastDate = weekDates[weekDates.length - 1]
-        const progress = calculateProgress(
+        const progress = getWorkoutGoalWeekProgress(
           effectiveGoal,
-          weekLogs.find((l) => l.date === lastDate),
-          weekWorkouts,
-          lastDate,
+          logs,
+          workouts,
           weekDates,
-          weekLogs,
           weekStart,
-          weekStartsOn,
         )
-        const target = effectiveGoal.target_value ?? 0
+        const target = progress.target ?? 0
         const weekLabel = format(parseISO(`${weekStart}T12:00:00`), 'MMM d')
         const title =
           target > 0
-            ? `${type.label} · w/o ${weekLabel}: ${Math.round(progress.current)}/${target} min (${Math.round(progress.percent)}%)`
+            ? `${type.label} · w/o ${weekLabel}: ${Math.round(progress.current)}/${Math.round(target)} min (${Math.round(progress.percent)}%)`
             : `${type.label} · w/o ${weekLabel}: ${Math.round(progress.current)} min`
 
         return {
@@ -171,17 +163,13 @@ export function WorkoutGoalsWeeklyProgressGrid({
               style={{ gridTemplateColumns }}
             >
               <div className="flex min-w-0 items-center gap-1 pr-1">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: type.color }}
-                />
+                <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--accent-500)]" />
                 <span className="truncate text-[10px] text-zinc-300">{type.label}</span>
               </div>
               {cells.map((cell) => (
                 <WeekCell
                   key={cell.weekStart}
                   percent={cell.percent}
-                  color={type.color}
                   title={cell.title}
                   isCurrentWeek={cell.isCurrentWeek}
                   showProgressFill={showProgressFill}

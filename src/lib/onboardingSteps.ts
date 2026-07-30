@@ -9,19 +9,17 @@ export type OnboardingStepId =
   | 'workouts'
   | 'measurements'
   | 'weight'
-  | 'tour'
 
-/** Top-bar progress: tracks → preferences → goals (substeps) → tour */
-export const MAIN_ONBOARDING_STEP_COUNT = 4
+/** Top-bar progress: tracks → preferences → goals (substeps) */
+export const MAIN_ONBOARDING_STEP_COUNT = 3
 
 export function isGoalSubstep(step: OnboardingStepId): boolean {
-  return step !== 'tracks' && step !== 'preferences' && step !== 'tour'
+  return step !== 'tracks' && step !== 'preferences'
 }
 
 export function getMainProgressStep(step: OnboardingStepId): number {
   if (step === 'tracks') return 0
   if (step === 'preferences') return 1
-  if (step === 'tour') return 3
   return 2
 }
 
@@ -39,7 +37,7 @@ export function buildGoalSubsteps(data: OnboardingData): OnboardingStepId[] {
 }
 
 export function buildOnboardingSteps(data: OnboardingData): OnboardingStepId[] {
-  return ['tracks', 'preferences', ...buildGoalSubsteps(data), 'tour']
+  return ['tracks', 'preferences', ...buildGoalSubsteps(data)]
 }
 
 /** Track removed when the user skips a goal-setting substep. */
@@ -115,11 +113,6 @@ export function getOnboardingStepMeta(
       return {
         title: 'Weight goal',
         subtitle: 'Set your starting point, target, and optional date range.',
-      }
-    case 'tour':
-      return {
-        title: 'Quick tour',
-        subtitle: 'Taking you into Dojo…',
       }
   }
 }

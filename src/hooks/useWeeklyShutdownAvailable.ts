@@ -7,13 +7,13 @@ import {
 } from '@/lib/devMode'
 import {
   getWeeklyReviewWeekDates,
-  getWeeklyShutdownWeekDates,
+  getPendingWeeklyShutdownWeekDates,
   getWeeklyShutdownWeekKey,
   isWeeklyShutdownCompleted,
 } from '@/lib/weeklyShutdown'
 import type { WeekStartDay } from '@/types'
 
-/** True on Sunday when viewing today and this week's shutdown hasn't been completed. */
+/** True when viewing today and a weekly shutdown is still due (from Sunday until completed). */
 export function useWeeklyShutdownAvailable(
   viewDate: string,
   weekStartsOn: WeekStartDay,
@@ -34,7 +34,7 @@ export function useWeeklyShutdownAvailable(
       }
       const weekDates = isWeeklyShutdownAnyDay(settings)
         ? getWeeklyReviewWeekDates(now, weekStartsOn)
-        : getWeeklyShutdownWeekDates(now, weekStartsOn)
+        : getPendingWeeklyShutdownWeekDates(now, weekStartsOn)
       if (weekDates.length === 0) {
         setAvailable(false)
         return

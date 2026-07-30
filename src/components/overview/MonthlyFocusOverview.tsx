@@ -16,6 +16,7 @@ interface MonthlyFocusOverviewProps {
   bestDay: { date: string; minutes: number } | null
   pctVsPrevious: number | null
   previousLabel: string
+  avgFocusScoreLabel?: string
 }
 
 function StatCell({
@@ -56,6 +57,7 @@ export function MonthlyFocusOverview({
   bestDay,
   pctVsPrevious,
   previousLabel,
+  avgFocusScoreLabel,
 }: MonthlyFocusOverviewProps) {
   const focusComparison = formatPeriodComparison(
     pctVsPrevious,
@@ -80,11 +82,22 @@ export function MonthlyFocusOverview({
       value: bestDay ? formatDuration(bestDay.minutes) : '—',
       detail: bestDay ? formatShortDate(bestDay.date) : 'No best day yet',
     },
-    {
-      label: 'Active days',
-      value: String(activeDays),
-      detail: `${Math.round(loggingRate)}% of month logged`,
-    },
+    ...(avgFocusScoreLabel
+      ? [
+          {
+            label: 'Avg focus score',
+            value: avgFocusScoreLabel,
+            detail: 'Subjective 1–10',
+            accent: avgFocusScoreLabel !== '—',
+          },
+        ]
+      : [
+          {
+            label: 'Active days',
+            value: String(activeDays),
+            detail: `${Math.round(loggingRate)}% of month logged`,
+          },
+        ]),
   ]
 
   return (

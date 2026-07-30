@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, Minus, Plus, X } from 'lucide-react'
+import { Activity, Equal, Minus, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import {
   DEFAULT_PULSE_WEIGHTS,
   PULSE_POINTS_TOTAL,
+  assignPointsPulseFormula,
   copyPulseFormula,
+  equalizePulseFormula,
+  formulaIncludedCount,
+  formulaWeightsSum,
+  getPulseCustomMetricGoals,
   getWorkoutGoalCategories,
   hasWorkoutGoalsForPulse,
   isValidPulseFormula,
-  weightsSum,
+  prunePulseFormulaMetrics,
+  pulseCustomMetricLabel,
+  type PulseCoreArea,
   type PulseFormula,
-  type PulseWeights,
 } from '@/lib/pulseConfig'
 import { getPulseSleepMetrics, type SleepMetricsConfig } from '@/lib/sleepMetrics'
 import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { getWorkoutTypeLabel } from '@/lib/workoutTypes'
-import type { Goal } from '@/types'
+import type { Goal, MetricKey } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface PulseConfigureModalProps {
@@ -27,9 +33,7 @@ interface PulseConfigureModalProps {
   onSave: (formula: PulseFormula) => void
 }
 
-type PulseArea = keyof PulseWeights
-
-const AREA_ROWS: { key: PulseArea; label: string; description: string }[] = [
+const AREA_ROWS: { key: PulseCoreArea; label: string; description: string }[] = [
   {
     key: 'habits',
     label: 'Habits',
@@ -64,11 +68,13 @@ function sleepPulseAreaDescription(config: SleepMetricsConfig): string {
   return 'Morning sleep metrics vs your goal'
 }
 
-function createDraft(initialFormula: PulseFormula | null): PulseFormula {
-  if (initialFormula) return copyPulseFormula(initialFormula)
+function createDraft(initialFormula: PulseFormula | null, goals: Goal[]): PulseFormula {
+  if (initialFormula) return prunePulseFormulaMetrics(copyPulseFormula(initialFormula), goals)
   return {
     weights: { ...DEFAULT_PULSE_WEIGHTS },
+    metricWeights: {},
     exerciseDailyMinutes: {},
+    equalWeights: false,
   }
 }
 
@@ -108,6 +114,32 @@ function WeightStepper({
   )
 }
 
+function IncludeToggle({
+  included,
+  disabled,
+  onChange,
+}: {
+  included: boolean
+  disabled?: boolean
+  onChange: (included: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChange(!included)}
+      className={cn(
+        'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40',
+        included
+          ? 'border-[var(--accent-500)]/50 bg-[var(--accent-500)]/15 text-[var(--accent-300)]'
+          : 'border-zinc-700 bg-zinc-800/60 text-zinc-500 hover:text-zinc-300',
+      )}
+    >
+      {included ? 'Included' : 'Excluded'}
+    </button>
+  )
+}
+
 export function PulseConfigureModal({
   goals,
   initialFormula,
@@ -115,7 +147,7 @@ export function PulseConfigureModal({
   onClose,
   onSave,
 }: PulseConfigureModalProps) {
-  const [draft, setDraft] = useState(() => createDraft(initialFormula))
+  const [draft, setDraft] = useState(() => createDraft(initialFormula, goals))
   const { config: sleepMetricsConfig } = useSleepMetricsConfig()
   const sleepDescription = useMemo(
     () => sleepPulseAreaDescription(sleepMetricsConfig),
@@ -123,8 +155,11 @@ export function PulseConfigureModal({
   )
   const workoutGoalsAvailable = hasWorkoutGoalsForPulse(goals)
   const workoutCategories = useMemo(() => getWorkoutGoalCategories(goals), [goals])
-  const assigned = weightsSum(draft.weights)
+  const customMetricGoals = useMemo(() => getPulseCustomMetricGoals(goals), [goals])
+  const equalMode = draft.equalWeights === true
+  const assigned = formulaWeightsSum(draft)
   const remaining = PULSE_POINTS_TOTAL - assigned
+  const includedCount = formulaIncludedCount(draft)
   const validation = isValidPulseFormula(draft, goals)
   const canSave = validation.valid
 
@@ -137,15 +172,55 @@ export function PulseConfigureModal({
     }
   }, [draft.weights.exercise, workoutGoalsAvailable])
 
-  const adjustWeight = (key: PulseArea, delta: number) => {
+  useEffect(() => {
+    setDraft((prev) => {
+      const next = prunePulseFormulaMetrics(prev, goals)
+      const prevKeys = Object.keys(prev.metricWeights).sort().join(',')
+      const nextKeys = Object.keys(next.metricWeights).sort().join(',')
+      return prevKeys === nextKeys ? prev : next
+    })
+  }, [goals])
+
+  const adjustCoreWeight = (key: PulseCoreArea, delta: number) => {
     setDraft((prev) => {
       const nextValue = prev.weights[key] + delta
       if (nextValue < 0) return prev
-      if (delta > 0 && remaining <= 0) return prev
+      if (delta > 0 && formulaWeightsSum(prev) >= PULSE_POINTS_TOTAL) return prev
       return {
         ...prev,
+        equalWeights: false,
         weights: { ...prev.weights, [key]: nextValue },
       }
+    })
+  }
+
+  const adjustMetricWeight = (key: MetricKey, delta: number) => {
+    setDraft((prev) => {
+      const current = prev.metricWeights[key] ?? 0
+      const nextValue = current + delta
+      if (nextValue < 0) return prev
+      if (delta > 0 && formulaWeightsSum(prev) >= PULSE_POINTS_TOTAL) return prev
+      const metricWeights = { ...prev.metricWeights }
+      if (nextValue <= 0) delete metricWeights[key]
+      else metricWeights[key] = nextValue
+      return { ...prev, equalWeights: false, metricWeights }
+    })
+  }
+
+  const setCoreIncluded = (key: PulseCoreArea, included: boolean) => {
+    setDraft((prev) => ({
+      ...prev,
+      equalWeights: true,
+      weights: { ...prev.weights, [key]: included ? 1 : 0 },
+    }))
+  }
+
+  const setMetricIncluded = (key: MetricKey, included: boolean) => {
+    setDraft((prev) => {
+      const metricWeights = { ...prev.metricWeights }
+      if (included) metricWeights[key] = 1
+      else delete metricWeights[key]
+      return { ...prev, equalWeights: true, metricWeights }
     })
   }
 
@@ -159,6 +234,17 @@ export function PulseConfigureModal({
       },
     }))
   }
+
+  const handleEqualize = () => {
+    setDraft((prev) => equalizePulseFormula(prev, goals))
+  }
+
+  const handleAssignPoints = () => {
+    setDraft((prev) => assignPointsPulseFormula(prev, goals))
+  }
+
+  const equalShareLabel =
+    includedCount > 0 ? `1/${includedCount} each` : 'No categories included'
 
   return (
     <div
@@ -181,8 +267,9 @@ export function PulseConfigureModal({
                 {isReconfigure ? 'Reconfigure Pulse' : 'Configure Pulse'}
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Distribute {PULSE_POINTS_TOTAL} points across what matters most. Each point is 10% of
-                your daily score.
+                {equalMode
+                  ? 'Included categories each make up an equal share of your daily score.'
+                  : `Distribute ${PULSE_POINTS_TOTAL} points across what matters most. Each point is 10% of your daily score.`}
               </p>
             </div>
           </div>
@@ -197,25 +284,55 @@ export function PulseConfigureModal({
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          <div
-            className={cn(
-              'rounded-xl border px-4 py-3 text-center text-sm font-medium',
-              remaining === 0
-                ? 'border-[var(--accent-500)]/40 bg-[var(--accent-950)]/40 text-[var(--accent-300)]'
-                : 'border-zinc-800 bg-zinc-950/50 text-zinc-400',
-            )}
-          >
-            {assigned} / {PULSE_POINTS_TOTAL} points assigned
-            {remaining > 0 && (
-              <span className="block text-xs font-normal text-zinc-500">
-                {remaining} remaining
-              </span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div
+              className={cn(
+                'flex-1 rounded-xl border px-4 py-3 text-center text-sm font-medium',
+                equalMode || remaining === 0
+                  ? 'border-[var(--accent-500)]/40 bg-[var(--accent-950)]/40 text-[var(--accent-300)]'
+                  : 'border-zinc-800 bg-zinc-950/50 text-zinc-400',
+              )}
+            >
+              {equalMode ? (
+                <>
+                  Equal weights
+                  <span className="block text-xs font-normal text-zinc-500">{equalShareLabel}</span>
+                </>
+              ) : (
+                <>
+                  {assigned} / {PULSE_POINTS_TOTAL} points assigned
+                  {remaining > 0 && (
+                    <span className="block text-xs font-normal text-zinc-500">
+                      {remaining} remaining
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+            {equalMode ? (
+              <button
+                type="button"
+                onClick={handleAssignPoints}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/80 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 hover:text-zinc-50"
+              >
+                Assign points
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEqualize}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/80 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 hover:text-zinc-50"
+              >
+                <Equal size={16} className="text-zinc-400" />
+                Split equally
+              </button>
             )}
           </div>
 
           <div className="space-y-2">
             {AREA_ROWS.map((row) => {
               const exerciseDisabled = row.key === 'exercise' && !workoutGoalsAvailable
+              const included = draft.weights[row.key] > 0
 
               return (
                 <div
@@ -223,6 +340,7 @@ export function PulseConfigureModal({
                   className={cn(
                     'rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-4 py-3',
                     exerciseDisabled && 'opacity-70',
+                    equalMode && !included && !exerciseDisabled && 'opacity-60',
                   )}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -232,12 +350,20 @@ export function PulseConfigureModal({
                         {row.key === 'sleep' ? sleepDescription : row.description}
                       </p>
                     </div>
-                    <WeightStepper
-                      value={draft.weights[row.key]}
-                      disableMinus={exerciseDisabled}
-                      disablePlus={exerciseDisabled || remaining <= 0}
-                      onChange={(next) => adjustWeight(row.key, next - draft.weights[row.key])}
-                    />
+                    {equalMode ? (
+                      <IncludeToggle
+                        included={included}
+                        disabled={exerciseDisabled}
+                        onChange={(next) => setCoreIncluded(row.key, next)}
+                      />
+                    ) : (
+                      <WeightStepper
+                        value={draft.weights[row.key]}
+                        disableMinus={exerciseDisabled}
+                        disablePlus={exerciseDisabled || remaining <= 0}
+                        onChange={(next) => adjustCoreWeight(row.key, next - draft.weights[row.key])}
+                      />
+                    )}
                   </div>
                   {exerciseDisabled && (
                     <p className="mt-2 text-[11px] text-zinc-500">
@@ -255,6 +381,50 @@ export function PulseConfigureModal({
                 </div>
               )
             })}
+
+            {customMetricGoals.map((goal) => {
+              const value = draft.metricWeights[goal.metric_key] ?? 0
+              const included = value > 0
+              const unit = goal.unit?.trim()
+              const target = goal.target_value
+              return (
+                <div
+                  key={goal.id}
+                  className={cn(
+                    'rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-4 py-3',
+                    equalMode && !included && 'opacity-60',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-zinc-200">
+                        {pulseCustomMetricLabel(goal)}
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        Daily
+                        {target != null && target > 0
+                          ? ` · ${target}${unit ? ` ${unit}` : ''} goal`
+                          : ' goal'}
+                      </p>
+                    </div>
+                    {equalMode ? (
+                      <IncludeToggle
+                        included={included}
+                        onChange={(next) => setMetricIncluded(goal.metric_key, next)}
+                      />
+                    ) : (
+                      <WeightStepper
+                        value={value}
+                        disablePlus={remaining <= 0}
+                        onChange={(next) =>
+                          adjustMetricWeight(goal.metric_key, next - value)
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
           {draft.weights.exercise > 0 && workoutGoalsAvailable && (
@@ -262,9 +432,9 @@ export function PulseConfigureModal({
               <div>
                 <p className="text-sm font-medium text-zinc-200">Daily exercise targets</p>
                 <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                  For each workout type, how many minutes in one day count as 100% for that type?
-                  Different types add together (e.g. 30 min Zone 2 + 30 min Strength can reach 100%
-                  if each threshold is 60 min).
+                  Minutes pool into one Exercise score. Hitting any type’s daily target fully
+                  completes exercise, or combine partials (e.g. 30 + 30 when each target is 60).
+                  Extra volume past 100% doesn’t raise the score further.
                 </p>
               </div>
               <div className="space-y-2">
@@ -291,14 +461,16 @@ export function PulseConfigureModal({
         </div>
 
         <div className="border-t border-zinc-800/80 px-6 py-4">
-          {!validation.valid && validation.reason && assigned > 0 && (
+          {!validation.valid &&
+            validation.reason &&
+            (equalMode ? includedCount > 0 || assigned > 0 : assigned > 0) && (
             <p className="mb-3 text-center text-xs text-amber-400/90">{validation.reason}</p>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button disabled={!canSave} onClick={() => onSave(draft)}>
+            <Button disabled={!canSave} onClick={() => onSave(prunePulseFormulaMetrics(draft, goals))}>
               Save formula
             </Button>
           </div>

@@ -20,10 +20,6 @@ interface SleepMetricTemplatePickerProps {
   onDone: () => void
 }
 
-function templateUnitLabel(metric: SleepMetricDefinition): string {
-  return sleepMetricDisplayUnit(metric)
-}
-
 export function SleepMetricTemplatePicker({
   config,
   onChange,
@@ -48,7 +44,7 @@ export function SleepMetricTemplatePicker({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {templates.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-zinc-800">
           {templates.map((metric) => (
@@ -56,35 +52,34 @@ export function SleepMetricTemplatePicker({
               key={metric.id}
               type="button"
               onClick={() => addTemplate(metric)}
-              className="flex w-full items-start justify-between gap-3 border-b border-zinc-800/80 px-4 py-3 text-left last:border-b-0 hover:bg-zinc-900/80"
+              className="flex w-full items-center justify-between gap-2 border-b border-zinc-800/80 px-3 py-1.5 text-left last:border-b-0 hover:bg-zinc-900/80"
             >
-              <span>
-                <span className="block text-sm font-medium text-zinc-100">{metric.label}</span>
-                <span className="mt-0.5 block text-[11px] text-zinc-500">
-                  {templateUnitLabel(metric)}
+              <span className="min-w-0 truncate text-sm text-zinc-100">
+                {metric.label}
+                <span className="ml-1.5 text-[11px] text-zinc-500">
+                  {sleepMetricDisplayUnit(metric)}
                 </span>
               </span>
-              <Plus size={14} className="mt-0.5 shrink-0 text-zinc-500" />
+              <Plus size={13} className="shrink-0 text-zinc-500" />
             </button>
           ))}
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-        <p className="text-sm font-medium text-zinc-200">Custom sleep field</p>
-        <p className="mt-1 text-[11px] text-zinc-500">e.g. deep sleep, HRV, or readiness.</p>
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2.5">
+        <p className="text-[11px] font-medium text-zinc-300">Custom field</p>
+        <div className="mt-1.5 flex flex-col gap-1.5 sm:flex-row sm:items-center">
           <input
             type="text"
             value={customLabel}
             onChange={(e) => setCustomLabel(e.target.value)}
-            placeholder="Field name"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+            placeholder="Name"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 outline-none focus:border-[var(--accent-500)]"
           />
           <select
             value={customUnit}
             onChange={(e) => setCustomUnit(e.target.value as SleepMetricUnit)}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 outline-none focus:border-[var(--accent-500)]"
           >
             {UNIT_OPTIONS.map((unit) => (
               <option key={unit} value={unit}>

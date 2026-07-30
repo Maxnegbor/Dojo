@@ -56,18 +56,6 @@ export function usesAdditiveTodayDraft(date: string): boolean {
   return date === formatDate(new Date())
 }
 
-/** Shutdown requires an explicit workout type or "None" before finishing. */
-export function isShutdownWorkoutChoiceReady(
-  draft: DailyLogDraft,
-  date: string,
-  workouts: Workout[],
-): boolean {
-  if (draft.workoutExplicitNone) return true
-  if (Object.keys(draft.workouts ?? {}).length > 0) return true
-  const stored = workoutsFromListForDate(workouts, date)
-  return Object.keys(stored).length > 0
-}
-
 /** @deprecated use `usesAdditiveTodayDraft` */
 export function usesAdditiveWorkouts(date: string): boolean {
   return usesAdditiveTodayDraft(date)
@@ -272,13 +260,26 @@ export async function flushDraftToStore(date: string, userId: string): Promise<b
   const draft = getDraft(date)
   if (!draft) return false
 
-  const updates = {
-    sleep_hours: draft.sleep_hours ?? null,
-    weight: draft.weight ?? null,
-    steps: draft.steps ?? null,
-    screen_time_minutes: draft.screen_time_minutes ?? null,
-    habits: normalizeHabits(draft.habits),
-    custom_metrics: draft.custom_metrics ?? {},
+  // Only write fields the draft actually carries — never null out morning-log sleep, etc.
+  const updates: Partial<{
+    sleep_hours: number | null
+    weight: number | null
+    steps: number | null
+    screen_time_minutes: number | null
+    habits: ReturnType<typeof normalizeHabits>
+    custom_metrics: Record<string, number | null>
+    sleep_metrics: Record<string, number | null>
+  }> = {}
+  if ('sleep_hours' in draft) updates.sleep_hours = draft.sleep_hours ?? null
+  if ('weight' in draft) updates.weight = draft.weight ?? null
+  if ('steps' in draft) updates.steps = draft.steps ?? null
+  if ('screen_time_minutes' in draft) {
+    updates.screen_time_minutes = draft.screen_time_minutes ?? null
+  }
+  if (draft.habits) updates.habits = normalizeHabits(draft.habits)
+  if (draft.custom_metrics) updates.custom_metrics = draft.custom_metrics
+  if (draft.sleep_metrics) {
+    updates.sleep_metrics = draft.sleep_metrics
   }
 
   const savedWorkouts = workoutsToSave(draft)
@@ -383,6 +384,18 @@ export function mergeLogWithDraftForDate(
     steps: merged.steps ?? log.steps,
     screen_time_minutes: merged.screen_time_minutes ?? log.screen_time_minutes,
     custom_metrics: { ...log.custom_metrics, ...merged.custom_metrics },
-    sleep_metrics: { ...log.sleep_metrics, ...merged.sleep_metrics },
+    sleep_metrics: mergeSleepMetricsPreservingStored(log.sleep_metrics, merged.sleep_metrics),
   }
+}
+
+function mergeSleepMetricsPreservingStored(
+  stored: DailyLog['sleep_metrics'],
+  draft: DailyLog['sleep_metrics'],
+): DailyLog['sleep_metrics'] {
+  if (!draft) return stored ?? {}
+  const result = { ...(stored ?? {}) }
+  for (const [key, value] of Object.entries(draft)) {
+    if (value != null) result[key] = value
+  }
+  return result
 }

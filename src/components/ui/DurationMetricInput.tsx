@@ -52,20 +52,26 @@ export const DurationMetricInput = forwardRef<DurationMetricInputHandle, Duratio
     return minutes
   }
 
-  useImperativeHandle(ref, () => ({
-    commit: () => commit(text),
-  }))
+  useImperativeHandle(
+    ref,
+    () => ({
+      commit: () => commit(text),
+    }),
+    [text, value],
+  )
 
   return (
     <label className="block">
-      <span
-        className={cn(
-          'block font-medium text-zinc-400',
-          compact ? 'mb-0.5 text-[10px] uppercase tracking-wide' : 'mb-1 text-xs',
-        )}
-      >
-        {label}
-      </span>
+      {label ? (
+        <span
+          className={cn(
+            'block font-medium text-zinc-400',
+            compact ? 'mb-0.5 text-[10px] uppercase tracking-wide' : 'mb-1 text-xs',
+          )}
+        >
+          {label}
+        </span>
+      ) : null}
       <div className="relative">
         <input
           type="text"

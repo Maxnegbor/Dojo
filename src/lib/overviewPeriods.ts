@@ -16,6 +16,8 @@ import {
 import type { DailyLog, Workout } from '@/types'
 import { getHabitCompletionRate, getHabitStreak } from '@/lib/habitStreaks'
 import { getDailyLogHabitTypes } from '@/lib/habitTypes'
+import { getFocusLabels } from '@/lib/focusLabels'
+import { getFocusSessionsInRange } from '@/lib/focusSessions'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { formatDate, getWeekDates } from '@/lib/utils'
 
@@ -35,6 +37,16 @@ export interface FocusPeriodStats {
   pctVsPrevious: number | null
   dailyAveragePctVsPrevious: number | null
   activeDays: number
+  /** Time broken down by focus label (sessions with a label). */
+  labelStats: FocusLabelPeriodStat[]
+}
+
+export interface FocusLabelPeriodStat {
+  id: string
+  label: string
+  color: string
+  minutes: number
+  previousMinutes: number
 }
 
 export interface HabitPeriodStat {
@@ -268,6 +280,40 @@ export function getPreviousPeriodRange(
   }
 }
 
+function computeFocusLabelStats(
+  range: PeriodRange,
+  prevRange?: PeriodRange | null,
+): FocusLabelPeriodStat[] {
+  const current = getFocusSessionsInRange(range.start, range.end)
+  const previous =
+    prevRange != null ? getFocusSessionsInRange(prevRange.start, prevRange.end) : []
+  const labels = getFocusLabels()
+  const labelIds = new Set(labels.map((entry) => entry.id))
+
+  const currentById = new Map<string, number>()
+  for (const session of current) {
+    if (!session.label_id || !labelIds.has(session.label_id)) continue
+    currentById.set(session.label_id, (currentById.get(session.label_id) ?? 0) + session.minutes)
+  }
+
+  const previousById = new Map<string, number>()
+  for (const session of previous) {
+    if (!session.label_id || !labelIds.has(session.label_id)) continue
+    previousById.set(session.label_id, (previousById.get(session.label_id) ?? 0) + session.minutes)
+  }
+
+  return labels
+    .map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      color: entry.color,
+      minutes: currentById.get(entry.id) ?? 0,
+      previousMinutes: previousById.get(entry.id) ?? 0,
+    }))
+    .filter((entry) => entry.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes)
+}
+
 function computeFocusStats(
   logs: DailyLog[],
   range: PeriodRange,
@@ -297,7 +343,15 @@ function computeFocusStats(
     dailyAveragePctVsPrevious = pctChange(dailyAverage, prevDailyAverage)
   }
 
-  return { total, dailyAverage, bestDay, pctVsPrevious, dailyAveragePctVsPrevious, activeDays }
+  return {
+    total,
+    dailyAverage,
+    bestDay,
+    pctVsPrevious,
+    dailyAveragePctVsPrevious,
+    activeDays,
+    labelStats: computeFocusLabelStats(range, prevRange),
+  }
 }
 
 function computeHabitStats(logs: DailyLog[], dates: string[]): HabitPeriodStat[] {
@@ -358,6 +412,24 @@ function countWeeksInRange(dates: string[], weekStartsOn: 0 | 1): number {
     weekStarts.add(getWeekDates(parseISO(`${date}T12:00:00`), weekStartsOn)[0])
   }
   return Math.max(1, weekStarts.size)
+}
+
+function getWorkoutTrackingStartDate(workouts: Workout[]): string | null {
+  if (workouts.length === 0) return null
+  return workouts.reduce((earliest, workout) => {
+    return workout.date < earliest ? workout.date : earliest
+  }, workouts[0].date)
+}
+
+function countWeeksWithWorkoutTracking(
+  dates: string[],
+  weekStartsOn: 0 | 1,
+  trackingStart: string | null,
+): number {
+  if (dates.length === 0) return 1
+  const trackedDates =
+    trackingStart != null ? dates.filter((date) => date >= trackingStart) : dates
+  return countWeeksInRange(trackedDates, weekStartsOn)
 }
 
 function computeWorkoutStats(
@@ -494,9 +566,14 @@ export function computeOverviewPeriodStats(
       previous?.start,
       previous?.end,
     )
-  const workoutWeeksInPeriod = countWeeksInRange(range.dates, weekStartsOn)
+  const workoutTrackingStart = getWorkoutTrackingStartDate(workouts)
+  const workoutWeeksInPeriod = countWeeksWithWorkoutTracking(
+    range.dates,
+    weekStartsOn,
+    workoutTrackingStart,
+  )
   const workoutPreviousWeeksInPeriod = previous
-    ? countWeeksInRange(previous.dates, weekStartsOn)
+    ? countWeeksWithWorkoutTracking(previous.dates, weekStartsOn, workoutTrackingStart)
     : 1
   const workoutWeeklyAvgMinutes = workoutTotalMinutes / workoutWeeksInPeriod
   const workoutPreviousWeeklyAvgMinutes =

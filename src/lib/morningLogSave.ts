@@ -8,6 +8,7 @@ import {
   getMorningLogYesterdayDate,
   saveMorningLogWorkoutsForDate,
 } from '@/lib/morningLogConfig'
+import { clearDraft } from '@/lib/dailyLogDraft'
 import { buildSleepLogUpdates, type SleepMetricsConfig } from '@/lib/sleepMetrics'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
@@ -33,7 +34,8 @@ export async function persistMorningLogPayload(options: {
   })
   const goalUpdates = buildMorningLogGoalUpdates(log, payload.goalValues, goals)
   const habitUpdates = buildMorningLogHabitUpdates(log, payload.habitValues, goals)
-  const updates = { ...sleepUpdates, ...goalUpdates, ...habitUpdates }
+  // Sleep last so an empty sleep goal field cannot wipe morning-log sleep hours.
+  const updates = { ...goalUpdates, ...habitUpdates, ...sleepUpdates }
 
   const todayWorkoutEntries = getMorningLogWorkoutSaveEntries(payload.goalValues, goals, 'today')
   const yesterdayDate = getMorningLogYesterdayDate(date)
@@ -73,6 +75,7 @@ export async function persistMorningLogPayload(options: {
     if (yesterdayWorkoutEntries.length > 0) {
       await saveMorningLogWorkoutsForDate(userId, yesterdayDate, yesterdayWorkoutEntries)
     }
+    clearDraft(date)
     return
   }
 
@@ -104,4 +107,5 @@ export async function persistMorningLogPayload(options: {
   if (yesterdayWorkoutEntries.length > 0) {
     await saveMorningLogWorkoutsForDate(userId, yesterdayDate, yesterdayWorkoutEntries)
   }
+  clearDraft(date)
 }

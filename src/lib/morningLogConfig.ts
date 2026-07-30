@@ -1,7 +1,13 @@
 import { addDays, parseISO } from 'date-fns'
 import { getLogValueForGoal } from '@/lib/dailyLog'
-import { getDailyLogGoals, getActiveGoals } from '@/lib/goals'
-import { getDailyLogHabitTypes } from '@/lib/habitTypes'
+import {
+  getDailyLogGoals,
+  getActiveGoals,
+  getMorningAskGoals,
+  goalLogWhen,
+  goalMorningDay,
+} from '@/lib/goals'
+import { getMorningLogHabitTypes, habitMorningDay, getHabitTypes } from '@/lib/habitTypes'
 import { getEnabledMetricsSections, getVisibleGoalCategories } from '@/lib/metricsSections'
 import { resolveGoalCategoryId } from '@/lib/goalCategories'
 import {
@@ -9,13 +15,14 @@ import {
   getEnabledSleepMetrics,
   getSleepMetricValue,
   isMorningSleepLogComplete,
+  normalizeSleepMetricsConfig,
   type SleepMetricDefinition,
   type SleepMetricsConfig,
 } from '@/lib/sleepMetrics'
 import { isMorningLogSubmitted } from '@/lib/morningLog'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
-import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
-import { isWeightGoal } from '@/lib/weightGoal'
+import { getWorkoutTypes, getMorningLogWorkoutTypes, workoutMetricKey, workoutMorningDay } from '@/lib/workoutTypes'
+import { getActiveWeightGoal, isWeightGoal, isWeightLoggedDaily } from '@/lib/weightGoal'
 import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
 import { formatDate } from '@/lib/utils'
 
@@ -77,9 +84,17 @@ export function workoutCategoryFromMorningLogKey(key: MetricKey): string {
 export function getMorningLogGoalCandidates(goals: Goal[]): Goal[] {
   const active = getActiveGoals(goals)
   const daily = getDailyLogGoals(active).filter((g) => g.metric_key !== 'focus')
-  const weightGoals = active.filter(isWeightGoal)
-  const seen = new Set(daily.map((g) => g.id))
-  return [...daily, ...weightGoals.filter((g) => !seen.has(g.id))]
+  const weightGoal = getActiveWeightGoal(active)
+  const byKey = new Map<string, Goal>()
+  for (const goal of daily) {
+    byKey.set(goal.metric_key, goal)
+  }
+  // Prefer the weight goal with start/target when both a track-only and goal exist.
+  // Weekly weight is shutdown-only — never offer it for the morning log.
+  if (weightGoal && isWeightLoggedDaily(weightGoal)) {
+    byKey.set(weightGoal.metric_key, weightGoal)
+  }
+  return [...byKey.values()]
 }
 
 export function getMorningLogMetricCandidates(
@@ -89,7 +104,7 @@ export function getMorningLogMetricCandidates(
   const showWorkouts = options?.showWorkouts ?? true
   const candidates: MorningLogMetricCandidate[] = []
 
-  for (const habit of getDailyLogHabitTypes()) {
+  for (const habit of getMorningLogHabitTypes()) {
     candidates.push({
       key: habitMorningLogKey(habit.id),
       section: 'habit',
@@ -171,14 +186,11 @@ export function getMorningLogSleepFieldIds(): string[] {
 function getSleepMetricsConfigFromStorage(): SleepMetricsConfig {
   try {
     const raw = storageGetItem('personal-os-sleep-metrics-config')
-    if (raw) {
-      const parsed = JSON.parse(raw) as SleepMetricsConfig
-      if (parsed && Array.isArray(parsed.enabledIds)) return parsed
-    }
+    if (raw) return normalizeSleepMetricsConfig(JSON.parse(raw))
   } catch {
     /* ignore */
   }
-  return { enabledIds: [], customMetrics: [] }
+  return { enabledIds: [], customMetrics: [], targets: {} }
 }
 
 export function saveMorningLogSleepFieldIds(ids: string[]) {
@@ -209,7 +221,7 @@ export function getTrackedMorningLogItems(
   const items: MorningLogItem[] = []
 
   if (enabledSections.has('habits')) {
-    for (const habit of getDailyLogHabitTypes()) {
+    for (const habit of getMorningLogHabitTypes()) {
       items.push({
         id: habitMorningLogKey(habit.id),
         kind: 'habit',
@@ -252,15 +264,16 @@ export function getTrackedMorningLogItems(
   }
 
   if (enabledSections.has('weight')) {
-    for (const goal of getActiveGoals(goals).filter(isWeightGoal)) {
+    const weightGoal = getActiveWeightGoal(goals)
+    if (weightGoal && isWeightLoggedDaily(weightGoal)) {
       items.push({
-        id: goal.metric_key,
+        id: weightGoal.metric_key,
         kind: 'weight',
-        label: goal.name,
-        unit: goal.unit,
+        label: weightGoal.name,
+        unit: weightGoal.unit,
         badge: 'Weight',
-        metricKey: goal.metric_key,
-        goal,
+        metricKey: weightGoal.metric_key,
+        goal: weightGoal,
         supportsYesterday: true,
       })
     }
@@ -284,7 +297,7 @@ export function getTrackedMorningLogItems(
   }
 
   for (const goal of getMorningLogGoalCandidates(goals)) {
-    if (goal.metric_key === 'sleep' || isWeightGoal(goal)) continue
+    if (goal.metric_key === 'sleep' || goal.metric_key === 'weight' || isWeightGoal(goal)) continue
     if (goal.metric_key.startsWith('workout_')) continue
 
     const categoryId = resolveGoalCategoryId(goal.category_id)
@@ -312,15 +325,51 @@ export function getConfiguredMorningLogItems(
   const tracked = getTrackedMorningLogItems(goals, sleepConfig)
   const trackedById = new Map(tracked.map((item) => [item.id, item]))
   const configured: MorningLogItem[] = []
+  const seen = new Set<string>()
 
   for (const sleepFieldId of getMorningLogSleepFieldIds()) {
     const item = trackedById.get(`sleep:${sleepFieldId}`)
-    if (item) configured.push(item)
+    if (item && !seen.has(item.id)) {
+      configured.push(item)
+      seen.add(item.id)
+    }
+  }
+
+  // Habits with log_when=morning always appear in the morning log.
+  for (const habit of getMorningLogHabitTypes()) {
+    const id = habitMorningLogKey(habit.id)
+    const item = trackedById.get(id)
+    if (item && !seen.has(id)) {
+      configured.push(item)
+      seen.add(id)
+    }
+  }
+
+  // Metrics with log_when=morning always appear in the morning log.
+  for (const goal of getMorningAskGoals(goals)) {
+    const item = trackedById.get(goal.metric_key)
+    if (item && !seen.has(item.id)) {
+      configured.push(item)
+      seen.add(item.id)
+    }
+  }
+
+  for (const workout of getMorningLogWorkoutTypes()) {
+    const key = workoutMetricKey(workout.id)
+    const item = trackedById.get(key)
+    if (item && !seen.has(item.id)) {
+      configured.push(item)
+      seen.add(item.id)
+    }
   }
 
   for (const key of getMorningLogGoalKeys()) {
+    if (isHabitMorningLogKey(key)) continue
     const item = trackedById.get(key)
-    if (item) configured.push(item)
+    if (item && !seen.has(item.id)) {
+      configured.push(item)
+      seen.add(item.id)
+    }
   }
 
   return configured
@@ -358,7 +407,7 @@ export function groupMorningLogItemsByCategory(items: MorningLogItem[]): Morning
     ['sleep', 'Sleep'],
     ['workouts', 'Workouts'],
     ['weight', 'Weight Goal'],
-    ['default', 'Goals'],
+    ['default', 'Custom'],
   ])
   for (const category of getVisibleGoalCategories()) {
     labels.set(category.id, category.label)
@@ -451,12 +500,27 @@ export function toggleMorningLogGoalKey(key: MetricKey, enabled: boolean) {
   }
 }
 
-export function isMorningLogYesterdayKey(key: MetricKey): boolean {
+export function isMorningLogYesterdayKey(key: MetricKey, goals: Goal[] = []): boolean {
+  if (isHabitMorningLogKey(key)) {
+    const habit = getHabitTypes().find((entry) => entry.id === habitIdFromMorningLogKey(key))
+    if (habit) return habitMorningDay(habit) === 'yesterday'
+  }
+  if (isWorkoutMorningLogKey(key)) {
+    const workout = getMorningLogWorkoutTypes().find(
+      (entry) => workoutMetricKey(entry.id) === key,
+    )
+    if (workout) return workoutMorningDay(workout) === 'yesterday'
+  }
+  const askGoal = goals.find((goal) => goal.metric_key === key && goalLogWhen(goal) === 'morning')
+  if (askGoal) return goalMorningDay(askGoal) === 'yesterday'
   return getMorningLogYesterdayKeys().includes(key)
 }
 
 export function getEnabledMorningLogGoals(goals: Goal[]): Goal[] {
   const enabled = new Set(getMorningLogGoalKeys())
+  for (const goal of getMorningAskGoals(goals)) {
+    enabled.add(goal.metric_key)
+  }
   return getMorningLogGoalCandidates(goals).filter((g) => enabled.has(g.metric_key))
 }
 
@@ -464,36 +528,64 @@ export function getEnabledMorningLogMetrics(
   goals: Goal[],
   options?: { showWorkouts?: boolean },
 ): MorningLogMetricCandidate[] {
-  const enabled = new Set(getMorningLogGoalKeys())
-  return getMorningLogMetricCandidates(goals, options).filter((m) => enabled.has(m.key))
+  const enabledKeys = new Set(getMorningLogGoalKeys())
+  for (const habit of getMorningLogHabitTypes()) {
+    enabledKeys.add(habitMorningLogKey(habit.id))
+  }
+  for (const goal of getMorningAskGoals(goals)) {
+    enabledKeys.add(goal.metric_key)
+  }
+  for (const workout of getMorningLogWorkoutTypes()) {
+    enabledKeys.add(workoutMetricKey(workout.id))
+  }
+  const seen = new Set<string>()
+  return getMorningLogMetricCandidates(goals, options).filter((metric) => {
+    if (!enabledKeys.has(metric.key) || seen.has(metric.key)) return false
+    seen.add(metric.key)
+    return true
+  })
 }
 
 export function getEnabledMorningLogMetricsForToday(
   goals: Goal[],
   options?: { showWorkouts?: boolean },
 ): MorningLogMetricCandidate[] {
-  return getEnabledMorningLogMetrics(goals, options).filter((m) => !isMorningLogYesterdayKey(m.key))
+  return getEnabledMorningLogMetrics(goals, options).filter(
+    (m) => !isMorningLogYesterdayKey(m.key, goals),
+  )
 }
 
 export function getEnabledMorningLogMetricsForYesterday(
   goals: Goal[],
   options?: { showWorkouts?: boolean },
 ): MorningLogMetricCandidate[] {
-  return getEnabledMorningLogMetrics(goals, options).filter((m) => isMorningLogYesterdayKey(m.key))
+  return getEnabledMorningLogMetrics(goals, options).filter((m) =>
+    isMorningLogYesterdayKey(m.key, goals),
+  )
 }
 
 /** @deprecated Use getEnabledMorningLogMetricsForToday */
 export function getEnabledMorningLogGoalsForToday(goals: Goal[]): Goal[] {
-  return getEnabledMorningLogGoals(goals).filter((g) => !isMorningLogYesterdayKey(g.metric_key))
+  return getEnabledMorningLogGoals(goals).filter(
+    (g) => !isMorningLogYesterdayKey(g.metric_key, goals),
+  )
 }
 
 /** @deprecated Use getEnabledMorningLogMetricsForYesterday */
 export function getEnabledMorningLogGoalsForYesterday(goals: Goal[]): Goal[] {
-  return getEnabledMorningLogGoals(goals).filter((g) => isMorningLogYesterdayKey(g.metric_key))
+  return getEnabledMorningLogGoals(goals).filter((g) =>
+    isMorningLogYesterdayKey(g.metric_key, goals),
+  )
 }
 
-export function hasMorningLogFieldsConfigured(): boolean {
-  return getMorningLogSleepFieldIds().length > 0 || getMorningLogGoalKeys().length > 0
+export function hasMorningLogFieldsConfigured(goals: Goal[] = []): boolean {
+  return (
+    getMorningLogSleepFieldIds().length > 0 ||
+    getMorningLogGoalKeys().length > 0 ||
+    getMorningAskGoals(goals).length > 0 ||
+    getMorningLogHabitTypes().length > 0 ||
+    getMorningLogWorkoutTypes().length > 0
+  )
 }
 
 export function getWorkoutMinutesForDate(
@@ -589,7 +681,8 @@ function applyGoalValuesToLog(
     if (goal.metric_key.startsWith('custom:')) {
       updates.custom_metrics![goal.metric_key] = value
     } else if (goal.metric_key === 'sleep') {
-      updates.sleep_hours = value
+      // Skip null so an empty morning-log sleep goal does not clear duration from sleep fields.
+      if (value != null) updates.sleep_hours = value
     } else if (goal.metric_key === 'steps') {
       updates.steps = value
     } else if (goal.metric_key === 'screen_time') {

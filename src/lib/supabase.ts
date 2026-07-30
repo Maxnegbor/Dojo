@@ -7,6 +7,7 @@ import type {
   ScheduleBlock,
   Workout,
 } from '@/types'
+import { encodeSleepMetricsAsCustom, resolveSleepMetrics } from '@/lib/sleepMetrics'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -19,6 +20,23 @@ export const isSupabaseConfigured =
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null
+
+/** Expose sleep metrics stored in custom_metrics (`sm:`) as sleep_metrics for the app. */
+function hydrateDailyLog(log: DailyLog): DailyLog {
+  const merged = resolveSleepMetrics(log)
+  if (Object.keys(merged).length === 0) return log
+  return {
+    ...log,
+    sleep_metrics: {
+      ...merged,
+      ...(log.sleep_metrics ?? {}),
+    },
+  }
+}
+
+function hydrateDailyLogs(logs: DailyLog[]): DailyLog[] {
+  return logs.map(hydrateDailyLog)
+}
 
 export async function getOrCreateDailyLog(
   userId: string,
@@ -33,7 +51,7 @@ export async function getOrCreateDailyLog(
     .eq('date', date)
     .maybeSingle()
 
-  if (existing) return existing as DailyLog
+  if (existing) return hydrateDailyLog(existing as DailyLog)
 
   const { data, error } = await supabase
     .from('daily_logs')
@@ -42,7 +60,7 @@ export async function getOrCreateDailyLog(
     .single()
 
   if (error) throw error
-  return data as DailyLog
+  return hydrateDailyLog(data as DailyLog)
 }
 
 export async function updateDailyLog(
@@ -63,18 +81,48 @@ export async function updateDailyLog(
     .select()
     .single()
 
-  if (!error) return data as DailyLog
+  if (!error) return hydrateDailyLog(data as DailyLog)
 
   if (input.sleep_metrics != null && isMissingSleepMetricsColumn(error)) {
-    const { sleep_metrics: _removed, ...withoutSleepMetrics } = input
+    const { sleep_metrics, ...withoutSleepMetrics } = input
+
+    const { data: current, error: currentError } = await supabase
+      .from('daily_logs')
+      .select('custom_metrics')
+      .eq('id', id)
+      .maybeSingle()
+    if (currentError) throw currentError
+
+    const existingCustom =
+      (current?.custom_metrics as Record<string, number | null> | null | undefined) ??
+      input.custom_metrics ??
+      {}
+    const custom_metrics = encodeSleepMetricsAsCustom(sleep_metrics, {
+      ...existingCustom,
+      ...(input.custom_metrics ?? {}),
+    })
+
     const { data: retryData, error: retryError } = await supabase
       .from('daily_logs')
-      .update({ ...withoutSleepMetrics, updated_at: new Date().toISOString() })
+      .update({
+        ...withoutSleepMetrics,
+        custom_metrics,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .select()
       .single()
 
-    if (!retryError) return retryData as DailyLog
+    if (!retryError) {
+      return hydrateDailyLog({
+        ...(retryData as DailyLog),
+        sleep_metrics: {
+          ...resolveSleepMetrics(retryData as DailyLog),
+          ...sleep_metrics,
+        },
+        custom_metrics,
+      })
+    }
     throw retryError
   }
 
@@ -131,7 +179,7 @@ export async function fetchDailyLogs(
     .order('date', { ascending: true })
 
   if (error) throw error
-  return (data ?? []) as DailyLog[]
+  return hydrateDailyLogs((data ?? []) as DailyLog[])
 }
 
 export async function clearAllMorningLogs(userId: string): Promise<void> {

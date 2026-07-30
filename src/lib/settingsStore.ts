@@ -1,10 +1,21 @@
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/types'
 import { normalizeWeeklyShutdownChecklist } from '@/lib/weeklyShutdown'
 import { normalizeDailyChecklist } from '@/lib/dailyChecklist'
+import { normalizeDailyShutdownSteps } from '@/lib/dailyShutdownSteps'
+import {
+  normalizeShutdownCustomTime,
+  normalizeShutdownRequireAt,
+} from '@/lib/dailyShutdownRequire'
 
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 
 const SETTINGS_KEY = 'personal-os-app-settings'
+
+function normalizeTypedReminderText(primary: unknown, legacyFallback?: unknown): string {
+  if (typeof primary === 'string') return primary
+  if (typeof legacyFallback === 'string') return legacyFallback
+  return ''
+}
 
 export function normalizeTimelineRange(
   start: number,
@@ -39,10 +50,32 @@ export function getAppSettings(): AppSettings {
         weightUnit: parsed.weightUnit === 'lb' ? 'lb' : 'kg',
         accentColor: parsed.accentColor in ACCENT_SET ? parsed.accentColor : 'amber',
         showWorkoutMetrics: parsed.showWorkoutMetrics === true,
+        showHomeWorkoutPlanner: parsed.showHomeWorkoutPlanner !== false,
+        exerciseWeekPlanIncludeTime: parsed.exerciseWeekPlanIncludeTime === true,
+        showHomePulse: parsed.showHomePulse !== false,
+        hideCompletedHabitsInToggle: parsed.hideCompletedHabitsInToggle !== false,
+        showFocusPage: parsed.showFocusPage !== false,
+        showFocusSchedule: parsed.showFocusSchedule === true,
+        showPulsePage: parsed.showPulsePage !== false,
         weeklyShutdownChecklist: normalizeWeeklyShutdownChecklist(parsed.weeklyShutdownChecklist),
         morningLogChecklist: normalizeDailyChecklist(parsed.morningLogChecklist),
         requireMorningLog: parsed.requireMorningLog === true,
         dailyShutdownChecklist: normalizeDailyChecklist(parsed.dailyShutdownChecklist),
+        dailyShutdownSteps: normalizeDailyShutdownSteps(parsed.dailyShutdownSteps),
+        requireShutdown: parsed.requireShutdown === true,
+        shutdownRequireAt: normalizeShutdownRequireAt(parsed.shutdownRequireAt),
+        shutdownCustomTime: normalizeShutdownCustomTime(parsed.shutdownCustomTime),
+        requireTypedReminderMorning: parsed.requireTypedReminderMorning === true,
+        requireTypedReminderShutdown: parsed.requireTypedReminderShutdown === true,
+        typedReminderMorningText: normalizeTypedReminderText(
+          parsed.typedReminderMorningText,
+          // Migrate legacy shared text into morning if dedicated field missing.
+          (parsed as { typedReminderText?: unknown }).typedReminderText,
+        ),
+        typedReminderShutdownText: normalizeTypedReminderText(
+          parsed.typedReminderShutdownText,
+          (parsed as { typedReminderText?: unknown }).typedReminderText,
+        ),
         devMode: parsed.devMode === true,
         ...timeline,
       }

@@ -18,7 +18,7 @@ export function PulseDevPreviewControls({
   return (
     <div
       className={cn(
-        'rounded-xl border border-violet-500/30 bg-violet-950/20',
+        'rounded-xl border border-violet-500/30 bg-violet-950',
         compact ? 'px-2.5 py-2' : 'p-3',
         className,
       )}

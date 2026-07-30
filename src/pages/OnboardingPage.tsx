@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2 } from 'lucide-react'
 import {
@@ -9,7 +9,6 @@ import {
   onboardingInputClass,
 } from '@/components/onboarding/OnboardingLayout'
 import { OnboardingSleepMetricsStep } from '@/components/onboarding/OnboardingSleepMetricsStep'
-import { WorkoutColorPicker } from '@/components/goals/WorkoutColorPicker'
 import { AccentPicker } from '@/components/settings/AccentPicker'
 import { SegmentedControl, ToggleRow } from '@/components/settings/SettingsControls'
 import { Button } from '@/components/ui/Button'
@@ -36,7 +35,6 @@ import {
   MAIN_ONBOARDING_STEP_COUNT,
   skipGoalCategory,
 } from '@/lib/onboardingSteps'
-import { startOnboardingTour } from '@/lib/onboardingTour'
 import { cn, formatDate } from '@/lib/utils'
 import type { GoalTargetPeriod } from '@/types'
 import { addDays } from 'date-fns'
@@ -48,15 +46,14 @@ export function OnboardingPage() {
   const preview = isOnboardingPreview()
   const [stepIndex, setStepIndex] = useState(0)
   const [data, setData] = useState<OnboardingData>(() => defaultOnboardingData())
-  const [openWorkoutColorIndex, setOpenWorkoutColorIndex] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const tourLaunchRef = useRef(false)
 
   const steps = useMemo(() => buildOnboardingSteps(data), [data])
   const step = steps[Math.min(stepIndex, steps.length - 1)] ?? 'tracks'
   const stepMeta = getOnboardingStepMeta(step, data)
   const canContinue = canContinueOnboardingStep(step, data)
+  const isLastStep = stepIndex >= steps.length - 1
 
   useEffect(() => {
     if (stepIndex >= steps.length) {
@@ -82,25 +79,20 @@ export function OnboardingPage() {
     setSaving(true)
     setError(null)
     try {
-      if (!preview) {
-        const settingsPatch = await applyOnboardingConfig(userId, data)
-        updateSettings(settingsPatch)
+      if (preview) {
+        stopOnboardingPreview()
+        navigate('/settings')
+        return
       }
-      startOnboardingTour({ preview })
+      const settingsPatch = await applyOnboardingConfig(userId, data)
+      updateSettings(settingsPatch)
       navigate('/')
     } catch (err) {
-      tourLaunchRef.current = false
       setError(err instanceof Error ? err.message : 'Could not save your setup.')
     } finally {
       setSaving(false)
     }
   }
-
-  useEffect(() => {
-    if (step !== 'tour' || tourLaunchRef.current) return
-    tourLaunchRef.current = true
-    void finish()
-  }, [step])
 
   const exitPreview = () => {
     stopOnboardingPreview()
@@ -165,12 +157,16 @@ export function OnboardingPage() {
     }))
 
   const handleNext = () => {
-    if (!canContinue || step === 'tour') return
+    if (!canContinue) return
+    if (isLastStep) {
+      void finish()
+      return
+    }
     setStepIndex((i) => Math.min(i + 1, steps.length - 1))
   }
 
   const handleBack = () => {
-    if (stepIndex > 0 && step !== 'tour') setStepIndex((i) => i - 1)
+    if (stepIndex > 0) setStepIndex((i) => i - 1)
   }
 
   const handleSkipGoal = () => {
@@ -330,14 +326,6 @@ export function OnboardingPage() {
                 onChange={(e) => updateWorkout(index, { label: e.target.value })}
                 placeholder="Workout name"
                 className={onboardingInputClass}
-              />
-              <WorkoutColorPicker
-                color={workout.color}
-                open={openWorkoutColorIndex === index}
-                onToggle={() =>
-                  setOpenWorkoutColorIndex((current) => (current === index ? null : index))
-                }
-                onSelect={(color) => updateWorkout(index, { color })}
               />
               {data.workoutTypes.length > 1 && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => removeWorkout(index)}>
@@ -555,14 +543,6 @@ export function OnboardingPage() {
     </div>
   )
 
-  const renderTourLaunchStep = () => (
-    <div className="flex flex-col items-center gap-3 py-16 text-center">
-      <p className="text-sm text-zinc-400">
-        {saving ? 'Saving your setup and opening Dojo…' : 'Preparing your tour…'}
-      </p>
-    </div>
-  )
-
   const renderStepContent = () => {
     switch (step) {
       case 'tracks':
@@ -581,8 +561,6 @@ export function OnboardingPage() {
         return renderMeasurementsStep()
       case 'weight':
         return renderWeightStep()
-      case 'tour':
-        return renderTourLaunchStep()
     }
   }
 
@@ -601,11 +579,11 @@ export function OnboardingPage() {
             </Button>
           )}
           <OnboardingNavButtons
-            onBack={stepIndex > 0 && step !== 'tour' ? handleBack : undefined}
+            onBack={stepIndex > 0 ? handleBack : undefined}
             onSkip={isGoalSubstep(step) ? handleSkipGoal : undefined}
             onNext={() => void handleNext()}
-            nextLabel="Continue"
-            nextDisabled={!canContinue || step === 'tour'}
+            nextLabel={isLastStep ? 'Open Dojo' : 'Continue'}
+            nextDisabled={!canContinue}
             loading={saving}
           />
         </>

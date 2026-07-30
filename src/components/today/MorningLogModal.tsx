@@ -1,11 +1,15 @@
 import { useMemo, useRef, useState } from 'react'
-import { Check, Sun, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { format } from 'date-fns'
+import { Check, PenLine, Sun, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { MetricInput } from '@/components/ui/MetricInput'
 import {
   DurationMetricInput,
   type DurationMetricInputHandle,
 } from '@/components/ui/DurationMetricInput'
+import { TypedReminderConfirm } from '@/components/today/TypedReminderConfirm'
+import { useSettings } from '@/context/SettingsContext'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { computeMorningLogFields, formatMorningMinutes } from '@/lib/morningLog'
 import {
@@ -27,11 +31,16 @@ import {
   type SleepMetricDefinition,
   type SleepMetricsConfig,
 } from '@/lib/sleepMetrics'
+import {
+  getTypedReminderText,
+  isTypedReminderRequired,
+  typedReminderMatches,
+} from '@/lib/typedReminder'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import type { DailyCheckGroup, DailyLog, Goal, MorningLog, Workout } from '@/types'
-import { cn, formatUnknownError } from '@/lib/utils'
+import { cn, formatUnknownError, parseLocalDate } from '@/lib/utils'
 
-type MorningLogStep = 'log' | 'checklist'
+type MorningLogStep = 'log' | 'checklist' | 'reminder'
 
 export interface MorningLogSavePayload {
   morningLog?: MorningLog | null
@@ -154,6 +163,10 @@ export function MorningLogModal({
   onSave,
   dismissible = true,
 }: MorningLogModalProps) {
+  const { settings } = useSettings()
+  const typedReminderText = getTypedReminderText(settings, 'morning')
+  const requireTypedReminder = isTypedReminderRequired(settings, 'morning')
+
   const enabledMetrics = useMemo(
     () => getMorningLogSleepMetrics(sleepMetricsConfig),
     [sleepMetricsConfig],
@@ -211,16 +224,33 @@ export function MorningLogModal({
     ...getMorningLogYesterdayHabitValuesFromLog(yesterdayLog ?? undefined, goals),
   }))
   const [checked, setChecked] = useState<Set<string>>(() => new Set())
+  const [typedReminderValue, setTypedReminderValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const sleepDurationRef = useRef<DurationMetricInputHandle>(null)
+  const committedSleepRef = useRef<number | null>(initial?.sleep_minutes ?? null)
 
-  const resolveMorningLogForSave = () => {
+  const commitLogStepInputs = (): number => {
+    const committedSleep = sleepDurationRef.current?.commit()
+    if (committedSleep != null) {
+      committedSleepRef.current = committedSleep
+      setSleepMinutes(committedSleep)
+      return committedSleep
+    }
+    const fallback = committedSleepRef.current ?? sleepMinutes ?? initial?.sleep_minutes ?? 0
+    committedSleepRef.current = fallback
+    return fallback
+  }
+
+  const resolveMorningLogForSave = (sleepMinutesOverride?: number) => {
     if (!showMorningFields) return null
 
-    const committedSleepMinutes = sleepDurationRef.current?.commit()
     const resolvedSleepMinutes =
-      committedSleepMinutes ?? sleepMinutes ?? initial?.sleep_minutes ?? 0
+      sleepMinutesOverride ??
+      committedSleepRef.current ??
+      sleepMinutes ??
+      initial?.sleep_minutes ??
+      0
 
     return computeMorningLogFields({
       bedtime,
@@ -239,8 +269,10 @@ export function MorningLogModal({
       })
     : null
 
-  const stepIndex = step === 'log' ? 1 : 2
-  const stepCount = hasChecklist ? 2 : 1
+  const stepIndex = step === 'log' ? 1 : step === 'checklist' ? 2 : hasChecklist ? 3 : 2
+  const stepCount = 1 + (hasChecklist ? 1 : 0) + (requireTypedReminder ? 1 : 0)
+  const typedReminderReady =
+    !requireTypedReminder || typedReminderMatches(typedReminderText, typedReminderValue)
 
   const toggleCheck = (id: string) => {
     setChecked((prev) => {
@@ -251,9 +283,11 @@ export function MorningLogModal({
     })
   }
 
-  const buildPayload = (): MorningLogSavePayload => {
+  const buildPayload = (sleepMinutesOverride?: number): MorningLogSavePayload => {
     const sleepMetrics: Record<string, number | null> = {}
-    const morningLog = showMorningFields ? resolveMorningLogForSave() : undefined
+    const morningLog = showMorningFields
+      ? resolveMorningLogForSave(sleepMinutesOverride)
+      : undefined
 
     for (const metric of loggableMetrics) {
       if (metric.id === WEARABLE_SLEEP_PRESET_ID || metric.unit === 'percent') {
@@ -286,7 +320,7 @@ export function MorningLogModal({
     const yesterdayHabitValues: Record<string, boolean> = {}
 
     for (const metric of enabledMorningMetrics) {
-      if (isMorningLogYesterdayKey(metric.key)) {
+      if (isMorningLogYesterdayKey(metric.key, goals)) {
         if (metric.section === 'habit') {
           yesterdayHabitValues[habitIdFromMorningLogKey(metric.key)] =
             habitValues[habitIdFromMorningLogKey(metric.key)] ?? false
@@ -300,7 +334,23 @@ export function MorningLogModal({
         todayHabitValues[habitIdFromMorningLogKey(metric.key)] =
           habitValues[habitIdFromMorningLogKey(metric.key)] ?? false
       } else {
-        todayGoalValues[metric.key] = goalValues[metric.key] ?? null
+        // Prefer committed sleep duration (minutes → hours) over an empty sleep goal input.
+        if (
+          metric.key === 'sleep' &&
+          (sleepMinutesOverride != null ||
+            committedSleepRef.current != null ||
+            sleepMinutes != null) &&
+          enabledMetrics.some((m) => m.id === 'sleep_duration')
+        ) {
+          const minutes =
+            sleepMinutesOverride ??
+            committedSleepRef.current ??
+            sleepMinutes ??
+            0
+          todayGoalValues[metric.key] = minutes > 0 ? minutes / 60 : goalValues[metric.key] ?? null
+        } else {
+          todayGoalValues[metric.key] = goalValues[metric.key] ?? null
+        }
       }
     }
 
@@ -318,7 +368,8 @@ export function MorningLogModal({
     setSaving(true)
     setSaveError(null)
     try {
-      await onSave(buildPayload())
+      const committedSleep = commitLogStepInputs()
+      await onSave(buildPayload(committedSleep))
     } catch (error) {
       setSaveError(formatUnknownError(error, 'Could not save morning log'))
     } finally {
@@ -327,19 +378,32 @@ export function MorningLogModal({
   }
 
   const goNextFromLog = () => {
+    commitLogStepInputs()
     if (hasChecklist) setStep('checklist')
+    else if (requireTypedReminder) setStep('reminder')
     else void handleFinish()
   }
 
-  const stepTitle = step === 'log' ? 'Morning log' : 'Morning checklist'
-  const stepSubtitle = step === 'log' ? date : 'Optional — tap what you’ve done'
+  const goNextFromChecklist = () => {
+    if (requireTypedReminder) setStep('reminder')
+    else void handleFinish()
+  }
+
+  const stepTitle =
+    step === 'log' ? 'Morning log' : step === 'checklist' ? 'Morning checklist' : 'Reminder'
+  const stepSubtitle =
+    step === 'log'
+      ? format(parseLocalDate(date), 'EEEE MMMM do')
+      : step === 'checklist'
+        ? 'Optional — tap what you’ve done'
+        : 'Type your reminder to finish'
 
   const setMetricValue = (id: string, value: string) => {
     setMetricValues((prev) => ({ ...prev, [id]: value }))
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className="relative flex max-h-[92vh] min-h-0 w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-[#0c0c14] shadow-2xl">
         {dismissible && (
           <button
@@ -353,7 +417,11 @@ export function MorningLogModal({
         <div className={cn('border-b border-zinc-800/80 px-5 py-4', dismissible ? 'pr-12' : 'pr-5')}>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-950">
-              <Sun size={20} className="text-amber-400" />
+              {step === 'reminder' ? (
+                <PenLine size={20} className="text-amber-400" />
+              ) : (
+                <Sun size={20} className="text-amber-400" />
+              )}
             </div>
             <div>
               <h2 className="text-lg font-bold text-zinc-100">{stepTitle}</h2>
@@ -410,7 +478,7 @@ export function MorningLogModal({
                 if (metric.section === 'habit') {
                   const habitId = habitIdFromMorningLogKey(metric.key)
                   const done = habitValues[habitId] ?? false
-                  const label = isMorningLogYesterdayKey(metric.key)
+                  const label = isMorningLogYesterdayKey(metric.key, goals)
                     ? `${metric.label} (yesterday)`
                     : metric.label
 
@@ -436,7 +504,7 @@ export function MorningLogModal({
                   <GoalMetricInput
                     key={metric.key}
                     label={
-                      isMorningLogYesterdayKey(metric.key)
+                      isMorningLogYesterdayKey(metric.key, goals)
                         ? `${metric.label} (yesterday)`
                         : metric.label
                     }
@@ -514,6 +582,14 @@ export function MorningLogModal({
               ))}
             </div>
           )}
+
+          {step === 'reminder' && (
+            <TypedReminderConfirm
+              text={typedReminderText}
+              value={typedReminderValue}
+              onChange={setTypedReminderValue}
+            />
+          )}
         </div>
 
         <div className="border-t border-zinc-800/80 px-5 py-4">
@@ -533,18 +609,32 @@ export function MorningLogModal({
             >
               {saving
                 ? 'Saving…'
-                : hasChecklist
+                : hasChecklist || requireTypedReminder
                   ? 'Continue'
                   : 'Finish morning log'}
             </Button>
           )}
           {step === 'checklist' && (
-            <Button onClick={handleFinish} className="w-full" disabled={saving}>
+            <Button onClick={goNextFromChecklist} className="w-full" disabled={saving}>
+              {saving
+                ? 'Saving…'
+                : requireTypedReminder
+                  ? 'Continue'
+                  : 'Finish morning log'}
+            </Button>
+          )}
+          {step === 'reminder' && (
+            <Button
+              onClick={() => void handleFinish()}
+              className="w-full"
+              disabled={saving || !typedReminderReady}
+            >
               {saving ? 'Saving…' : 'Finish morning log'}
             </Button>
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

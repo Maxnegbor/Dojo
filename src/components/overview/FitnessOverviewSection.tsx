@@ -5,7 +5,7 @@ import { WorkoutGoalsWeeklyProgressGrid } from '@/components/overview/WorkoutGoa
 import { useSettings } from '@/context/SettingsContext'
 import { hasTarget } from '@/lib/goals'
 import type { OverviewPeriod, OverviewPeriodStats } from '@/lib/overviewPeriods'
-import { isWeightGoal } from '@/lib/weightGoal'
+import { getActiveWeightGoal } from '@/lib/weightGoal'
 import type { DailyLog, Goal, Workout } from '@/types'
 
 interface FitnessOverviewSectionProps {
@@ -38,7 +38,7 @@ export function FitnessOverviewSection({
   weekStartsOn,
 }: FitnessOverviewSectionProps) {
   const { settings } = useSettings()
-  const activeWeightGoal = goals.find((g) => g.is_active && isWeightGoal(g))
+  const activeWeightGoal = getActiveWeightGoal(goals)
   const hasWorkoutGoals =
     settings.showWorkoutMetrics &&
     goals.some((g) => g.is_active && g.metric_key.startsWith('workout_') && hasTarget(g))

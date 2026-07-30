@@ -208,10 +208,6 @@ export function MonthCalendarModal({
             )
           })}
         </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-zinc-500">
-          <span>Pulse score — brighter ring = higher rhythm</span>
-        </div>
       </div>
     </div>
   )

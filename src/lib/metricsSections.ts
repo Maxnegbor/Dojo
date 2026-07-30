@@ -20,18 +20,18 @@ export const BUILTIN_METRICS_SECTIONS: BuiltinMetricsSection[] = [
   'habits',
   'sleep',
   'focus',
-  'default',
   'weight',
   'workouts',
+  'default',
 ]
 
 export const METRICS_SECTION_LABELS: Record<BuiltinMetricsSection, string> = {
   habits: 'Habits',
   sleep: 'Sleep',
   focus: 'Focus',
-  default: 'Goals',
   weight: 'Weight Goal',
   workouts: 'Workouts',
+  default: DEFAULT_GOAL_CATEGORY_LABEL,
 }
 
 export const METRICS_SECTION_DESCRIPTIONS: Record<BuiltinMetricsSection, string> = {
@@ -39,7 +39,7 @@ export const METRICS_SECTION_DESCRIPTIONS: Record<BuiltinMetricsSection, string>
   sleep: 'Nightly hours goal and optional sleep metrics',
   focus: 'Deep work target tracked from your focus timer',
   default: 'Custom metrics like reading or protein',
-  weight: 'Bulk, cut, or maintain goal tracked during weekly shutdown',
+  weight: 'Bulk, cut, or maintain — log daily or at weekly shutdown',
   workouts: 'Workout types with optional weekly minute targets',
 }
 
@@ -194,18 +194,30 @@ export function getVisibleGoalCategories(): GoalCategoryDefinition[] {
   return categories
 }
 
-export function getAvailableMetricTemplates(): Array<
-  | { kind: 'builtin'; id: BuiltinMetricsSection; label: string; description: string }
-  | { kind: 'custom'; id: 'custom'; label: string; description: string }
-> {
+export function getAvailableMetricTemplates(options?: {
+  /** When false, Workouts is offered even if the section id is already enabled. */
+  showWorkoutMetrics?: boolean
+}): Array<{
+  kind: 'builtin'
+  id: BuiltinMetricsSection
+  label: string
+  description: string
+}> {
   const enabled = new Set(getEnabledMetricsSections())
-  const templates: Array<
-    | { kind: 'builtin'; id: BuiltinMetricsSection; label: string; description: string }
-    | { kind: 'custom'; id: 'custom'; label: string; description: string }
-  > = []
+  const showWorkoutMetrics = options?.showWorkoutMetrics ?? true
+  const templates: Array<{
+    kind: 'builtin'
+    id: BuiltinMetricsSection
+    label: string
+    description: string
+  }> = []
 
   for (const id of BUILTIN_METRICS_SECTIONS) {
-    if (!enabled.has(id)) {
+    const visible =
+      id === 'workouts'
+        ? enabled.has('workouts') && showWorkoutMetrics
+        : enabled.has(id)
+    if (!visible) {
       templates.push({
         kind: 'builtin',
         id,
@@ -214,13 +226,6 @@ export function getAvailableMetricTemplates(): Array<
       })
     }
   }
-
-  templates.push({
-    kind: 'custom',
-    id: 'custom',
-    label: 'Custom category',
-    description: 'Name your own group of goals',
-  })
 
   return templates
 }

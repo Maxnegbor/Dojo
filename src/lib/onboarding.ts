@@ -14,7 +14,7 @@ import {
   WORKOUT_COLOR_PRESETS,
   type WorkoutTypeDefinition,
 } from '@/lib/workoutTypes'
-import { saveSleepMetricsConfig, type SleepMetricsConfig } from '@/lib/sleepMetrics'
+import { getSleepMetricsConfig, saveSleepMetricsConfig, type SleepMetricsConfig } from '@/lib/sleepMetrics'
 import type { AccentColor, AppSettings, Goal, GoalPeriod, GoalTargetPeriod } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
 import type { WeightGoalMode } from '@/lib/weightGoal'
@@ -110,6 +110,7 @@ export function defaultOnboardingData(): OnboardingData {
     sleepMetrics: {
       enabledIds: [],
       customMetrics: [],
+      targets: {},
     },
     focusTargetAmount: 2,
     focusTargetUnit: 'hours',
@@ -142,22 +143,57 @@ export function stopOnboardingPreview(): void {
   sessionStorage.removeItem(ONBOARDING_PREVIEW_KEY)
 }
 
+/** True when the account already has metrics/config — skip first-run onboarding. */
+export function hasExistingUserSetup(settings?: AppSettings): boolean {
+  try {
+    if (getHabitTypes().length > 0) return true
+    if (getWorkoutTypes().length > 0) return true
+    if (getEnabledMetricsSections().length > 0) return true
+    if (localStore.getGoals().length > 0) return true
+
+    const sleep = getSleepMetricsConfig()
+    if (sleep.customMetrics.length > 0 || sleep.enabledIds.length > 0) return true
+
+    if (settings) {
+      if (settings.morningLogChecklist.length > 0) return true
+      if (settings.dailyShutdownChecklist.length > 0) return true
+      if (settings.weeklyShutdownChecklist.length > 0) return true
+      if (settings.requireMorningLog || settings.requireShutdown) return true
+      if (settings.showWorkoutMetrics) return true
+      if (settings.memberSinceDate) return true
+    }
+  } catch {
+    /* ignore */
+  }
+  return false
+}
+
 export function needsOnboarding(settings: AppSettings): boolean {
   if (isOnboardingPreview()) return false
   if (settings.onboardingCompleted === true) return false
+  // Existing accounts with data must never be trapped in onboarding,
+  // even if onboardingCompleted was left false after sign-up.
+  if (hasExistingUserSetup(settings)) return false
   if (settings.onboardingCompleted === false) return true
 
+  return true
+}
+
+/** Remote signals that local storage may not know about yet (Supabase goals/logs). */
+export async function hasRemoteUserSetup(userId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
   try {
-    const hasConfig =
-      getHabitTypes().length > 0 ||
-      getWorkoutTypes().length > 0 ||
-      getEnabledMetricsSections().length > 0 ||
-      localStore.getGoals().length > 0
-    return !hasConfig
+    const { fetchGoals, fetchDailyLogs } = await import('@/lib/supabase')
+    const goals = await fetchGoals(userId)
+    if (goals.length > 0) return true
+    const today = formatDate(new Date())
+    const logs = await fetchDailyLogs(userId, '2000-01-01', today)
+    return logs.length > 0
   } catch {
     return false
   }
 }
+
 
 async function upsertGoalForUser(userId: string, goal: Goal): Promise<void> {
   if (isSupabaseConfigured) {
@@ -191,6 +227,11 @@ export async function applyOnboardingConfig(
         id: slugifyWorkoutId(draft.label),
         label: draft.label.trim(),
         color: draft.color,
+        unit: 'min',
+        log_period: draft.logPeriod === 'weekly' ? ('weekly' as const) : ('daily' as const),
+        ...(draft.logPeriod === 'weekly'
+          ? {}
+          : { log_when: 'home' as const }),
       }))
       .filter((t) => t.label)
     saveWorkoutTypes(types)
@@ -325,6 +366,8 @@ export async function applyOnboardingConfig(
     showWorkoutMetrics: data.tracks.includes('workouts'),
     onboardingCompleted: true,
     requireMorningLog: false,
+
+    requireShutdown: false,
     memberSinceDate: tomorrow,
     morningLogStartDate: tomorrow,
   }

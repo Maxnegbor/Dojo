@@ -18,7 +18,7 @@ export const WEARABLE_SLEEP_PRESET_ID = 'wearable_sleep_score'
 
 export const WEARABLE_SLEEP_PRESET: SleepMetricDefinition = {
   id: WEARABLE_SLEEP_PRESET_ID,
-  label: 'Log your sleep performance from a wearable',
+  label: 'Wearable sleep score',
   unit: 'percent',
   source: 'preset',
 }
@@ -43,6 +43,8 @@ export const MORNING_LOG_SLEEP_FIELD_IDS = new Set([
 export interface SleepMetricsConfig {
   enabledIds: string[]
   customMetrics: SleepMetricDefinition[]
+  /** Target in the metric’s native logged unit (minutes, hours, %, or 1–10). */
+  targets: Record<string, number>
 }
 
 export const SLEEP_METRICS_CHANGED = 'personal-os-sleep-metrics-changed'
@@ -71,9 +73,20 @@ function normalizeMetric(raw: unknown, source: SleepMetricSource): SleepMetricDe
   return { id, label, unit, source }
 }
 
+function normalizeTargets(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, number> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!key) continue
+    const n = typeof value === 'number' ? value : Number(value)
+    if (Number.isFinite(n) && n > 0) out[key] = n
+  }
+  return out
+}
+
 export function normalizeSleepMetricsConfig(raw: unknown): SleepMetricsConfig {
   if (!raw || typeof raw !== 'object') {
-    return { enabledIds: [...DEFAULT_ENABLED_IDS], customMetrics: [] }
+    return { enabledIds: [...DEFAULT_ENABLED_IDS], customMetrics: [], targets: {} }
   }
 
   const obj = raw as Partial<SleepMetricsConfig>
@@ -87,9 +100,16 @@ export function normalizeSleepMetricsConfig(raw: unknown): SleepMetricsConfig {
         .filter((m): m is SleepMetricDefinition => m != null)
     : []
 
+  const targets = normalizeTargets(obj.targets)
+  const enabled = new Set(enabledIds)
+  for (const key of Object.keys(targets)) {
+    if (!enabled.has(key)) delete targets[key]
+  }
+
   return {
     enabledIds,
     customMetrics,
+    targets,
   }
 }
 
@@ -100,7 +120,7 @@ export function getSleepMetricsConfig(): SleepMetricsConfig {
   } catch {
     /* ignore */
   }
-  return { enabledIds: [...DEFAULT_ENABLED_IDS], customMetrics: [] }
+  return { enabledIds: [...DEFAULT_ENABLED_IDS], customMetrics: [], targets: {} }
 }
 
 export function saveSleepMetricsConfig(config: SleepMetricsConfig) {
@@ -151,7 +171,9 @@ export function toggleSleepMetric(config: SleepMetricsConfig, id: string, enable
   const enabledIds = new Set(config.enabledIds)
   if (enabled) enabledIds.add(id)
   else enabledIds.delete(id)
-  return { ...config, enabledIds: Array.from(enabledIds) }
+  const targets = { ...config.targets }
+  if (!enabled) delete targets[id]
+  return { ...config, enabledIds: Array.from(enabledIds), targets }
 }
 
 export function addCustomSleepMetric(
@@ -174,14 +196,74 @@ export function addCustomSleepMetric(
   return {
     enabledIds: [...config.enabledIds, id],
     customMetrics: [...config.customMetrics, metric],
+    targets: { ...config.targets },
   }
 }
 
 export function removeCustomSleepMetric(config: SleepMetricsConfig, id: string): SleepMetricsConfig {
+  const targets = { ...config.targets }
+  delete targets[id]
   return {
     enabledIds: config.enabledIds.filter((entry) => entry !== id),
     customMetrics: config.customMetrics.filter((m) => m.id !== id),
+    targets,
   }
+}
+
+/** Clock times are logged but not pulse-scored. */
+export function sleepMetricSupportsTarget(metric: SleepMetricDefinition): boolean {
+  return metric.id !== 'bedtime' && metric.id !== 'wake_time'
+}
+
+export function getSleepMetricTarget(config: SleepMetricsConfig, id: string): number | null {
+  const value = config.targets?.[id]
+  return typeof value === 'number' && value > 0 ? value : null
+}
+
+export function setSleepMetricTarget(
+  config: SleepMetricsConfig,
+  id: string,
+  target: number | null,
+): SleepMetricsConfig {
+  const targets = { ...config.targets }
+  if (target == null || !Number.isFinite(target) || target <= 0) delete targets[id]
+  else targets[id] = target
+  return { ...config, targets }
+}
+
+/** UI unit for target fields (duration metrics edited in hours). */
+export function sleepMetricTargetInputUnit(metric: SleepMetricDefinition): string {
+  if (metric.id === 'sleep_duration' || metric.id === 'in_bed') return 'hrs'
+  return formatSleepMetricUnit(metric.unit)
+}
+
+/** Convert stored native target → value shown in the target input. */
+export function sleepMetricTargetToInputValue(
+  metric: SleepMetricDefinition,
+  target: number | null,
+): string {
+  if (target == null || target <= 0) return ''
+  if (metric.id === 'sleep_duration' || metric.id === 'in_bed') {
+    const hours = target / 60
+    return Number.isInteger(hours) ? String(hours) : String(Math.round(hours * 100) / 100)
+  }
+  if (metric.unit === 'score10') {
+    return Number.isInteger(target) ? String(target) : String(Math.round(target * 10) / 10)
+  }
+  return String(Math.round(target * 10) / 10)
+}
+
+/** Parse target input → native stored unit. */
+export function sleepMetricTargetFromInputValue(
+  metric: SleepMetricDefinition,
+  raw: string,
+): number | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const n = parseFloat(trimmed)
+  if (!Number.isFinite(n) || n <= 0) return null
+  if (metric.id === 'sleep_duration' || metric.id === 'in_bed') return n * 60
+  return n
 }
 
 export function formatSleepMetricUnit(unit: SleepMetricUnit): string {
@@ -206,8 +288,60 @@ export function sleepMetricDisplayUnit(metric: Pick<SleepMetricDefinition, 'id' 
 /** Numeric sleep metric values keyed by metric id. */
 export type SleepMetricValues = Record<string, number | null>
 
+/**
+ * Fallback storage when the `sleep_metrics` DB column is missing.
+ * Written into `daily_logs.custom_metrics` under this prefix.
+ */
+export const SLEEP_METRIC_CUSTOM_PREFIX = 'sm:'
+
+export function sleepMetricCustomKey(metricId: string): string {
+  return `${SLEEP_METRIC_CUSTOM_PREFIX}${metricId}`
+}
+
+export function isSleepMetricCustomKey(key: string): boolean {
+  return key.startsWith(SLEEP_METRIC_CUSTOM_PREFIX)
+}
+
+export function encodeSleepMetricsAsCustom(
+  sleepMetrics: SleepMetricValues | undefined | null,
+  existingCustom: Record<string, number | null> = {},
+): Record<string, number | null> {
+  const next = { ...existingCustom }
+  if (!sleepMetrics) return next
+  for (const [id, value] of Object.entries(sleepMetrics)) {
+    const key = sleepMetricCustomKey(id)
+    if (value == null || (typeof value === 'number' && !Number.isFinite(value))) {
+      delete next[key]
+    } else {
+      next[key] = value
+    }
+  }
+  return next
+}
+
+export function sleepMetricsFromCustom(
+  customMetrics: Record<string, number | null> | undefined | null,
+): SleepMetricValues {
+  if (!customMetrics) return {}
+  const out: SleepMetricValues = {}
+  for (const [key, value] of Object.entries(customMetrics)) {
+    if (!isSleepMetricCustomKey(key)) continue
+    out[key.slice(SLEEP_METRIC_CUSTOM_PREFIX.length)] = value
+  }
+  return out
+}
+
+/** Merge native sleep_metrics with custom_metrics fallback (`sm:` keys). */
+export function resolveSleepMetrics(log: DailyLog | undefined): SleepMetricValues {
+  if (!log) return {}
+  return {
+    ...sleepMetricsFromCustom(log.custom_metrics),
+    ...(log.sleep_metrics ?? {}),
+  }
+}
+
 export function getSleepMetricValues(log: DailyLog | undefined): SleepMetricValues {
-  return { ...(log?.sleep_metrics ?? {}) }
+  return resolveSleepMetrics(log)
 }
 
 export function getSleepMetricValue(
@@ -215,12 +349,12 @@ export function getSleepMetricValue(
   metric: SleepMetricDefinition,
 ): number | null {
   if (!log) return null
+  const metrics = resolveSleepMetrics(log)
 
   switch (metric.id) {
     case 'sleep_duration': {
-      if (log.sleep_metrics && 'sleep_duration' in log.sleep_metrics) {
-        return log.sleep_metrics.sleep_duration ?? null
-      }
+      const fromMetrics = metrics.sleep_duration
+      if (fromMetrics != null) return fromMetrics
       if (log.morning_log?.sleep_minutes != null && log.morning_log.sleep_minutes > 0) {
         return log.morning_log.sleep_minutes
       }
@@ -228,14 +362,14 @@ export function getSleepMetricValue(
       return null
     }
     case 'in_bed':
-      return log.morning_log?.in_bed_minutes ?? log.sleep_metrics?.in_bed ?? null
+      return log.morning_log?.in_bed_minutes ?? metrics.in_bed ?? null
     case 'alertness':
-      return log.morning_log?.alertness ?? log.sleep_metrics?.alertness ?? null
+      return log.morning_log?.alertness ?? metrics.alertness ?? null
     case 'bedtime':
     case 'wake_time':
-      return log.sleep_metrics?.[metric.id] ?? null
+      return metrics[metric.id] ?? null
     default:
-      return log.sleep_metrics?.[metric.id] ?? null
+      return metrics[metric.id] ?? null
   }
 }
 
@@ -312,11 +446,18 @@ export function buildSleepLogUpdates(input: {
 
   if (input.morningLog !== undefined) {
     updates.morning_log = input.morningLog
-    if (enabled.has('sleep_duration') && input.morningLog) {
-      updates.sleep_hours = input.morningLog.sleep_minutes / 60
-    }
-  } else if (enabled.has('sleep_duration') && sleepMetrics.sleep_duration != null) {
-    updates.sleep_hours = sleepMetrics.sleep_duration / 60
+  }
+
+  const durationMinutes =
+    (enabled.has('sleep_duration') && input.morningLog
+      ? input.morningLog.sleep_minutes
+      : null) ??
+    (sleepMetrics.sleep_duration != null && sleepMetrics.sleep_duration > 0
+      ? sleepMetrics.sleep_duration
+      : null)
+
+  if (durationMinutes != null && durationMinutes > 0) {
+    updates.sleep_hours = durationMinutes / 60
   }
 
   return updates
@@ -431,24 +572,20 @@ export function getPulseSleepMetrics(config: SleepMetricsConfig): SleepMetricDef
 export function metricRateForPulse(
   metric: SleepMetricDefinition,
   value: number,
-  sleepGoalTargetHours: number | null,
+  target: number | null,
 ): number | null {
+  if (!Number.isFinite(value)) return null
+
+  if (target != null && target > 0) {
+    return Math.max(0, Math.min(100, (value / target) * 100))
+  }
+
+  // Without a target: percent and 1–10 scores still contribute; durations need a target.
   switch (metric.unit) {
     case 'percent':
       return Math.max(0, Math.min(100, value))
     case 'score10':
       return Math.max(0, Math.min(100, (value / 10) * 100))
-    case 'minutes': {
-      if (!sleepGoalTargetHours || sleepGoalTargetHours <= 0) {
-        if (metric.id === WEARABLE_SLEEP_PRESET_ID) return null
-        if (metric.source === 'custom') return null
-        return null
-      }
-      return Math.max(0, Math.min(100, (value / 60 / sleepGoalTargetHours) * 100))
-    }
-    case 'hours':
-      if (!sleepGoalTargetHours || sleepGoalTargetHours <= 0) return null
-      return Math.max(0, Math.min(100, (value / sleepGoalTargetHours) * 100))
     default:
       return null
   }
@@ -477,35 +614,34 @@ export function formatSleepMetricDisplay(
   return String(Math.round(value * 10) / 10)
 }
 
+/**
+ * Average completion across enabled pulse sleep metrics.
+ * @param legacySleepGoalTargetHours — fallback for sleep_duration / in_bed when config has no target
+ */
 export function computeSleepPulseRate(
   log: DailyLog | undefined,
-  sleepGoalTargetHours: number | null,
   config: SleepMetricsConfig,
+  legacySleepGoalTargetHours: number | null = null,
 ): number {
   const pulseMetrics = getPulseSleepMetrics(config)
   if (pulseMetrics.length === 0) return 0
-
-  if (
-    pulseMetrics.length === 1 &&
-    pulseMetrics[0].id === WEARABLE_SLEEP_PRESET_ID &&
-    pulseMetrics[0].unit === 'percent'
-  ) {
-    const value = getSleepMetricValue(log, pulseMetrics[0])
-    if (value == null) return 0
-    return Math.round(Math.max(0, Math.min(100, value)))
-  }
-
-  if (pulseMetrics.length === 1 && pulseMetrics[0].unit === 'percent') {
-    const value = getSleepMetricValue(log, pulseMetrics[0])
-    if (value == null) return 0
-    return Math.round(Math.max(0, Math.min(100, value)))
-  }
 
   const rates: number[] = []
   for (const metric of pulseMetrics) {
     const value = getSleepMetricValue(log, metric)
     if (value == null) continue
-    const rate = metricRateForPulse(metric, value, sleepGoalTargetHours)
+
+    let target = getSleepMetricTarget(config, metric.id)
+    if (
+      target == null &&
+      legacySleepGoalTargetHours != null &&
+      legacySleepGoalTargetHours > 0 &&
+      (metric.id === 'sleep_duration' || metric.id === 'in_bed')
+    ) {
+      target = legacySleepGoalTargetHours * 60
+    }
+
+    const rate = metricRateForPulse(metric, value, target)
     if (rate != null) rates.push(rate)
   }
 

@@ -63,10 +63,7 @@ function WorkoutComparisonDetail({
 function workoutCategoryLabel(workout: WorkoutPeriodStat) {
   return (
     <>
-      <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ backgroundColor: workout.color }}
-      />
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent-500)]" />
       <span className="truncate text-xs font-medium text-zinc-200">{workout.label}</span>
     </>
   )

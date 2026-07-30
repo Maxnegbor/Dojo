@@ -1,13 +1,14 @@
 import { FitnessOverviewSection } from '@/components/overview/FitnessOverviewSection'
 import { HabitOverview } from '@/components/overview/HabitOverview'
 import { FocusOverviewSection } from '@/components/overview/FocusOverviewSection'
-import { OtherGoalsOverviewSection } from '@/components/overview/OtherGoalsOverviewSection'
+import { MetricCategoryOverviewSection } from '@/components/overview/MetricCategoryOverviewSection'
 import { WeeklySleepOverview } from '@/components/overview/WeeklySleepOverview'
 import { useSettings } from '@/context/SettingsContext'
-import type { OverviewCategory } from '@/lib/overviewCategories'
+import {
+  isBuiltinOverviewCategory,
+  type OverviewCategory,
+} from '@/lib/overviewCategories'
 import { computeOverviewPeriodStats, type PeriodRange } from '@/lib/overviewPeriods'
-import { hasTarget } from '@/lib/goals'
-import { isWeightGoal } from '@/lib/weightGoal'
 import type { DailyLog, Goal, Workout } from '@/types'
 
 interface WeeklyOverviewPanelProps {
@@ -24,18 +25,6 @@ interface WeeklyOverviewPanelProps {
   asOf: Date
   range: PeriodRange
   isCurrentPeriod: boolean
-}
-
-function hasOtherGoals(goals: Goal[]): boolean {
-  return goals.some(
-    (g) =>
-      g.is_active &&
-      hasTarget(g) &&
-      !g.metric_key.startsWith('workout_') &&
-      g.metric_key !== 'sleep' &&
-      g.metric_key !== 'focus' &&
-      !isWeightGoal(g),
-  )
 }
 
 export function WeeklyOverviewPanel(props: WeeklyOverviewPanelProps) {
@@ -64,6 +53,8 @@ export function WeeklyOverviewPanel(props: WeeklyOverviewPanelProps) {
     allLogs,
     asOf,
     isCurrentPeriod,
+    rangeStart: range.start,
+    rangeEnd: range.end,
     totalMinutes: stats.focus.total,
     dailyAverage: stats.focus.dailyAverage,
     activeDays: stats.activeDays,
@@ -73,6 +64,7 @@ export function WeeklyOverviewPanel(props: WeeklyOverviewPanelProps) {
     pctVsPrevious: stats.focus.pctVsPrevious,
     dailyAveragePctVsPrevious: stats.focus.dailyAveragePctVsPrevious,
     previousLabel: previous?.label ?? 'last week',
+    labelStats: stats.focus.labelStats,
   }
 
   if (category === 'fitness') {
@@ -128,19 +120,13 @@ export function WeeklyOverviewPanel(props: WeeklyOverviewPanelProps) {
     return <FocusOverviewSection {...focusProps} />
   }
 
-  if (!hasOtherGoals(props.goals) && stats.stepsTotal <= 0) {
-    return (
-      <p className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-8 text-center text-sm text-zinc-500">
-        No other goals tracked this week yet.
-      </p>
-    )
+  if (!isBuiltinOverviewCategory(category)) {
+    return <MetricCategoryOverviewSection categoryId={category} {...goalProps} />
   }
 
   return (
-    <OtherGoalsOverviewSection
-      stepsTotal={stats.stepsTotal}
-      stepsLabel="this week"
-      {...goalProps}
-    />
+    <p className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-8 text-center text-sm text-zinc-500">
+      Nothing to show for this category yet.
+    </p>
   )
 }

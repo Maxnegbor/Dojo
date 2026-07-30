@@ -5,6 +5,7 @@ import { formatWeightStepper, kgToDisplay } from '@/lib/settingsStore'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeekDates } from '@/lib/utils'
 import { formatGoalEndDate } from '@/lib/goalPeriod'
+import { goalLogPeriod } from '@/lib/goals'
 
 export type WeightGoalMode = 'bulk' | 'cut' | 'maintain'
 
@@ -38,6 +39,60 @@ export function isWeightGoal(goal: Goal): boolean {
     goal.goal_weight_start != null &&
     goal.goal_weight_target != null
   )
+}
+
+/** Weekly weigh-in (shutdown) — not collected on morning / home / daily shutdown. */
+export function isWeightLoggedWeekly(goal: Goal | undefined | null): boolean {
+  return goal != null && isWeightGoal(goal) && goalLogPeriod(goal) === 'weekly'
+}
+
+/** Daily weigh-in — morning / home / shutdown; not weekly shutdown. */
+export function isWeightLoggedDaily(goal: Goal | undefined | null): boolean {
+  return goal != null && isWeightGoal(goal) && goalLogPeriod(goal) === 'daily'
+}
+
+/** The single weight campaign to show — newest active goal wins if duplicates exist. */
+export function getActiveWeightGoal(goals: Goal[]): Goal | undefined {
+  const active = goals.filter((goal) => goal.is_active && isWeightGoal(goal))
+  if (active.length === 0) return undefined
+  return active.reduce((best, goal) =>
+    (goal.created_at ?? '') >= (best.created_at ?? '') ? goal : best,
+  )
+}
+
+/** Other active weight campaigns that should be retired when one is kept. */
+export function getDuplicateActiveWeightGoals(goals: Goal[], keepId?: string): Goal[] {
+  const canonical = keepId
+    ? goals.find((goal) => goal.id === keepId && isWeightGoal(goal))
+    : getActiveWeightGoal(goals)
+  if (!canonical) {
+    return goals.filter((goal) => goal.is_active && isWeightGoal(goal))
+  }
+  return goals.filter(
+    (goal) => goal.is_active && isWeightGoal(goal) && goal.id !== canonical.id,
+  )
+}
+
+/**
+ * Collapse multiple active weight campaigns to one (newest wins).
+ * Returns the in-memory list plus goals that should be persisted as inactive.
+ */
+export function withDuplicateWeightGoalsRetired(goals: Goal[]): {
+  goals: Goal[]
+  toRetire: Goal[]
+} {
+  const toRetire = getDuplicateActiveWeightGoals(goals).map((goal) => ({
+    ...goal,
+    is_active: false,
+  }))
+  if (toRetire.length === 0) return { goals, toRetire }
+  const retiredIds = new Set(toRetire.map((goal) => goal.id))
+  return {
+    goals: goals.map((goal) =>
+      retiredIds.has(goal.id) ? { ...goal, is_active: false } : goal,
+    ),
+    toRetire,
+  }
 }
 
 export function weightGoalMode(goal: Goal): WeightGoalMode {

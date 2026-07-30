@@ -1,10 +1,36 @@
 import type { Goal, GoalPeriod, MetricKey } from '@/types'
 import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
 
-/** Weekly totals derived from daily logs — never prompt for manual entry at shutdown. */
-export function isAggregatedFromDailyLogs(metricKey: MetricKey): boolean {
-  if (metricKey.startsWith('workout_')) return true
-  return ['focus', 'sleep'].includes(metricKey)
+export type GoalLogWhen = 'home' | 'morning' | 'shutdown'
+export type GoalMorningDay = 'today' | 'yesterday'
+
+function normalizeGoalLogWhen(value: unknown): GoalLogWhen {
+  if (value === 'morning' || value === 'shutdown' || value === 'home') return value
+  return 'home'
+}
+
+function normalizeGoalMorningDay(value: unknown): GoalMorningDay {
+  return value === 'yesterday' ? 'yesterday' : 'today'
+}
+
+/** Surface where a daily metric is collected. Weekly metrics ignore this. */
+export function goalLogWhen(goal: Goal): GoalLogWhen {
+  if (effectiveLogPeriod(goal) === 'weekly') return 'home'
+  return normalizeGoalLogWhen(goal.log_when)
+}
+
+export function goalMorningDay(goal: Goal): GoalMorningDay {
+  return normalizeGoalMorningDay(goal.morning_day)
+}
+
+/** Metrics whose weekly totals come from daily entries — never prompt for a weekly total. */
+export function isAggregatedFromDailyLogs(goal: Goal): boolean {
+  const metricKey = goal.metric_key
+  if (metricKey.startsWith('workout_')) {
+    // Weekly-logged workouts are entered at weekly shutdown, not summed from sessions.
+    return effectiveLogPeriod(goal) !== 'weekly'
+  }
+  return metricKey === 'focus' || metricKey === 'sleep'
 }
 
 export const BUILTIN_METRICS: {
@@ -35,14 +61,24 @@ export function normalizeGoal(goal: Goal): Goal {
   }
   const hasGoalTarget = hasTarget(normalized)
   const target_period = hasGoalTarget
-    ? (goal.target_period ?? goal.log_period ?? goal.target_type ?? 'daily')
+    ? (goal.target_period ??
+        (goal.metric_key.startsWith('workout_')
+          ? 'weekly'
+          : goal.log_period ?? goal.target_type ?? 'daily'))
     : 'daily'
   const log_period: GoalPeriod = hasGoalTarget
-    ? goal.metric_key === 'weight'
-      ? 'weekly'
-      : (goal.log_period ?? goal.target_type ?? 'daily')
+    ? (goal.log_period ?? goal.target_type ?? (goal.metric_key === 'weight' ? 'weekly' : 'daily'))
     : 'daily'
-  return {
+
+  const log_when =
+    log_period === 'daily' &&
+    goal.metric_key !== 'focus' &&
+    !goal.metric_key.startsWith('workout_')
+    ? normalizeGoalLogWhen(goal.log_when)
+    : undefined
+  const morning_day = log_when === 'morning' ? normalizeGoalMorningDay(goal.morning_day) : undefined
+
+  const result: Goal = {
     ...normalized,
     unit: normalized.metric_key === 'screen_time' && normalized.unit === 'min' ? 'hrs:min' : normalized.unit,
     log_period,
@@ -50,6 +86,17 @@ export function normalizeGoal(goal: Goal): Goal {
     target_type: log_period,
     show_in_daily_log: log_period === 'daily',
   }
+
+  if (log_when) {
+    result.log_when = log_when
+    if (morning_day) result.morning_day = morning_day
+    else delete result.morning_day
+  } else {
+    delete result.log_when
+    delete result.morning_day
+  }
+
+  return result
 }
 
 export function normalizeGoals(goals: Goal[]): Goal[] {
@@ -67,8 +114,63 @@ export function getActiveGoals(goals: Goal[]): Goal[] {
   return normalizeGoals(goals).filter((g) => g.is_active)
 }
 
+/** Newest active goal for a metric key — collapses duplicate rows left by older saves. */
+export function getActiveGoalByMetricKey(
+  goals: Goal[],
+  metricKey: string,
+): Goal | undefined {
+  const active = getActiveGoals(goals).filter((goal) => goal.metric_key === metricKey)
+  if (active.length === 0) return undefined
+  return active.reduce((best, goal) =>
+    (goal.created_at ?? '') >= (best.created_at ?? '') ? goal : best,
+  )
+}
+
+/** One active goal per metric_key (newest wins). */
+export function dedupeActiveGoalsByMetricKey(goals: Goal[]): Goal[] {
+  const byKey = new Map<string, Goal>()
+  for (const goal of getActiveGoals(goals)) {
+    const existing = byKey.get(goal.metric_key)
+    if (!existing || (goal.created_at ?? '') >= (existing.created_at ?? '')) {
+      byKey.set(goal.metric_key, goal)
+    }
+  }
+  return [...byKey.values()]
+}
+
+/**
+ * Extra active goals that share a metric_key with a newer active goal.
+ * Also includes orphan workout_* goals whose type no longer exists.
+ */
+export function getStaleDuplicateGoals(goals: Goal[]): Goal[] {
+  const knownWorkoutKeys = new Set(
+    getWorkoutTypes().map((type) => workoutMetricKey(type.id)),
+  )
+  const keepIds = new Set(dedupeActiveGoalsByMetricKey(goals).map((goal) => goal.id))
+  return getActiveGoals(goals).filter((goal) => {
+    if (!keepIds.has(goal.id)) return true
+    if (goal.metric_key.startsWith('workout_') && !knownWorkoutKeys.has(goal.metric_key)) {
+      return true
+    }
+    return false
+  })
+}
+
 export function getDailyLogGoals(goals: Goal[]): Goal[] {
   return getActiveGoals(goals).filter((g) => effectiveLogPeriod(g) === 'daily')
+}
+
+/** Daily metrics collected on the Home habits/metrics card (not morning/shutdown). */
+export function getHomeLogGoals(goals: Goal[]): Goal[] {
+  return getDailyLogGoals(goals).filter((g) => goalLogWhen(g) === 'home')
+}
+
+export function getMorningAskGoals(goals: Goal[]): Goal[] {
+  return getDailyLogGoals(goals).filter((g) => goalLogWhen(g) === 'morning')
+}
+
+export function getShutdownAskGoals(goals: Goal[]): Goal[] {
+  return getDailyLogGoals(goals).filter((g) => goalLogWhen(g) === 'shutdown')
 }
 
 export function getWeeklyLogGoals(goals: Goal[]): Goal[] {
@@ -76,7 +178,7 @@ export function getWeeklyLogGoals(goals: Goal[]): Goal[] {
     (g) =>
       hasTarget(g) &&
       effectiveLogPeriod(g) === 'weekly' &&
-      !isAggregatedFromDailyLogs(g.metric_key),
+      !isAggregatedFromDailyLogs(g),
   )
 }
 

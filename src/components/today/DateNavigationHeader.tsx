@@ -35,7 +35,7 @@ export function DateNavigationHeader({
           {viewingToday ? (
             <span className="text-sm font-medium text-zinc-200">Today</span>
           ) : (
-            <Button variant="secondary" size="sm" onClick={onToday}>
+            <Button variant="secondary" size="sm" className="!text-sm" onClick={onToday}>
               Today
             </Button>
           )}

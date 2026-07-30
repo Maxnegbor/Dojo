@@ -1,47 +1,77 @@
-import { Dumbbell, Crosshair, Moon, Sparkles, Target } from 'lucide-react'
-import type { OverviewCategory } from '@/lib/overviewCategories'
-import { OVERVIEW_CATEGORIES } from '@/lib/overviewCategories'
-import { cn } from '@/lib/utils'
+import { useEffect, useMemo, useState } from 'react'
+import { Crosshair, Dumbbell, Folder, Moon, Sparkles, type LucideIcon } from 'lucide-react'
+import { SlidingNavList } from '@/components/ui/SlidingNavList'
+import {
+  getOverviewCategories,
+  type OverviewCategory,
+  type OverviewCategoryItem,
+} from '@/lib/overviewCategories'
+import { METRICS_SECTIONS_CHANGED } from '@/lib/metricsSections'
 
-const CATEGORY_ICONS: Record<OverviewCategory, typeof Target> = {
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
   fitness: Dumbbell,
   sleep: Moon,
   habits: Sparkles,
   focus: Crosshair,
-  goals: Target,
 }
 
 interface OverviewCategoryNavProps {
   value: OverviewCategory
   onChange: (category: OverviewCategory) => void
+  categories?: OverviewCategoryItem[]
 }
 
-export function OverviewCategoryNav({ value, onChange }: OverviewCategoryNavProps) {
+export function OverviewCategoryNav({
+  value,
+  onChange,
+  categories: categoriesProp,
+}: OverviewCategoryNavProps) {
+  const [revision, setRevision] = useState(0)
+
+  useEffect(() => {
+    const refresh = () => setRevision((n) => n + 1)
+    window.addEventListener(METRICS_SECTIONS_CHANGED, refresh)
+    return () => window.removeEventListener(METRICS_SECTIONS_CHANGED, refresh)
+  }, [])
+
+  const categories = useMemo(
+    () => categoriesProp ?? getOverviewCategories(),
+    [categoriesProp, revision],
+  )
+
+  useEffect(() => {
+    if (categories.length === 0) return
+    if (!categories.some((category) => category.id === value)) {
+      onChange(categories[0].id)
+    }
+  }, [categories, value, onChange])
+
+  if (categories.length === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-zinc-800 px-3 py-4 text-sm text-zinc-500 lg:w-44">
+        Add metrics categories on the Metrics page to see overview tabs.
+      </p>
+    )
+  }
+
   return (
-    <nav
-      aria-label="Overview categories"
+    <SlidingNavList
+      activeId={value}
+      items={categories}
+      getKey={(category) => category.id}
+      onSelect={(category) => onChange(category.id)}
+      ariaLabel="Overview categories"
       className="flex gap-1.5 overflow-x-auto pb-1 lg:w-44 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0"
-    >
-      {OVERVIEW_CATEGORIES.map(({ id, label }) => {
-        const Icon = CATEGORY_ICONS[id]
-        const active = value === id
+      itemClassName="flex shrink-0 items-center gap-2.5 px-3.5 py-2.5 lg:w-full"
+      renderItem={({ id, label }) => {
+        const Icon = CATEGORY_ICONS[id] ?? Folder
         return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onChange(id)}
-            className={cn(
-              'flex shrink-0 items-center gap-2.5 rounded-lg px-3.5 py-2.5 text-left text-sm font-medium transition-colors lg:w-full',
-              active
-                ? 'bg-[var(--accent-500)]/15 text-[var(--accent-300)] ring-1 ring-[var(--accent-500)]/25'
-                : 'text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200',
-            )}
-          >
+          <>
             <Icon size={15} className="shrink-0 opacity-80" />
             <span className="whitespace-nowrap">{label}</span>
-          </button>
+          </>
         )
-      })}
-    </nav>
+      }}
+    />
   )
 }

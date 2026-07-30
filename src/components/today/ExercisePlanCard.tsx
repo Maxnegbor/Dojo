@@ -1,0 +1,608 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { isToday, parseISO } from 'date-fns'
+import { Plus, Trash2, X } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { useSettings } from '@/context/SettingsContext'
+import {
+  addPlannedWorkout,
+  EXERCISE_PLAN_CHANGED,
+  getPlannedWorkoutLogAmount,
+  getPlannedWorkoutsForDates,
+  MIN_PLAN_SCHEDULE_MINUTES,
+  plannedWorkoutCanSync,
+  removePlannedWorkout,
+  type PlannedWorkout,
+} from '@/lib/exercisePlan'
+import {
+  applyExerciseWeekTemplateToDates,
+  EXERCISE_WEEK_TEMPLATE_CHANGED,
+} from '@/lib/exerciseWeekTemplate'
+import {
+  formatWorkoutAmount,
+  formatWorkoutPlanLabel,
+  getWorkoutTypes,
+  isTimedWorkoutUnit,
+  WORKOUT_TYPES_CHANGED,
+} from '@/lib/workoutTypes'
+import { cn, formatDuration, getWeekDates } from '@/lib/utils'
+
+interface ExercisePlanCardProps {
+  viewDate: string
+  userId: string | null
+  onSelectDate?: (date: string) => void
+  /** Called after a plan creates/updates/removes a schedule block. */
+  onScheduleChange?: () => void
+  onRemoveLoggedWorkout?: (workoutId: string) => Promise<void>
+  onVolumeLogged?: () => void
+  /** Lock to viewDate only — hide the week day strip. */
+  singleDate?: boolean
+  className?: string
+}
+
+function weekdayLetter(dateStr: string): string {
+  return parseISO(`${dateStr}T12:00:00`).toLocaleDateString(undefined, { weekday: 'narrow' })
+}
+
+function dayNumber(dateStr: string): string {
+  return String(parseISO(`${dateStr}T12:00:00`).getDate())
+}
+
+function formatPlanTime(time: string, use24h: boolean): string {
+  const [h, m] = time.split(':').map(Number)
+  if (use24h) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  const period = h >= 12 ? 'PM' : 'AM'
+  const hour12 = h % 12 === 0 ? 12 : h % 12
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`
+}
+
+function planGlanceLabel(item: PlannedWorkout, categoryLabel: string): string {
+  const sub = item.subtype?.trim()
+  if (sub) return sub
+  return categoryLabel
+}
+
+export function ExercisePlanCard({
+  viewDate,
+  userId,
+  onSelectDate,
+  onScheduleChange,
+  onRemoveLoggedWorkout,
+  onVolumeLogged,
+  singleDate = false,
+  className,
+}: ExercisePlanCardProps) {
+  const { settings } = useSettings()
+  const [workoutTypes, setWorkoutTypes] = useState(() => getWorkoutTypes())
+  const typeById = useMemo(
+    () => new Map(workoutTypes.map((type) => [type.id, type])),
+    [workoutTypes],
+  )
+
+  const weekDates = useMemo(
+    () => getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn),
+    [viewDate, settings.weekStartsOn],
+  )
+
+  const [selectedDate, setSelectedDate] = useState(viewDate)
+  const [planned, setPlanned] = useState<PlannedWorkout[]>(() =>
+    getPlannedWorkoutsForDates(weekDates),
+  )
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [draftCategory, setDraftCategory] = useState<string | null>(null)
+  const [draftSubtype, setDraftSubtype] = useState<string | null>(null)
+  const [draftTime, setDraftTime] = useState('07:00')
+  const [draftDuration, setDraftDuration] = useState('45')
+  const [draftAmount, setDraftAmount] = useState('3')
+  const [draftNotes, setDraftNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setSelectedDate(viewDate)
+  }, [viewDate])
+
+  useEffect(() => {
+    const syncTypes = () => setWorkoutTypes(getWorkoutTypes())
+    window.addEventListener(WORKOUT_TYPES_CHANGED, syncTypes)
+    window.addEventListener('user-storage-ready', syncTypes)
+    return () => {
+      window.removeEventListener(WORKOUT_TYPES_CHANGED, syncTypes)
+      window.removeEventListener('user-storage-ready', syncTypes)
+    }
+  }, [])
+
+  const refresh = useCallback(() => {
+    setPlanned(getPlannedWorkoutsForDates(weekDates))
+  }, [weekDates])
+
+  useEffect(() => {
+    let cancelled = false
+    const syncWeek = async () => {
+      const changed = await applyExerciseWeekTemplateToDates({
+        weekDates,
+        userId,
+        timelineEndHour: settings.timelineEndHour,
+      })
+      if (cancelled) return
+      refresh()
+      if (changed) onScheduleChange?.()
+    }
+    void syncWeek()
+    return () => {
+      cancelled = true
+    }
+  }, [weekDates, userId, settings.timelineEndHour, refresh, onScheduleChange])
+
+  useEffect(() => {
+    const onPlanChange = () => refresh()
+    const onTemplateChange = () => {
+      void applyExerciseWeekTemplateToDates({
+        weekDates,
+        userId,
+        timelineEndHour: settings.timelineEndHour,
+      }).then((changed) => {
+        refresh()
+        if (changed) onScheduleChange?.()
+      })
+    }
+    window.addEventListener(EXERCISE_PLAN_CHANGED, onPlanChange)
+    window.addEventListener(EXERCISE_WEEK_TEMPLATE_CHANGED, onTemplateChange)
+    window.addEventListener('user-storage-ready', onPlanChange)
+    return () => {
+      window.removeEventListener(EXERCISE_PLAN_CHANGED, onPlanChange)
+      window.removeEventListener(EXERCISE_WEEK_TEMPLATE_CHANGED, onTemplateChange)
+      window.removeEventListener('user-storage-ready', onPlanChange)
+    }
+  }, [weekDates, userId, settings.timelineEndHour, refresh, onScheduleChange])
+
+  const byDate = useMemo(() => {
+    const map = new Map<string, PlannedWorkout[]>()
+    for (const date of weekDates) map.set(date, [])
+    for (const item of planned) {
+      const list = map.get(item.date)
+      if (list) list.push(item)
+    }
+    return map
+  }, [planned, weekDates])
+
+  const selectedItems = byDate.get(selectedDate) ?? []
+
+  if (!settings.showHomeWorkoutPlanner) return null
+
+  const resetDraft = () => {
+    setDraftCategory(null)
+    setDraftSubtype(null)
+    setDraftTime('07:00')
+    setDraftDuration('45')
+    setDraftAmount('3')
+    setDraftNotes('')
+  }
+
+  const selectDay = (date: string) => {
+    setSelectedDate(date)
+    setPickerOpen(false)
+    resetDraft()
+    onSelectDate?.(date)
+  }
+
+  const draftType = draftCategory ? typeById.get(draftCategory) : null
+  const draftSubtypes = draftType?.subtypes ?? []
+  const needsSubtype = draftSubtypes.length > 0
+  const draftTimed = draftType ? isTimedWorkoutUnit(draftType.unit) : true
+  const use24h = settings.timeFormat === '24h'
+  const canSubmit =
+    Boolean(draftCategory) && (!needsSubtype || Boolean(draftSubtype)) && !saving
+
+  const selectCategory = (categoryId: string) => {
+    setDraftCategory(categoryId)
+    setDraftSubtype(null)
+  }
+
+  const submitPlan = async () => {
+    if (!draftCategory || !userId || saving) return
+    if (needsSubtype && !draftSubtype) return
+
+    setSaving(true)
+    try {
+      if (draftTimed) {
+        const duration = parseInt(draftDuration, 10)
+        const duration_minutes =
+          Number.isFinite(duration) && duration > 0 ? duration : null
+        await addPlannedWorkout({
+          date: selectedDate,
+          category: draftCategory,
+          subtype: draftSubtype,
+          start_time: draftTime || null,
+          duration_minutes,
+          amount: duration_minutes,
+          notes: draftNotes,
+          userId,
+          timelineEndHour: settings.timelineEndHour,
+        })
+      } else {
+        const amountRaw = parseFloat(draftAmount)
+        const amount = Number.isFinite(amountRaw) && amountRaw > 0 ? amountRaw : null
+        await addPlannedWorkout({
+          date: selectedDate,
+          category: draftCategory,
+          subtype: draftSubtype,
+          start_time: draftTime || null,
+          amount,
+          notes: draftNotes,
+          userId,
+          timelineEndHour: settings.timelineEndHour,
+        })
+      }
+      onScheduleChange?.()
+      setPickerOpen(false)
+      resetDraft()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleRemove = async (id: string) => {
+    const item = planned.find((entry) => entry.id === id)
+    if (item?.logged_workout_id && onRemoveLoggedWorkout) {
+      await onRemoveLoggedWorkout(item.logged_workout_id)
+      onVolumeLogged?.()
+    }
+    await removePlannedWorkout(id)
+    onScheduleChange?.()
+  }
+
+  return (
+    <Card title="Exercise plan" className={className}>
+      <div className="overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950">
+        {!singleDate && (
+        <div className="flex h-[4.75rem] items-stretch gap-1 border-b border-zinc-800/80 p-1.5">
+          {weekDates.map((date) => {
+            const selected = date === selectedDate
+            const today = isToday(parseISO(`${date}T12:00:00`))
+            const dayItems = byDate.get(date) ?? []
+
+            return (
+              <button
+                key={date}
+                type="button"
+                onClick={() => selectDay(date)}
+                className={cn(
+                  'group relative flex h-full min-w-0 flex-1 flex-col items-center justify-center overflow-hidden rounded-lg px-0.5 py-1 text-center transition-[flex-grow,background-color,box-shadow,color] duration-200',
+                  selected
+                    ? 'z-[1] flex-[2.35] bg-[var(--accent-950)]/85 px-1 shadow-md shadow-[var(--accent-500)]/15 ring-1 ring-[var(--accent-ring)]'
+                    : today
+                      ? 'bg-[var(--accent-950)]/35 ring-1 ring-[var(--accent-500)]/40'
+                      : 'hover:bg-zinc-900/70',
+                )}
+              >
+                <span
+                  className={cn(
+                    'text-[9px] font-semibold uppercase leading-none',
+                    selected ? 'text-[var(--accent-300)]' : today ? 'text-[var(--accent-400)]' : 'text-zinc-500',
+                  )}
+                >
+                  {weekdayLetter(date)}
+                </span>
+                <span
+                  className={cn(
+                    'mt-1 h-5 text-sm tabular-nums font-bold leading-none',
+                    selected ? 'text-zinc-50' : 'text-zinc-300',
+                    today && !selected && 'text-[var(--accent-200)]',
+                    today && selected && 'text-[var(--accent-100)]',
+                  )}
+                >
+                  {dayNumber(date)}
+                </span>
+                <div className="mt-0.5 flex min-h-[14px] w-full flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5">
+                  {dayItems.length === 0 ? (
+                    today ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-500)]" />
+                    ) : null
+                  ) : selected ? (
+                    dayItems.slice(0, 2).map((item) => {
+                      const type = typeById.get(item.category)
+                      const label = planGlanceLabel(item, type?.label ?? item.category)
+                      return (
+                        <span
+                          key={item.id}
+                          className="flex max-w-full items-center gap-0.5 truncate text-[8px] font-semibold leading-none text-zinc-200"
+                          title={formatWorkoutPlanLabel(item.category, item.subtype)}
+                        >
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: type?.color || 'var(--accent-500)' }}
+                          />
+                          <span className="truncate">{label}</span>
+                        </span>
+                      )
+                    })
+                  ) : (
+                    <span className="flex items-center justify-center gap-0.5">
+                      {dayItems.slice(0, 3).map((item) => {
+                        const type = typeById.get(item.category)
+                        return (
+                          <span
+                            key={item.id}
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: type?.color || 'var(--accent-500)' }}
+                            title={formatWorkoutPlanLabel(item.category, item.subtype)}
+                          />
+                        )
+                      })}
+                    </span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        )}
+
+        <div className="p-2.5">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[10px] text-zinc-500">
+            {selectedItems.length === 0
+              ? 'Nothing planned'
+              : `${selectedItems.length} planned`}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setPickerOpen((open) => !open)
+              if (pickerOpen) resetDraft()
+            }}
+            disabled={workoutTypes.length === 0}
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors',
+              pickerOpen
+                ? 'bg-zinc-800 text-zinc-200'
+                : 'bg-[var(--accent-500)] text-black hover:bg-[var(--accent-400)]',
+              workoutTypes.length === 0 && 'cursor-not-allowed opacity-40',
+            )}
+          >
+            {pickerOpen ? <X size={12} /> : <Plus size={12} />}
+            {pickerOpen ? 'Close' : 'Add'}
+          </button>
+        </div>
+
+        {workoutTypes.length === 0 ? (
+          <p className="text-[10px] text-zinc-500">Add workout types in Metrics first.</p>
+        ) : pickerOpen ? (
+          <div className="space-y-2.5">
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Workout
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {workoutTypes.map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => selectCategory(type.id)}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
+                      draftCategory === type.id
+                        ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
+                        : 'border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800',
+                    )}
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: type.color || 'var(--accent-500)' }}
+                    />
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {needsSubtype && (
+              <div>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  {draftType?.label ?? 'Workout'} subcategory
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {draftSubtypes.map((subtype) => (
+                    <button
+                      key={subtype}
+                      type="button"
+                      onClick={() => setDraftSubtype(subtype)}
+                      className={cn(
+                        'rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
+                        draftSubtype === subtype
+                          ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
+                          : 'border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800',
+                      )}
+                    >
+                      {subtype}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {draftCategory && (!needsSubtype || draftSubtype) && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                      Time
+                    </span>
+                    <input
+                      type="time"
+                      step={1800}
+                      value={draftTime}
+                      onChange={(e) => setDraftTime(e.target.value)}
+                      className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 text-xs tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                    />
+                  </label>
+                  {draftTimed ? (
+                    <label className="min-w-0">
+                      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                        Duration
+                      </span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={MIN_PLAN_SCHEDULE_MINUTES}
+                          step={5}
+                          inputMode="numeric"
+                          value={draftDuration}
+                          onChange={(e) => setDraftDuration(e.target.value)}
+                          className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 pr-8 text-xs tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                        />
+                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">
+                          min
+                        </span>
+                      </div>
+                    </label>
+                  ) : (
+                    <label className="min-w-0">
+                      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                        Amount
+                      </span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          inputMode="decimal"
+                          value={draftAmount}
+                          onChange={(e) => setDraftAmount(e.target.value)}
+                          className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 pr-10 text-xs tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                        />
+                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">
+                          {draftType?.unit ?? 'sets'}
+                        </span>
+                      </div>
+                    </label>
+                  )}
+                </div>
+
+                <input
+                  type="text"
+                  value={draftNotes}
+                  onChange={(e) => setDraftNotes(e.target.value)}
+                  placeholder="Optional note"
+                  maxLength={60}
+                  className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[var(--accent-500)]"
+                />
+
+                <p className="text-[10px] leading-relaxed text-zinc-600">
+                  {draftTimed
+                    ? `Time + duration (${MIN_PLAN_SCHEDULE_MINUTES}m+) adds this workout to your schedule.`
+                    : 'Enter sets (or other amount) for the plan. Time places a 45m block on your schedule.'}
+                </p>
+
+                <button
+                  type="button"
+                  disabled={!canSubmit}
+                  onClick={() => void submitPlan()}
+                  className={cn(
+                    'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors',
+                    canSubmit
+                      ? 'bg-[var(--accent-500)] text-black hover:bg-[var(--accent-400)]'
+                      : 'cursor-not-allowed bg-zinc-800 text-zinc-500',
+                  )}
+                >
+                  {saving
+                    ? 'Saving…'
+                    : draftType
+                      ? `Plan ${formatWorkoutPlanLabel(draftType.id, draftSubtype)}`
+                      : 'Pick a workout type'}
+                </button>
+              </>
+            )}
+
+            {draftCategory && needsSubtype && !draftSubtype && (
+              <p className="text-[10px] text-zinc-600">
+                Choose {draftSubtypes.slice(0, 3).join(', ')}
+                {draftSubtypes.length > 3 ? '…' : ''}.
+              </p>
+            )}
+          </div>
+        ) : selectedItems.length === 0 ? (
+          <p className="text-[10px] text-zinc-600">
+            Tap Add to plan a workout with time and duration or sets.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {selectedItems.map((item) => {
+              const type = typeById.get(item.category)
+              const unit = type?.unit ?? 'min'
+              const timed = isTimedWorkoutUnit(unit)
+              const synced = plannedWorkoutCanSync(item) && Boolean(item.schedule_block_id)
+              const logAmount = getPlannedWorkoutLogAmount(item)
+              const amountLabel =
+                logAmount != null ? formatWorkoutAmount(logAmount, unit) : null
+              const title = formatWorkoutPlanLabel(item.category, item.subtype)
+
+              return (
+                <li
+                  key={item.id}
+                  className={cn(
+                    'flex items-start gap-1.5 rounded-md border px-2 py-1.5',
+                    item.completed
+                      ? 'border-[var(--accent-500)]/40 bg-[var(--accent-950)]/35'
+                      : 'border-zinc-800/80 bg-zinc-900/50',
+                  )}
+                >
+                  <span
+                    className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: type?.color || 'var(--accent-500)' }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={cn(
+                        'truncate text-xs font-medium',
+                        item.completed ? 'text-[var(--accent-200)]' : 'text-zinc-200',
+                      )}
+                    >
+                      {item.subtype?.trim() ? (
+                        <>
+                          <span className="text-zinc-100">{item.subtype.trim()}</span>
+                          <span className="font-normal text-zinc-500">
+                            {' '}
+                            · {type?.label ?? item.category}
+                          </span>
+                        </>
+                      ) : (
+                        title
+                      )}
+                      {item.notes.trim() ? (
+                        <span className="font-normal text-zinc-500">
+                          {' '}
+                          · {item.notes.trim()}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-0.5 text-[10px] tabular-nums text-zinc-500">
+                      {item.start_time
+                        ? formatPlanTime(item.start_time, use24h)
+                        : 'No time'}
+                      {timed && item.duration_minutes != null && item.duration_minutes > 0
+                        ? ` · ${formatDuration(item.duration_minutes)}`
+                        : !timed && amountLabel
+                          ? ` · ${amountLabel}`
+                          : ''}
+                      {synced ? ' · on schedule' : ''}
+                      {item.completed ? ' · logged' : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${title}`}
+                    className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
+                    onClick={() => void handleRemove(item.id)}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        </div>
+      </div>
+    </Card>
+  )
+}

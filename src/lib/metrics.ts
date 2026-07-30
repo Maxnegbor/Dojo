@@ -147,6 +147,28 @@ function withLogForDate(logs: DailyLog[], log: DailyLog | undefined, date: strin
   return [...logs.filter((entry) => entry.date !== date), log]
 }
 
+/** Weekly workout goal progress for a single calendar week (overview grid). */
+export function getWorkoutGoalWeekProgress(
+  goal: Goal,
+  logs: DailyLog[],
+  workouts: Workout[],
+  weekDates: string[],
+  weekKey: string,
+): { current: number; percent: number; target: number | null } {
+  const weeklyTotal = getWeeklyMetricValue(goal.metric_key, logs, workouts, weekDates, weekKey)
+  const target = goal.target_value
+
+  if (target == null || target <= 0) {
+    return { current: weeklyTotal, percent: 0, target: null }
+  }
+
+  return {
+    current: weeklyTotal,
+    percent: (weeklyTotal / target) * 100,
+    target,
+  }
+}
+
 export function getWeeklyMetricValue(
   metricKey: MetricKey,
   logs: DailyLog[],
@@ -154,12 +176,19 @@ export function getWeeklyMetricValue(
   weekDates: string[],
   weekKey?: string,
 ): number {
+  if (metricKey.startsWith('workout_')) {
+    const fromSessions = getWeeklyWorkoutTotal(
+      metricKey.replace('workout_', ''),
+      workouts,
+      weekDates,
+    )
+    if (fromSessions > 0) return fromSessions
+    const manual = weekKey ? getWeeklyLog(weekKey)[metricKey] : undefined
+    return manual ?? 0
+  }
+
   const manual = weekKey ? getWeeklyLog(weekKey)[metricKey] : undefined
   if (manual != null) return manual
-
-  if (metricKey.startsWith('workout_')) {
-    return getWeeklyWorkoutTotal(metricKey.replace('workout_', ''), workouts, weekDates)
-  }
   if (metricKey === 'focus') {
     return getWeeklyFocusTotal(logs, weekDates)
   }
@@ -310,7 +339,13 @@ export function calculateProgress(
     }
   }
 
-  if (isCustomTargetPeriod(goal)) {
+  if (
+    goal.metric_key.startsWith('workout_') &&
+    weekKey != null &&
+    weekDates.length > 0
+  ) {
+    current = getWeeklyMetricValue(goal.metric_key, allLogs, workouts, weekDates, weekKey)
+  } else if (isCustomTargetPeriod(goal)) {
     current = getCustomPeriodMetricValue(
       goal,
       allLogs,

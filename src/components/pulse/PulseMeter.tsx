@@ -4,14 +4,29 @@ import {
   pulseRingAnimationDelay,
   pulseScoreLabel,
 } from '@/lib/pulse'
-import { usePulseScoreAnimation } from '@/hooks/usePulseScoreAnimation'
+import {
+  usePulseScoreAnimation,
+  type PulseRadiantNova,
+} from '@/hooks/usePulseScoreAnimation'
+import { warmAudioContext } from '@/lib/timerSound'
 import { cn } from '@/lib/utils'
-import type { CSSProperties } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 
 interface PulseMeterProps {
   score: number
   scale?: number
   className?: string
+  /** Fires whenever the animated display score changes (including mount). */
+  onDisplayScoreChange?: (score: number) => void
+  /**
+   * When animating toward 100, grow then slam so impact lands exactly as the ticker hits 100.
+   * Increment `radiantSlamKey` to force the celebration again (dev).
+   */
+  celebrateRadiant?: boolean
+  onRadiantImpact?: () => void
+  radiantSlamKey?: number
+  /** True while the core is scaled/shaking for the radiant celebrate. */
+  onCelebratingChange?: (celebrating: boolean) => void
 }
 
 function buildMeterStyle(score: number, scale: number) {
@@ -30,6 +45,8 @@ function buildMeterStyle(score: number, scale: number) {
     '--pulse-duration': `${visuals.animationDuration}s`,
     '--pulse-ring-start': visuals.ringStartScale,
     '--pulse-ring-expand': visuals.ringExpandEnd,
+    '--pulse-ring-peak-opacity': 0.25,
+    '--pulse-ring-color': brightBorder,
     '--pulse-accent': accent,
     '--pulse-accent-soft': accentSoft,
     '--pulse-border-opacity': visuals.borderOpacity,
@@ -50,10 +67,81 @@ function buildMeterStyle(score: number, scale: number) {
   return { visuals, meterStyle, baseBorder, corePx }
 }
 
-export function PulseMeter({ score, scale = 1, className }: PulseMeterProps) {
-  const { displayScore } = usePulseScoreAnimation(score)
+function novaVisuals(nova: PulseRadiantNova) {
+  const { phase, t } = nova
+  if (phase === 'emit') {
+    return {
+      softScale: 1.05 + t * 0.72,
+      ringScale: 1.02 + t * 0.58,
+      softOpacity: 0.2 + t * 0.55,
+      ringOpacity: 0.35 + t * 0.55,
+      coreFlash: 0,
+    }
+  }
+
+  // Implode: rush inward, brighten, then vanish into the slam.
+  const collapse = t
+  const softScale = 1.77 * (1 - collapse) + 0.18 * collapse
+  const ringScale = 1.6 * (1 - collapse) + 0.12 * collapse
+  const softOpacity =
+    collapse < 0.55 ? 0.75 + collapse * 0.35 : Math.max(0, 0.95 * (1 - (collapse - 0.55) / 0.45))
+  const ringOpacity =
+    collapse < 0.4 ? 0.95 : Math.max(0, 0.95 * (1 - (collapse - 0.4) / 0.6))
+  const coreFlash =
+    collapse < 0.65 ? collapse * 1.15 : Math.max(0, 1.2 * (1 - (collapse - 0.65) / 0.35))
+
+  return { softScale, ringScale, softOpacity, ringOpacity, coreFlash }
+}
+
+export function PulseMeter({
+  score,
+  scale = 1,
+  className,
+  onDisplayScoreChange,
+  celebrateRadiant = false,
+  onRadiantImpact,
+  radiantSlamKey = 0,
+  onCelebratingChange,
+}: PulseMeterProps) {
+  const onRadiantImpactRef = useRef(onRadiantImpact)
+  onRadiantImpactRef.current = onRadiantImpact
+
+  const { displayScore, visualScore, coreScale, coreShake, radiantNova } = usePulseScoreAnimation(
+    score,
+    {
+      celebrateRadiant,
+      forceCelebrateKey: radiantSlamKey,
+      onRadiantImpact: () => onRadiantImpactRef.current?.(),
+    },
+  )
   const label = pulseScoreLabel(displayScore)
-  const { visuals, meterStyle, baseBorder, corePx } = buildMeterStyle(score, scale)
+  const { visuals, meterStyle, baseBorder, corePx } = buildMeterStyle(visualScore, scale)
+  const celebrating =
+    coreScale !== 1 ||
+    Math.abs(coreShake.x) > 0.01 ||
+    Math.abs(coreShake.y) > 0.01 ||
+    radiantNova != null
+  const coreTransform = !celebrating
+    ? undefined
+    : `translate(${coreShake.x.toFixed(2)}px, ${coreShake.y.toFixed(2)}px) scale(${coreScale})`
+  const nova = radiantNova ? novaVisuals(radiantNova) : null
+
+  useEffect(() => {
+    onDisplayScoreChange?.(displayScore)
+  }, [displayScore, onDisplayScoreChange])
+
+  useEffect(() => {
+    onCelebratingChange?.(celebrating)
+  }, [celebrating, onCelebratingChange])
+
+  useEffect(() => {
+    return () => onCelebratingChange?.(false)
+  }, [onCelebratingChange])
+
+  useEffect(() => {
+    if (celebrating) warmAudioContext()
+  }, [celebrating])
+
   const scoreTextClass =
     scale >= 1
       ? 'text-[1.75rem] leading-none'
@@ -68,7 +156,7 @@ export function PulseMeter({ score, scale = 1, className }: PulseMeterProps) {
         : 'text-[6px] leading-none tracking-[0.08em]'
   const corePadding = scale >= 1 ? 'px-2.5' : scale >= 0.65 ? 'px-1.5' : 'px-1'
   const coreGap = scale >= 1 ? 'gap-1' : 'gap-0.5'
-  const showPulse = score > 0
+  const showPulse = visualScore > 0
 
   return (
     <div
@@ -81,6 +169,7 @@ export function PulseMeter({ score, scale = 1, className }: PulseMeterProps) {
           style={{ width: visuals.ringArenaPx, height: visuals.ringArenaPx }}
         >
           {showPulse &&
+            !celebrating &&
             [0, 1, 2].map((ring) => (
               <div
                 key={ring}
@@ -93,9 +182,48 @@ export function PulseMeter({ score, scale = 1, className }: PulseMeterProps) {
             ))}
 
           <div
-            className="relative flex items-center justify-center"
-            style={{ width: corePx, height: corePx }}
+            className="relative flex items-center justify-center origin-top"
+            style={{
+              width: corePx,
+              height: corePx,
+              transform: coreTransform,
+              willChange: coreTransform ? 'transform' : undefined,
+            }}
           >
+            {nova && (
+              <>
+                <div
+                  className="pulse-radiant-nova-soft pointer-events-none absolute left-1/2 top-1/2 rounded-full"
+                  style={{
+                    width: corePx,
+                    height: corePx,
+                    opacity: nova.softOpacity,
+                    transform: `translate(-50%, -50%) scale(${nova.softScale})`,
+                  }}
+                />
+                <div
+                  className="pulse-radiant-nova-ring pointer-events-none absolute left-1/2 top-1/2 rounded-full"
+                  style={{
+                    width: corePx,
+                    height: corePx,
+                    opacity: nova.ringOpacity,
+                    transform: `translate(-50%, -50%) scale(${nova.ringScale})`,
+                  }}
+                />
+                {nova.coreFlash > 0.02 && (
+                  <div
+                    className="pulse-radiant-nova-flash pointer-events-none absolute left-1/2 top-1/2 rounded-full"
+                    style={{
+                      width: corePx * 0.55,
+                      height: corePx * 0.55,
+                      opacity: Math.min(1, nova.coreFlash),
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  />
+                )}
+              </>
+            )}
+
             {showPulse && (
               <div
                 className="pulse-hero-core pointer-events-none absolute left-1/2 top-1/2 rounded-full border-solid"
@@ -109,7 +237,8 @@ export function PulseMeter({ score, scale = 1, className }: PulseMeterProps) {
 
             <div
               className={cn(
-                'relative flex flex-col items-center justify-center rounded-full bg-zinc-950/80',
+                'relative flex flex-col items-center justify-center rounded-full',
+                celebrating ? 'bg-zinc-950' : 'bg-zinc-950/80',
                 corePadding,
                 coreGap,
               )}

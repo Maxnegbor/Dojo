@@ -1,24 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import { HabitLogRow } from '@/components/today/HabitLogRow'
 import type { DailyLog, Goal, Workout, WorkoutCategory } from '@/types'
-import { getDailyLogGoals } from '@/lib/goals'
-import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes, useDailyLogHabitTypes, useWeeklyLogHabitTypes } from '@/lib/habitTypes'
+import { getDailyLogGoals, getHomeLogGoals } from '@/lib/goals'
+import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes, useHomeLogHabitTypes, useWeeklyLogHabitTypes } from '@/lib/habitTypes'
 import { WeeklyHabitsLogSection } from '@/components/today/WeeklyHabitsLogSection'
 import { getHabitTargetLabel, applyRampLevelSync } from '@/lib/habitRamp'
-import { getWorkoutTypes } from '@/lib/workoutTypes'
+import { getWorkoutTypes, getHomeLogWorkoutTypes, formatWorkoutAmount } from '@/lib/workoutTypes'
 import { getHabitStreak } from '@/lib/habitStreaks'
 import {
   draftFromLog,
   flushDraftToStore,
   getDraft,
-  isShutdownWorkoutChoiceReady,
   mergeDraftWithLog,
   setDraft,
   usesAdditiveTodayDraft,
+  workoutsFromListForDate,
   type DailyLogDraft,
   type WorkoutDrafts,
 } from '@/lib/dailyLogDraft'
@@ -38,16 +38,29 @@ interface DailyLogFormProps {
   embedded?: boolean
   /** Sidebar habits-only mode — log habits throughout the day. */
   habitsOnly?: boolean
-  /** Require explicit workout / none selection (shutdown flow). */
-  requireWorkoutSelection?: boolean
+  /** Hide weekly habits section (e.g. shutdown unfinished daily habits review). */
+  hideWeeklyHabits?: boolean
+  /** Only list habits that are not yet complete (shutdown review). */
+  incompleteHabitsOnly?: boolean
+  /** Only show metrics without a logged value today (shutdown wrap-up). */
+  unloggedMetricsOnly?: boolean
   /** When set, only show metrics configured for shutdown logging. */
   metricsFilter?: ShutdownLogFilter
-  onWorkoutSelectionChange?: (ready: boolean) => void
   userId?: string
   onSaved?: () => void
 }
 
 const DONE_LIST_IDLE_MS = 5000
+
+function isScalarGoalLoggedInDraft(goal: Goal, draft: DailyLogDraft): boolean {
+  const key = goal.metric_key
+  if (key === 'sleep') return draft.sleep_hours != null
+  if (key === 'weight') return draft.weight != null
+  if (key === 'steps') return draft.steps != null
+  if (key === 'screen_time') return draft.screen_time_minutes != null
+  if (key.startsWith('custom:')) return draft.custom_metrics?.[key] != null
+  return false
+}
 
 export function DailyLogForm({
   log,
@@ -56,9 +69,10 @@ export function DailyLogForm({
   streakLogs = [],
   embedded = false,
   habitsOnly = false,
-  requireWorkoutSelection = false,
+  hideWeeklyHabits = false,
+  incompleteHabitsOnly = false,
+  unloggedMetricsOnly = false,
   metricsFilter,
-  onWorkoutSelectionChange,
   userId,
   onSaved,
 }: DailyLogFormProps) {
@@ -69,19 +83,23 @@ export function DailyLogForm({
   const needsManualSave = isPastDay && isEditableDay && !habitsOnly
 
   const dailyGoals = useMemo(() => getDailyLogGoals(goals), [goals])
-  const dailyHabits = useDailyLogHabitTypes()
+  const homeGoals = useMemo(() => getHomeLogGoals(goals), [goals])
+  const dailyHabits = useHomeLogHabitTypes()
   const weeklyHabits = useWeeklyLogHabitTypes()
-  const workoutTypes = useMemo(() => getWorkoutTypes(), [])
+  const workoutTypes = useMemo(() => getHomeLogWorkoutTypes(), [])
   const filteredDailyHabits = useMemo(() => {
     if (!metricsFilter) return dailyHabits
     return dailyHabits.filter((habit) => metricsFilter.habitIds.has(habit.id))
   }, [dailyHabits, metricsFilter])
   const filteredWorkoutTypes = useMemo(() => {
     if (!metricsFilter) return workoutTypes
-    return workoutTypes.filter((type) => metricsFilter.workoutCategories.has(type.id))
+    // Shutdown filter: include configured categories even if Ask in isn't home.
+    const all = getWorkoutTypes()
+    return all.filter((type) => metricsFilter.workoutCategories.has(type.id))
   }, [workoutTypes, metricsFilter])
   const filteredScalarGoals = useMemo(() => {
-    const base = dailyGoals.filter(
+    const source = metricsFilter ? dailyGoals : homeGoals
+    const base = source.filter(
       (goal) =>
         goal.metric_key !== 'focus' &&
         !goal.metric_key.startsWith('workout_'),
@@ -89,35 +107,14 @@ export function DailyLogForm({
     if (!metricsFilter) {
       return base.filter(
         (goal) =>
-          goal.metric_key !== 'sleep' &&
           goal.metric_key !== 'steps' &&
           goal.metric_key !== 'screen_time',
       )
     }
     return base.filter((goal) => metricsFilter.goalKeys.has(goal.metric_key))
-  }, [dailyGoals, metricsFilter])
-  const showWorkouts =
-    embedded &&
-    settings.showWorkoutMetrics &&
-    !habitsOnly &&
-    (!metricsFilter || filteredWorkoutTypes.length > 0)
-  const showWeeklyHabits = weeklyHabits.length > 0 && !metricsFilter
-  const hasDailyLogItems = habitsOnly
-    ? dailyHabits.length > 0 || weeklyHabits.length > 0
-    : metricsFilter
-      ? filteredDailyHabits.length > 0 ||
-        filteredScalarGoals.length > 0 ||
-        (showWorkouts && filteredWorkoutTypes.length > 0)
-      : dailyGoals.some(
-          (g) =>
-            g.metric_key !== 'focus' &&
-            g.metric_key !== 'sleep' &&
-            g.metric_key !== 'steps' &&
-            g.metric_key !== 'screen_time' &&
-            !g.metric_key.startsWith('workout_'),
-        ) ||
-        dailyHabits.length > 0 ||
-        (showWorkouts && workoutTypes.length > 0)
+  }, [dailyGoals, homeGoals, metricsFilter])
+
+  const showWeeklyHabits = weeklyHabits.length > 0 && !metricsFilter && !hideWeeklyHabits
 
   const buildDraft = useCallback((): DailyLogDraft => {
     if (!isEditableDay) {
@@ -209,22 +206,6 @@ export function DailyLogForm({
     warmAudioContext()
   }, [])
 
-  useEffect(() => {
-    if (!requireWorkoutSelection || !onWorkoutSelectionChange) return
-    if (!showWorkouts) {
-      onWorkoutSelectionChange(true)
-      return
-    }
-    onWorkoutSelectionChange(isShutdownWorkoutChoiceReady(draft, log.date, workouts))
-  }, [
-    draft,
-    requireWorkoutSelection,
-    onWorkoutSelectionChange,
-    showWorkouts,
-    log.date,
-    workouts,
-  ])
-
   const updateDraft = useCallback(
     (patch: Partial<DailyLogDraft>) => {
       setDraftState((prev) => {
@@ -256,17 +237,16 @@ export function DailyLogForm({
   }
 
   const workoutDrafts: WorkoutDrafts = draft.workouts ?? {}
-  const workoutNoneSelected = draft.workoutExplicitNone === true
-
-  const selectWorkoutNone = () => {
-    updateDraft({ workouts: {}, workoutExplicitNone: true })
-  }
+  const loggedWorkoutsToday = useMemo(
+    () => workoutsFromListForDate(workouts, log.date),
+    [workouts, log.date],
+  )
 
   const toggleWorkout = (category: WorkoutCategory) => {
     const next = { ...workoutDrafts }
     if (category in next) delete next[category]
     else next[category] = null
-    updateDraft({ workouts: next, workoutExplicitNone: false })
+    updateDraft({ workouts: next })
   }
 
   const setWorkoutDuration = (category: WorkoutCategory, raw: string) => {
@@ -275,7 +255,6 @@ export function DailyLogForm({
         ...workoutDrafts,
         [category]: raw ? parseInt(raw, 10) : null,
       },
-      workoutExplicitNone: false,
     })
   }
 
@@ -284,7 +263,9 @@ export function DailyLogForm({
     const next = !current
     if (next) {
       playHabitCheckSound()
-      startComplete(habitId)
+      const collapseAfterComplete =
+        incompleteHabitsOnly || (!embedded && settings.hideCompletedHabitsInToggle)
+      startComplete(habitId, { exit: collapseAfterComplete })
     } else {
       clearPhase(habitId)
     }
@@ -313,6 +294,47 @@ export function DailyLogForm({
     }
     return { pendingHabits: pending, completedHabits: completed }
   }, [filteredDailyHabits, draft.habits, isAnimating])
+
+  const unloggedScalarGoals = useMemo(() => {
+    if (!unloggedMetricsOnly) return filteredScalarGoals
+    return filteredScalarGoals.filter((goal) => !isScalarGoalLoggedInDraft(goal, draft))
+  }, [filteredScalarGoals, unloggedMetricsOnly, draft])
+
+  const unloggedWorkoutTypes = useMemo(() => {
+    if (!unloggedMetricsOnly) return filteredWorkoutTypes
+    return filteredWorkoutTypes.filter((type) => (loggedWorkoutsToday[type.id] ?? 0) <= 0)
+  }, [filteredWorkoutTypes, unloggedMetricsOnly, loggedWorkoutsToday])
+
+  const scalarGoalsToShow = unloggedMetricsOnly ? unloggedScalarGoals : filteredScalarGoals
+  const workoutTypesToShow = unloggedMetricsOnly ? unloggedWorkoutTypes : filteredWorkoutTypes
+  const habitsToShow = incompleteHabitsOnly || unloggedMetricsOnly ? pendingHabits : filteredDailyHabits
+
+  const showWorkouts =
+    embedded &&
+    settings.showWorkoutMetrics &&
+    !habitsOnly &&
+    (!metricsFilter || workoutTypesToShow.length > 0)
+
+  const hasDailyLogItems = habitsOnly
+    ? dailyHabits.length > 0 || (!hideWeeklyHabits && weeklyHabits.length > 0)
+    : unloggedMetricsOnly
+      ? habitsToShow.length > 0 ||
+        scalarGoalsToShow.length > 0 ||
+        (showWorkouts && workoutTypesToShow.length > 0)
+      : metricsFilter
+        ? filteredDailyHabits.length > 0 ||
+          filteredScalarGoals.length > 0 ||
+          (embedded && settings.showWorkoutMetrics && filteredWorkoutTypes.length > 0)
+        : dailyGoals.some(
+            (g) =>
+              g.metric_key !== 'focus' &&
+              g.metric_key !== 'sleep' &&
+              g.metric_key !== 'steps' &&
+              g.metric_key !== 'screen_time' &&
+              !g.metric_key.startsWith('workout_'),
+          ) ||
+          dailyHabits.length > 0 ||
+          (embedded && settings.showWorkoutMetrics && workoutTypes.length > 0)
 
   useLayoutEffect(() => {
     if (completedHabits.length > prevCompletedCountRef.current && !userOpenedDoneListRef.current) {
@@ -412,9 +434,11 @@ export function DailyLogForm({
     return null
   }
 
-  const emptyLogHint = metricsFilter
-    ? 'No shutdown log fields configured yet. Add metrics in Settings → Routines → Daily shutdown.'
-    : 'Nothing to log today yet. Add metrics on the Metrics page to start tracking.'
+  const emptyLogHint = unloggedMetricsOnly
+    ? 'All caught up for today'
+    : metricsFilter
+      ? 'No shutdown log fields configured yet. Add metrics in Settings → Routines → Daily shutdown.'
+      : 'Nothing to log today yet. Add metrics on the Metrics page to start tracking.'
 
   const formBody = (
     <div className="space-y-4">
@@ -422,25 +446,41 @@ export function DailyLogForm({
         <p className="py-6 text-center text-sm text-zinc-500">{emptyLogHint}</p>
       ) : (
         <>
-          {filteredDailyHabits.length > 0 && (
+          {(incompleteHabitsOnly || unloggedMetricsOnly
+            ? habitsToShow.length > 0
+            : filteredDailyHabits.length > 0) && (
             <div>
               {showWeeklyHabits && (
                 <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                   Daily habits
                 </p>
               )}
-              {filteredDailyHabits.length > 0 && !showWeeklyHabits && (
+              {!showWeeklyHabits && !habitsOnly && (
                 <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                   Habits
                 </p>
               )}
-              {embedded ? (
+              {incompleteHabitsOnly || unloggedMetricsOnly ? (
+                <div className="space-y-1">
+                  {habitsToShow.map((habit) => {
+                    const exiting = getPhase(habit.id) === 'exiting'
+                    return (
+                      <div
+                        key={habit.id}
+                        className={cn('reminder-row', exiting && 'reminder-row-exiting')}
+                      >
+                        <div className="reminder-row-inner">{renderHabitRow(habit)}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : embedded ? (
                 <div className="grid grid-cols-2 gap-1.5">
                   {filteredDailyHabits.map((habit) => (
                     <div key={habit.id}>{renderHabitRow(habit)}</div>
                   ))}
                 </div>
-              ) : (
+              ) : settings.hideCompletedHabitsInToggle ? (
                 <>
                   <div className="space-y-1">
                     {pendingHabits.map((habit) => {
@@ -455,29 +495,39 @@ export function DailyLogForm({
                       )
                     })}
                   </div>
-                  <button
-                    type="button"
-                    onClick={toggleDoneList}
-                    className="mt-2 flex w-full items-center gap-1.5 rounded-lg px-1 py-1.5 text-left text-[11px] font-medium text-zinc-500 transition-colors hover:text-zinc-300"
-                    aria-expanded={showCompletedHabits}
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={cn(
-                        'shrink-0 transition-transform duration-200',
-                        showCompletedHabits && 'rotate-180',
+                  {completedHabits.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={toggleDoneList}
+                        className="mt-2 flex w-full items-center gap-1.5 rounded-lg px-1 py-1.5 text-left text-[11px] font-medium text-zinc-500 transition-colors hover:text-zinc-300"
+                        aria-expanded={showCompletedHabits}
+                      >
+                        <ChevronDown
+                          size={14}
+                          className={cn(
+                            'shrink-0 transition-transform duration-200',
+                            showCompletedHabits && 'rotate-180',
+                          )}
+                        />
+                        <span>{completedHabits.length} done</span>
+                      </button>
+                      {showCompletedHabits && (
+                        <div className="space-y-1 pt-1">
+                          {completedHabits.map((habit) => (
+                            <div key={habit.id}>{renderHabitRow(habit)}</div>
+                          ))}
+                        </div>
                       )}
-                    />
-                    <span>{completedHabits.length} done</span>
-                  </button>
-                  {showCompletedHabits && completedHabits.length > 0 && (
-                    <div className="space-y-1 pt-1">
-                      {completedHabits.map((habit) => (
-                        <div key={habit.id}>{renderHabitRow(habit)}</div>
-                      ))}
-                    </div>
+                    </>
                   )}
                 </>
+              ) : (
+                <div className="space-y-1">
+                  {filteredDailyHabits.map((habit) => (
+                    <div key={habit.id}>{renderHabitRow(habit)}</div>
+                  ))}
+                </div>
               )}
             </div>
           )}
@@ -491,20 +541,21 @@ export function DailyLogForm({
             />
           )}
 
-          {filteredScalarGoals.length > 0 && !habitsOnly && (
+          {scalarGoalsToShow.length > 0 && !habitsOnly && (
             <div className="grid grid-cols-2 gap-3">
-              {filteredScalarGoals.map(renderGoalInput)}
+              {scalarGoalsToShow.map(renderGoalInput)}
             </div>
           )}
 
-          {showWorkouts && filteredWorkoutTypes.length > 0 && (
+          {showWorkouts && workoutTypesToShow.length > 0 && (
             <div>
               <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                 Workouts
               </p>
               <div className="flex items-start gap-1">
-                {filteredWorkoutTypes.map((type) => {
+                {workoutTypesToShow.map((type) => {
                   const selected = type.id in workoutDrafts
+                  const logged = loggedWorkoutsToday[type.id] ?? 0
                   return (
                     <button
                       key={type.id}
@@ -514,20 +565,26 @@ export function DailyLogForm({
                       className={cn(
                         'flex min-w-0 flex-1 flex-col self-start overflow-hidden rounded-md transition-[background-color,color] duration-150',
                         !selected &&
-                          'bg-zinc-800 text-zinc-400 hover:text-zinc-100 [background-color:rgb(39_39_42)] hover:[background-color:color-mix(in_srgb,var(--workout-color)_28%,rgb(39_39_42))]',
-                        selected && 'text-white',
+                          'bg-zinc-800 text-zinc-400 hover:bg-[var(--accent-950)] hover:text-[var(--accent-200)]',
+                        selected && 'bg-[var(--accent-500)] text-black',
                         !isEditableDay && 'cursor-not-allowed opacity-60',
                       )}
-                      style={
-                        selected
-                          ? { backgroundColor: type.color, color: '#fff' }
-                          : ({ '--workout-color': type.color } as CSSProperties)
-                      }
                     >
-                      <span className="px-1.5 py-1.5 text-[10px] font-medium">{type.label}</span>
+                      <span className="px-1.5 pt-1.5 text-[10px] font-medium leading-tight">
+                        {type.label}
+                      </span>
+                      <span
+                        className={cn(
+                          'px-1.5 text-[10px] font-medium tabular-nums leading-tight',
+                          selected ? 'text-white/85' : 'text-zinc-300',
+                          !selected && 'pb-1.5',
+                        )}
+                      >
+                        {formatWorkoutAmount(logged, type.unit || 'min')}
+                      </span>
                       {selected && (
                         <div
-                          className="mx-1 mb-1.5 flex flex-col gap-0.5"
+                          className="mx-1 mb-1.5 mt-1 flex flex-col gap-0.5"
                           onClick={(e) => e.stopPropagation()}
                           onPointerDown={(e) => e.stopPropagation()}
                         >
@@ -553,27 +610,7 @@ export function DailyLogForm({
                     </button>
                   )
                 })}
-                <button
-                  type="button"
-                  disabled={!isEditableDay}
-                  onClick={selectWorkoutNone}
-                  className={cn(
-                    'flex min-w-0 flex-1 flex-col self-start overflow-hidden rounded-md px-1.5 py-1.5 text-[10px] font-medium transition-colors duration-150',
-                    workoutNoneSelected
-                      ? 'bg-zinc-500 text-white'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200',
-                    !isEditableDay && 'cursor-not-allowed opacity-60',
-                  )}
-                >
-                  None
-                </button>
               </div>
-              {requireWorkoutSelection &&
-                !isShutdownWorkoutChoiceReady(draft, log.date, workouts) && (
-                  <p className="mt-1.5 text-[10px] text-zinc-500">
-                    Select a workout type or None to continue.
-                  </p>
-                )}
             </div>
           )}
         </>

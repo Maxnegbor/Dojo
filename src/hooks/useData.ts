@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
+import { MORNING_LOG_CHANGED } from '@/lib/morningLog'
 import type { DailyLog, Workout } from '@/types'
 
 export { useAuth } from '@/context/AuthContext'
@@ -54,6 +55,14 @@ export function useDailyLog(date: string) {
     refresh()
   }, [refresh])
 
+  useEffect(() => {
+    const onChanged = () => {
+      void refresh({ silent: true })
+    }
+    window.addEventListener(MORNING_LOG_CHANGED, onChanged)
+    return () => window.removeEventListener(MORNING_LOG_CHANGED, onChanged)
+  }, [refresh])
+
   const updateLog = useCallback(
     async (updates: Partial<DailyLog>) => {
       if (!userId || !log) {
@@ -76,7 +85,7 @@ export function useDailyLog(date: string) {
 
   const addWorkout = useCallback(
     async (category: Workout['category'], duration: number, notes = '') => {
-      if (!userId) return
+      if (!userId) return undefined
 
       if (isSupabaseConfigured) {
         const { addWorkout: add } = await import('@/lib/supabase')
@@ -89,19 +98,36 @@ export function useDailyLog(date: string) {
           notes,
         })
         setWorkouts((prev) => [...prev, w])
-      } else {
-        const w = localStore.addWorkout({
-          user_id: userId,
-          daily_log_id: log?.id ?? null,
-          date,
-          category,
-          duration_minutes: duration,
-          notes,
-        })
-        setWorkouts((prev) => [...prev, w])
+        return w
       }
+
+      const w = localStore.addWorkout({
+        user_id: userId,
+        daily_log_id: log?.id ?? null,
+        date,
+        category,
+        duration_minutes: duration,
+        notes,
+      })
+      setWorkouts((prev) => [...prev, w])
+      return w
     },
     [userId, log, date],
+  )
+
+  const removeWorkout = useCallback(
+    async (id: string) => {
+      if (!userId) return
+
+      if (isSupabaseConfigured) {
+        const { deleteWorkout } = await import('@/lib/supabase')
+        await deleteWorkout(id)
+      } else {
+        localStore.deleteWorkout(id)
+      }
+      setWorkouts((prev) => prev.filter((w) => w.id !== id))
+    },
+    [userId],
   )
 
   const removeWorkouts = useCallback(async () => {
@@ -118,5 +144,15 @@ export function useDailyLog(date: string) {
     setWorkouts([])
   }, [userId, date, workouts])
 
-  return { log, workouts, loading, updateLog, addWorkout, removeWorkouts, refresh, syncFromStore }
+  return {
+    log,
+    workouts,
+    loading,
+    updateLog,
+    addWorkout,
+    removeWorkout,
+    removeWorkouts,
+    refresh,
+    syncFromStore,
+  }
 }

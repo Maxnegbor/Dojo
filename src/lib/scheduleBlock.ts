@@ -1,23 +1,21 @@
-import type { ScheduleBlock, ScheduleBlockColor, ScheduleBlockState } from '@/types'
+import type { ScheduleBlock } from '@/types'
+import { GREY_BLOCK_HEX, GREY_BLOCK_TITLE } from '@/types'
 import {
-  BLOCK_COLOR_DEFAULT_TITLES,
-  BLOCK_COLOR_HEX,
-  GREY_BLOCK_TITLE,
-  SCHEDULE_BLOCK_COLORS,
-} from '@/types'
+  getScheduleColorPreset,
+  getWorkoutSchedulePreset,
+  isWorkoutScheduleColor,
+  scheduleColorDefaultTitle,
+  scheduleColorHex,
+} from '@/lib/scheduleColors'
 import { localStore } from '@/lib/localStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { generateId } from '@/lib/utils'
-
-export function isScheduleBlockColor(value: string): value is ScheduleBlockColor {
-  return SCHEDULE_BLOCK_COLORS.includes(value as ScheduleBlockColor)
-}
 
 export function isGreyBlock(block: ScheduleBlock): boolean {
   return block.activity_type === 'grey'
 }
 
-const LEGACY_ACTIVITY_TO_COLOR: Record<string, ScheduleBlockColor> = {
+const LEGACY_ACTIVITY_TO_COLOR: Record<string, string> = {
   deep_work: 'blue',
   meeting: 'blue',
   break: 'rose',
@@ -26,21 +24,24 @@ const LEGACY_ACTIVITY_TO_COLOR: Record<string, ScheduleBlockColor> = {
   other: 'blue',
 }
 
+function resolveActivityType(activityType: string): string {
+  if (activityType === 'grey') return 'grey'
+  if (getScheduleColorPreset(activityType)) return activityType
+  return LEGACY_ACTIVITY_TO_COLOR[activityType] ?? activityType
+}
+
 export function normalizeScheduleBlock(block: ScheduleBlock): ScheduleBlock {
   if (block.activity_type === 'grey') {
     const trimmed = block.title.trim()
     return {
       ...block,
-      color: BLOCK_COLOR_HEX.grey,
+      color: GREY_BLOCK_HEX,
       title: trimmed.length > 0 ? block.title : GREY_BLOCK_TITLE,
     }
   }
 
-  const blockColor = isScheduleBlockColor(block.activity_type)
-    ? block.activity_type
-    : LEGACY_ACTIVITY_TO_COLOR[block.activity_type] ?? 'blue'
-
-  const defaultTitle = BLOCK_COLOR_DEFAULT_TITLES[blockColor]
+  const activityType = resolveActivityType(block.activity_type)
+  const defaultTitle = scheduleColorDefaultTitle(activityType)
   const title =
     block.title === GREY_BLOCK_TITLE || block.title === 'New Block' || !block.title.trim()
       ? defaultTitle
@@ -48,8 +49,8 @@ export function normalizeScheduleBlock(block: ScheduleBlock): ScheduleBlock {
 
   return {
     ...block,
-    activity_type: blockColor,
-    color: BLOCK_COLOR_HEX[blockColor],
+    activity_type: activityType,
+    color: scheduleColorHex(activityType, block.color),
     title,
   }
 }
@@ -68,38 +69,55 @@ export function createScheduleBlock(params: {
     start_time: params.start_time,
     end_time: params.end_time,
     activity_type: 'grey',
-    color: BLOCK_COLOR_HEX.grey,
+    color: GREY_BLOCK_HEX,
     title: GREY_BLOCK_TITLE,
     created_at: new Date().toISOString(),
   }
 }
 
-export function setScheduleBlockColor(
-  block: ScheduleBlock,
-  blockColor: ScheduleBlockColor,
-): ScheduleBlock {
-  const currentState: ScheduleBlockState = isScheduleBlockColor(block.activity_type)
-    ? block.activity_type
-    : block.activity_type === 'grey'
-      ? 'grey'
-      : 'blue'
+export function setScheduleBlockColor(block: ScheduleBlock, colorId: string): ScheduleBlock {
+  if (colorId === 'grey') {
+    return normalizeScheduleBlock({
+      ...block,
+      activity_type: 'grey',
+      color: GREY_BLOCK_HEX,
+      title:
+        block.title.trim() && block.title !== GREY_BLOCK_TITLE
+          ? block.title
+          : GREY_BLOCK_TITLE,
+    })
+  }
 
+  const currentType = resolveActivityType(block.activity_type)
   const priorDefault =
-    currentState === 'grey'
-      ? GREY_BLOCK_TITLE
-      : BLOCK_COLOR_DEFAULT_TITLES[currentState]
+    currentType === 'grey' ? GREY_BLOCK_TITLE : scheduleColorDefaultTitle(currentType)
+  const nextDefault = scheduleColorDefaultTitle(colorId)
 
   const nextTitle =
     block.title === priorDefault || block.title === 'New Block' || !block.title.trim()
-      ? BLOCK_COLOR_DEFAULT_TITLES[blockColor]
+      ? nextDefault
       : block.title
 
-  return {
+  return normalizeScheduleBlock({
     ...block,
-    activity_type: blockColor,
-    color: BLOCK_COLOR_HEX[blockColor],
+    activity_type: colorId,
+    color: scheduleColorHex(colorId, block.color),
     title: nextTitle,
-  }
+  })
+}
+
+export function applyWorkoutScheduleColor(block: ScheduleBlock, title: string): ScheduleBlock {
+  const workout = getWorkoutSchedulePreset()
+  return normalizeScheduleBlock({
+    ...block,
+    activity_type: workout.id,
+    color: workout.hex,
+    title,
+  })
+}
+
+export function blockUsesWorkoutColor(block: ScheduleBlock): boolean {
+  return isWorkoutScheduleColor(block.activity_type)
 }
 
 export async function fetchScheduleBlocksForDate(
@@ -126,6 +144,21 @@ export function cloneScheduleBlocksForDate(
     date: targetDate,
     created_at: now,
   }))
+}
+
+/** Wipe `existing` on the target date, then persist `nextBlocks` (already dated). */
+export async function replaceScheduleBlocksForDate(
+  existing: ScheduleBlock[],
+  nextBlocks: ScheduleBlock[],
+): Promise<ScheduleBlock[]> {
+  for (const block of existing) {
+    await removeScheduleBlock(block.id)
+  }
+  const saved: ScheduleBlock[] = []
+  for (const block of nextBlocks) {
+    saved.push(await persistScheduleBlock(block))
+  }
+  return saved
 }
 
 export async function persistScheduleBlock(block: ScheduleBlock): Promise<ScheduleBlock> {

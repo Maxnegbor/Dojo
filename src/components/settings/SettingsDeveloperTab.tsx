@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addDays, parseISO } from 'date-fns'
-import { FlaskConical, RefreshCw, Rocket, TrendingDown, TrendingUp } from 'lucide-react'
+import { FlaskConical, RefreshCw, Rocket, TrendingDown, TrendingUp, Zap } from 'lucide-react'
 import { HabitRampFailureModal } from '@/components/today/HabitRampFailureModal'
 import { SettingsDeveloperDailyShutdown } from '@/components/settings/SettingsDeveloperDailyShutdown'
 import { SettingsDeveloperMorningLog } from '@/components/settings/SettingsDeveloperMorningLog'
@@ -19,7 +19,11 @@ import {
 import { getHabitStreaksForDate } from '@/lib/habitStreaks'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habitTypes'
 import { localStore } from '@/lib/localStore'
+import {
+  markPulseRadiantTestPending,
+} from '@/lib/pulseRadiantBurst'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { unlockAudio } from '@/lib/timerSound'
 import { formatDate } from '@/lib/utils'
 import { startOnboardingPreview } from '@/lib/onboarding'
 
@@ -119,8 +123,30 @@ export function SettingsDeveloperTab() {
           Preview onboarding flow
         </Button>
         <p className="text-xs text-zinc-500">
-          Opens the same screens as a new user — track selection, preferences, goals, and app tour.
+          Opens the same screens as a new user — track selection, preferences, and goals.
           Nothing is saved when you finish in preview mode.
+        </p>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Pulse radiant slam"
+        description="Replay the home Pulse grow → slam → burst celebration."
+      >
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            unlockAudio()
+            markPulseRadiantTestPending()
+            navigate('/')
+            flash('Playing radiant slam on Home.')
+          }}
+        >
+          <Zap size={14} />
+          Test radiant slam
+        </Button>
+        <p className="text-xs text-zinc-500">
+          Goes to Home and plays the 100-score radiant animation. Safe to run repeatedly.
         </p>
       </SettingsSection>
 

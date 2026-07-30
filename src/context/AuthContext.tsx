@@ -45,17 +45,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isSupabaseConfigured && supabase) {
-      supabase.auth.getSession().then(({ data }) => {
-        const session = data.session
+      const finish = (session: { user: { id: string; email?: string } } | null) => {
         setUserId(session?.user.id ?? null)
         setEmail(session?.user.email ?? null)
         setLoading(false)
-      })
+      }
+
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => finish(data.session))
+        .catch(() => finish(null))
 
       const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUserId(session?.user.id ?? null)
-        setEmail(session?.user.email ?? null)
-        setLoading(false)
+        finish(session)
       })
 
       return () => sub.subscription.unsubscribe()
@@ -74,7 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) {
       clearUserStorageSession()
-      setStorageReady(!isSupabaseConfigured)
+      // Logged out: storage isn't needed — keep ready so auth gates can redirect.
+      setStorageReady(true)
       return
     }
 

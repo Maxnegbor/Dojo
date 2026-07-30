@@ -89,6 +89,7 @@ export function PulsePage() {
         focusRate: 0,
         sleepRate: 0,
         exerciseRate: 0,
+        metricRates: {},
       },
     [series, today],
   )
@@ -116,7 +117,7 @@ export function PulsePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {settings.devMode && (
         <PulseDevPreviewControls
           previewScore={previewScore}
@@ -124,8 +125,8 @@ export function PulsePage() {
         />
       )}
 
-      <header className="space-y-3">
-        <div className="space-y-1">
+      <header className="space-y-2">
+        <div className="space-y-0.5">
           <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--accent-400)]">
             Pulse
           </p>
@@ -159,17 +160,7 @@ export function PulsePage() {
         </p>
       )}
 
-      <div data-tour="pulse-hero">
-        <PulseHero
-          score={heroPulse.score}
-          habitRate={heroPulse.habitRate}
-          focusRate={heroPulse.focusRate}
-          sleepRate={heroPulse.sleepRate}
-          exerciseRate={heroPulse.exerciseRate}
-          formula={currentFormula}
-          configured={configured}
-        />
-      </div>
+      <PulseHero score={heroPulse.score} configured={configured} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PulseWaveform series={series} today={today} />

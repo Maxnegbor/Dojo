@@ -467,6 +467,13 @@ export function SettingsDeveloperDailyShutdown() {
             }
             setPreviewTomorrowBlocks(saved)
           }}
+          onApplyScheduleTemplate={async (template) => {
+            const { scheduleBlocksFromTemplate } = await import('@/lib/scheduleTemplates')
+            const { replaceScheduleBlocksForDate } = await import('@/lib/scheduleBlock')
+            const next = scheduleBlocksFromTemplate(template, tomorrow, userId)
+            const saved = await replaceScheduleBlocksForDate(previewTomorrowBlocks, next)
+            setPreviewTomorrowBlocks(saved)
+          }}
           onClose={closeShutdownPreview}
           onComplete={completeShutdownPreview}
           onCompleteReminder={() => undefined}

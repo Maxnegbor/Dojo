@@ -19,6 +19,7 @@ interface YearlyFocusOverviewProps {
   bestHabitStreak: { label: string; days: number } | null
   chartData: Array<{ label: string; hours: number; minutes: number }>
   showChart: boolean
+  avgFocusScoreLabel?: string
 }
 
 function StatCell({
@@ -57,6 +58,7 @@ export function YearlyFocusOverview({
   bestHabitStreak,
   chartData,
   showChart,
+  avgFocusScoreLabel,
 }: YearlyFocusOverviewProps) {
   const stats = [
     {
@@ -70,11 +72,22 @@ export function YearlyFocusOverview({
       value: bestMonth && bestMonth.minutes > 0 ? formatDuration(bestMonth.minutes) : '—',
       detail: bestMonth && bestMonth.minutes > 0 ? bestMonth.label : 'No best month yet',
     },
-    {
-      label: 'Active days',
-      value: String(activeDays),
-      detail: `${Math.round(loggingRate)}% of year logged`,
-    },
+    ...(avgFocusScoreLabel
+      ? [
+          {
+            label: 'Avg focus score',
+            value: avgFocusScoreLabel,
+            detail: 'Subjective 1–10',
+            accent: avgFocusScoreLabel !== '—',
+          },
+        ]
+      : [
+          {
+            label: 'Active days',
+            value: String(activeDays),
+            detail: `${Math.round(loggingRate)}% of year logged`,
+          },
+        ]),
     {
       label: 'Longest streak',
       value: bestHabitStreak ? `${bestHabitStreak.days}d` : '—',

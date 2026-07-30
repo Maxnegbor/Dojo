@@ -43,7 +43,7 @@ export function HabitLogRow({
         'relative flex w-full items-center gap-2.5 overflow-hidden rounded-lg border px-3 py-2 text-left',
         `transition-[border-color,box-shadow] ${chromeTransition}`,
         showDoneChrome
-          ? 'border-emerald-500/30 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.08)]'
+          ? 'border-[var(--accent-500)]/40 bg-[var(--accent-950)]/35 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent-500)_18%,transparent)]'
           : 'border-zinc-800/80 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900/70',
         phase && 'pointer-events-none',
         disabled && 'cursor-not-allowed opacity-60',
@@ -57,7 +57,7 @@ export function HabitLogRow({
           'relative z-10 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
           `transition-all ${chromeTransition}`,
           checkVisible
-            ? 'border-emerald-500 bg-emerald-500 text-zinc-950'
+            ? 'border-[var(--accent-500)] bg-[var(--accent-500)] text-black'
             : 'border-zinc-600 bg-transparent',
           filling && 'scale-110',
         )}
@@ -76,7 +76,7 @@ export function HabitLogRow({
         className={cn(
           'relative z-10 min-w-0 flex-1 truncate text-xs font-medium',
           `transition-colors ${chromeTransition}`,
-          labelDone ? 'text-emerald-300/90' : 'text-zinc-200',
+          labelDone ? 'text-[var(--accent-200)]' : 'text-zinc-200',
         )}
       >
         {habit.label}
@@ -87,7 +87,7 @@ export function HabitLogRow({
           className={cn(
             'relative z-10 shrink-0 text-[10px] tabular-nums',
             `transition-colors ${chromeTransition}`,
-            labelDone ? 'text-emerald-400/70' : 'text-[var(--accent-400)]',
+            labelDone ? 'text-[var(--accent-400)]/80' : 'text-[var(--accent-400)]',
           )}
         >
           {targetLabel}

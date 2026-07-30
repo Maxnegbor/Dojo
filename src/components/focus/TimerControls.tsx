@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import { ToggleRow } from '@/components/settings/SettingsControls'
+import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl'
 
 interface MinuteSliderProps {
   label: string
@@ -140,40 +141,17 @@ export function SkipBreaksToggle({ checked, onChange }: SkipBreaksToggleProps) {
   return (
     <div>
       <span className="mb-2 block text-xs font-medium text-zinc-400">Breaks</span>
-      <div
-        className="flex rounded-xl border border-zinc-700/80 bg-zinc-900/80 p-1"
-        role="group"
+      <SlidingSegmentedControl
+        value={checked ? 'skip' : 'with'}
+        options={[
+          { value: 'with', label: 'With breaks' },
+          { value: 'skip', label: 'Skip breaks' },
+        ]}
+        onChange={(value) => onChange(value === 'skip')}
+        size="md"
+        className="rounded-xl border border-zinc-700/80 bg-zinc-900/80"
         aria-label="Break mode"
-      >
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!checked}
-          onClick={() => onChange(false)}
-          className={cn(
-            'flex-1 rounded-lg px-3 py-2.5 text-xs font-medium transition-all duration-200',
-            !checked
-              ? 'bg-[var(--accent-600)] text-white shadow-[0_0_12px_var(--accent-glow)]'
-              : 'text-zinc-500 hover:text-zinc-300',
-          )}
-        >
-          With breaks
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={checked}
-          onClick={() => onChange(true)}
-          className={cn(
-            'flex-1 rounded-lg px-3 py-2.5 text-xs font-medium transition-all duration-200',
-            checked
-              ? 'bg-[var(--accent-600)] text-white shadow-[0_0_12px_var(--accent-glow)]'
-              : 'text-zinc-500 hover:text-zinc-300',
-          )}
-        >
-          Skip breaks
-        </button>
-      </div>
+      />
     </div>
   )
 }

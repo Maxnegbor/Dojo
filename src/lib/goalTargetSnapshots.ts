@@ -1,6 +1,6 @@
 import { addDays, parseISO } from 'date-fns'
 import type { Goal, MetricKey } from '@/types'
-import { hasTarget } from '@/lib/goals'
+import { hasTarget, normalizeGoal } from '@/lib/goals'
 import { getWeekDates } from '@/lib/utils'
 
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
@@ -132,9 +132,9 @@ export function resolveGoalForWeek(
   weekStart: string,
   weekStartsOn: 0 | 1,
 ): Goal {
-  if (!isPastWeek(weekStart, weekStartsOn)) return goal
+  if (!isPastWeek(weekStart, weekStartsOn)) return normalizeGoal(goal)
   const snapshot = getGoalTargetSnapshot(weekStart, goal.id)
-  return snapshot ? applyGoalTargetSnapshot(goal, snapshot) : goal
+  return normalizeGoal(snapshot ? applyGoalTargetSnapshot(goal, snapshot) : goal)
 }
 
 export function getWeekStartsBefore(

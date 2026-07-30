@@ -4,7 +4,8 @@ import { useAuth } from '@/context/AuthContext'
 export function RequireAuth() {
   const { userId, loading, storageReady } = useAuth()
 
-  if (loading || !storageReady) {
+  // Only wait for remote storage hydrate when a session exists.
+  if (loading || (userId && !storageReady)) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0f] text-sm text-zinc-500">
         Loading…

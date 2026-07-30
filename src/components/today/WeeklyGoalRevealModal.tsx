@@ -54,24 +54,24 @@ function reviewHitLabel(summary: WeeklyShutdownGoalSummary): string {
 function reviewMissLabel(summary: WeeklyShutdownGoalSummary): string {
   if (summary.isWeight) return 'Off track'
   if (summary.usesPaceReview) return 'Behind'
-  return 'Missed'
+  return 'Short'
 }
 
 function HabitDayRing({ done, label }: { done: boolean; label: string }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
       <span
         className={cn(
-          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 sm:h-[18px] sm:w-[18px]',
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full ring-1',
           done
-            ? 'bg-emerald-500/15 ring-emerald-500/50 text-emerald-400'
-            : 'bg-red-500/10 ring-red-500/40 text-red-400',
+            ? 'bg-emerald-500/20 ring-emerald-500/55 text-emerald-400'
+            : 'bg-zinc-900 ring-zinc-700/80 text-zinc-600',
         )}
-        aria-label={done ? 'Done' : 'Missed'}
+        aria-label={done ? 'Done' : 'Not logged'}
       >
-        {done ? <Check size={9} strokeWidth={3} /> : <X size={9} strokeWidth={3} />}
+        {done ? <Check size={10} strokeWidth={3} /> : null}
       </span>
-      <span className="truncate text-[7px] font-medium uppercase text-zinc-600 sm:text-[8px]">
+      <span className="truncate text-[8px] font-medium uppercase tracking-wide text-zinc-600">
         {label}
       </span>
     </div>
@@ -81,18 +81,24 @@ function HabitDayRing({ done, label }: { done: boolean; label: string }) {
 function HabitReviewCard({ habit }: { habit: WeeklyHabitReviewSummary }) {
   const doneCount = habit.days.filter((d) => d.done).length
   const isDaily = habit.logPeriod === 'daily'
+  const rate = habit.days.length > 0 ? doneCount / habit.days.length : 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-md border border-zinc-800/80 bg-zinc-950 px-2 py-1.5">
-      <div className="flex items-center justify-between gap-1.5">
-        <p className="min-w-0 truncate text-[10px] font-medium text-zinc-200">{habit.label}</p>
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-zinc-800/90 bg-zinc-950/80 px-3 py-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="min-w-0 truncate text-sm font-medium text-zinc-100">{habit.label}</p>
         {isDaily && (
-          <span className="shrink-0 text-[9px] tabular-nums text-zinc-500">
+          <span
+            className={cn(
+              'shrink-0 text-xs tabular-nums',
+              rate >= 0.7 ? 'text-emerald-400' : rate > 0 ? 'text-zinc-400' : 'text-zinc-600',
+            )}
+          >
             {doneCount}/{habit.days.length}
           </span>
         )}
       </div>
-      <div className={cn('mt-auto flex gap-0.5 pt-1.5', isDaily ? 'justify-between' : 'justify-start')}>
+      <div className={cn('mt-3 flex gap-1', isDaily ? 'justify-between' : 'justify-start')}>
         {habit.days.map((day) => (
           <HabitDayRing key={day.date} done={day.done} label={day.dayLabel} />
         ))}
@@ -103,12 +109,14 @@ function HabitReviewCard({ habit }: { habit: WeeklyHabitReviewSummary }) {
 
 function StatReviewCard({ stat }: { stat: WeeklyReviewStat }) {
   return (
-    <div className="flex h-full flex-col rounded-md border border-[var(--accent-500)]/20 bg-zinc-950 px-2 py-1.5">
-      <p className="truncate text-[8px] font-medium uppercase tracking-widest text-zinc-500">
+    <div className="flex h-full flex-col rounded-xl border border-zinc-800/90 bg-zinc-950/80 px-3 py-2.5">
+      <p className="truncate text-[10px] font-medium uppercase tracking-widest text-zinc-500">
         {stat.label}
       </p>
-      <p className="mt-auto truncate pt-1 text-sm font-light tabular-nums text-zinc-50">{stat.value}</p>
-      <p className="truncate text-[9px] text-zinc-500">{stat.detail}</p>
+      <p className="mt-auto truncate pt-1.5 text-lg font-light tabular-nums text-zinc-50">
+        {stat.value}
+      </p>
+      <p className="truncate text-[11px] text-zinc-500">{stat.detail}</p>
     </div>
   )
 }
@@ -202,15 +210,12 @@ function GoalRevealCard({
   barsActive,
   barDurationMs,
   featured = false,
-  compact = false,
 }: {
   summary: WeeklyShutdownGoalSummary
   barsActive: boolean
   barDurationMs: number
   featured?: boolean
-  compact?: boolean
 }) {
-  const isCompact = compact && !featured
   const isWeight = summary.isWeight
   const showPriorPeriod = summary.usesPaceReview === true
   const rawBeforePct = Math.min(100, Math.max(0, summary.percentBefore ?? 0))
@@ -349,17 +354,17 @@ function GoalRevealCard({
   return (
     <div
       className={cn(
-        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-zinc-950 transition-[border-color,box-shadow] duration-300',
-        featured ? 'p-2' : 'p-1.5',
+        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-zinc-950/90 transition-[border-color,box-shadow] duration-300',
+        featured ? 'p-3.5' : 'p-3',
         featured &&
           !revealed &&
           'border-[var(--accent-500)]/35 bg-gradient-to-br from-[var(--accent-950)]/40 to-zinc-950 ring-1 ring-[var(--accent-500)]/20',
-        revealed && crushed && 'goal-card-shine border-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.25)]',
+        revealed && crushed && 'goal-card-shine border-emerald-400/80 shadow-[0_0_14px_rgba(16,185,129,0.22)]',
         revealed && summary.hit && !crushed
-          ? 'border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.12)]'
+          ? 'border-emerald-500/70 shadow-[0_0_10px_rgba(16,185,129,0.1)]'
           : revealed && !summary.hit
-            ? 'border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.08)]'
-            : !revealed && !featured && 'border-zinc-800/80',
+            ? 'border-zinc-700/90'
+            : !revealed && !featured && 'border-zinc-800/90',
       )}
     >
       {revealed && crushed && (
@@ -369,36 +374,38 @@ function GoalRevealCard({
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent" />
       )}
 
-      <div className="relative">
-        <div className="flex items-start justify-between gap-1.5">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[8px] font-medium uppercase tracking-widest text-zinc-500">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">
               {goalKindLabel(summary)}
             </p>
             <h3
               className={cn(
-                'truncate font-semibold leading-tight text-zinc-50',
-                featured ? 'text-sm' : 'text-xs',
+                'mt-0.5 truncate font-semibold leading-tight text-zinc-50',
+                featured ? 'text-base' : 'text-sm',
               )}
             >
               {summary.name}
             </h3>
           </div>
-          {(isCompact || featured) && revealed && (
+          {revealed && (
             <span
               className={cn(
-                'shrink-0 text-[9px] font-medium',
-                summary.hit ? 'text-emerald-400' : 'text-red-400/90',
+                'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium',
+                summary.hit
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : 'bg-zinc-800 text-zinc-400',
               )}
             >
               {summary.hit ? reviewHitLabel(summary) : reviewMissLabel(summary)}
             </span>
           )}
         </div>
-        <p className="mt-0.5 line-clamp-2 text-[8px] leading-tight text-zinc-500">{summary.detail}</p>
+        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-zinc-500">{summary.detail}</p>
 
         {isWeight ? (
-          <div className="mt-1">
+          <div className="mt-3">
             <WeightWeekProgressBar
               percentBefore={lastPct}
               percentAfter={thisPct}
@@ -407,12 +414,12 @@ function GoalRevealCard({
               animate
               barReady={barReady}
               barDurationMs={barDurationMs}
-              size="sm"
+              size="md"
               fillRef={barFillRef}
             />
           </div>
         ) : (
-          <div className="mt-1">
+          <div className="mt-3">
             <SplitAccentProgressBar
               beforePct={beforePct}
               fillPct={isDecrease ? clipWidth : showRoundedJunction ? afterPct : clipWidth}
@@ -422,7 +429,7 @@ function GoalRevealCard({
               durationMs={barDurationMs}
               fillRef={barFillRef}
               isDecrease={isDecrease}
-              size="sm"
+              size="md"
             />
             {summary.showPaceBar && summary.timeElapsedPercent != null && (
               <GoalPaceBar percent={summary.timeElapsedPercent} size="sm" />
@@ -430,31 +437,21 @@ function GoalRevealCard({
           </div>
         )}
 
-        <div className="mt-auto flex items-end justify-between pt-1">
+        <div className="mt-auto flex items-end justify-between pt-2.5">
           {summary.isWeight ? (
-            <span className="truncate text-[10px] font-medium tabular-nums text-zinc-100">
+            <span className="truncate text-sm font-medium tabular-nums text-zinc-100">
               {summary.weightLabel ?? summary.detail}
             </span>
           ) : (
             <span
               className={cn(
                 'font-light tabular-nums',
-                featured ? 'text-base' : 'text-sm',
+                featured ? 'text-xl' : 'text-lg',
                 summary.percent >= 100 ? 'text-emerald-300' : 'text-zinc-100',
               )}
             >
               {formatPercent(summary.percent)}
-              <span className="text-[10px] text-zinc-500">%</span>
-            </span>
-          )}
-          {!isCompact && !featured && revealed && summary.hit && (
-            <span className="text-[9px] font-medium text-emerald-400">
-              {reviewHitLabel(summary)}
-            </span>
-          )}
-          {!isCompact && !featured && revealed && !summary.hit && (
-            <span className="text-[9px] font-medium text-red-400/90">
-              {reviewMissLabel(summary)}
+              <span className="text-xs text-zinc-500">%</span>
             </span>
           )}
         </div>
@@ -465,9 +462,7 @@ function GoalRevealCard({
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="col-span-full pt-0.5 text-[8px] font-medium uppercase tracking-widest text-zinc-600">
-      {children}
-    </p>
+    <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">{children}</p>
   )
 }
 
@@ -505,6 +500,15 @@ export function WeeklyGoalRevealModal({
   const [footerVisible, setFooterVisible] = useState(false)
 
   const hits = orderedGoals.filter((g) => g.hit).length
+  const hitRate = orderedGoals.length > 0 ? hits / orderedGoals.length : 0
+  const hitSummary =
+    orderedGoals.length === 0
+      ? null
+      : hits === orderedGoals.length
+        ? 'All goals hit'
+        : hits === 0
+          ? `${orderedGoals.length} goal${orderedGoals.length === 1 ? '' : 's'} this week`
+          : `${hits} of ${orderedGoals.length} goals hit`
 
   const barSequenceDurationMs = useMemo(() => {
     if (orderedGoals.length === 0) return 0
@@ -513,7 +517,10 @@ export function WeeklyGoalRevealModal({
 
   const statsBaseDelay = barSequenceDurationMs + STATS_EXTRA_DELAY_MS
   const footerDelay =
-    statsBaseDelay + untargetedStats.length * STAT_STAGGER_MS + FOOTER_EXTRA_DELAY_MS
+    statsBaseDelay +
+    (habitSummaries.length > 0 ? 120 : 0) +
+    untargetedStats.length * STAT_STAGGER_MS +
+    FOOTER_EXTRA_DELAY_MS
 
   useEffect(() => {
     setBarsActive(false)
@@ -547,29 +554,38 @@ export function WeeklyGoalRevealModal({
           animation: goalCardShineSweep 900ms cubic-bezier(0.22, 1, 0.36, 1) 150ms both;
         }
       `}</style>
-      <div className="flex h-[min(92vh,820px)] w-full max-w-[min(96vw,68rem)] flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/30 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10">
-        <div className="shrink-0 border-b border-zinc-800/80 bg-gradient-to-br from-[var(--accent-950)]/60 to-transparent px-4 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent-500)]">
-                <Sparkles size={14} className="text-black" />
+      <div className="flex max-h-[min(92vh,720px)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/30 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10 sm:max-w-2xl">
+        <div className="shrink-0 border-b border-zinc-800/80 bg-gradient-to-br from-[var(--accent-950)]/60 via-transparent to-transparent px-4 py-3.5 sm:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-500)] shadow-md shadow-[var(--accent-500)]/30">
+                <Sparkles size={16} className="text-black" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-sm font-bold text-zinc-50 sm:text-base">Your week in review</h2>
-                <p className="truncate text-[11px] text-[var(--accent-300)]">{weekLabel}</p>
+                <h2 className="text-base font-bold text-zinc-50 sm:text-lg">Your week in review</h2>
+                <p className="truncate text-xs text-zinc-400">{weekLabel}</p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              {orderedGoals.length > 0 && (
-                <p className="hidden text-xs tabular-nums text-zinc-400 sm:block">
-                  <span className="font-medium text-[var(--accent-300)]">{hits}</span>
-                  {' / '}
-                  {orderedGoals.length} goals hit
+            <div className="flex shrink-0 items-center gap-2.5">
+              {hitSummary && (
+                <p
+                  className={cn(
+                    'hidden text-xs tabular-nums sm:block',
+                    hitRate === 1
+                      ? 'text-emerald-400'
+                      : hitRate === 0
+                        ? 'text-zinc-500'
+                        : 'text-[var(--accent-300)]',
+                  )}
+                >
+                  {hitSummary}
                 </p>
               )}
               <button
+                type="button"
                 onClick={onClose}
-                className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                aria-label="Close"
               >
                 <X size={18} />
               </button>
@@ -577,82 +593,106 @@ export function WeeklyGoalRevealModal({
           </div>
         </div>
 
-        <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-3 py-2 sm:px-3.5">
+        <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           {!hasContent && (
-            <div className="flex h-full items-center justify-center py-8">
+            <div className="flex h-full min-h-[12rem] items-center justify-center py-8">
               <div className="text-center">
-                <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-500)]">
-                  <Trophy size={16} className="text-black" />
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-500)]">
+                  <Trophy size={18} className="text-black" />
                 </div>
-                <p className="text-sm text-zinc-500">Add goals to track your progress next week.</p>
+                <p className="text-sm text-zinc-400">Add goals to track your progress next week.</p>
               </div>
             </div>
           )}
 
           {hasContent && (
-            <div className="grid auto-rows-fr gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(9.75rem,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr))]">
-              {orderedGoals.map((goal) => {
-                const featured = isFocusSummary(goal)
-                return (
+            <div className="flex flex-col gap-5">
+              {orderedGoals.length > 0 && (
+                <section className="space-y-2.5">
+                  <SectionLabel>Goals</SectionLabel>
                   <div
-                    key={goal.id}
-                    className={cn('min-h-0', featured && 'col-span-2 row-span-1 sm:col-span-2')}
+                    className={cn(
+                      'grid gap-2.5',
+                      orderedGoals.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2',
+                    )}
                   >
-                    <GoalRevealCard
-                      summary={goal}
-                      barsActive={barsActive}
-                      barDurationMs={BAR_DURATION_MS}
-                      featured={featured}
-                      compact={!featured}
-                    />
+                    {orderedGoals.map((goal) => {
+                      const featured = isFocusSummary(goal) || orderedGoals.length === 1
+                      return (
+                        <GoalRevealCard
+                          key={goal.id}
+                          summary={goal}
+                          barsActive={barsActive}
+                          barDurationMs={BAR_DURATION_MS}
+                          featured={featured}
+                        />
+                      )
+                    })}
                   </div>
-                )
-              })}
+                </section>
+              )}
 
               {barsActive && habitSummaries.length > 0 && (
-                <>
+                <section className="space-y-2.5">
                   <SectionLabel>Habits</SectionLabel>
-                  {habitSummaries.map((habit) => (
-                    <div
-                      key={habit.id}
-                      className={cn(
-                        'min-h-0',
-                        habit.logPeriod === 'daily' ? 'col-span-2' : 'col-span-1',
-                      )}
-                    >
-                      <HabitReviewCard habit={habit} />
-                    </div>
-                  ))}
-                </>
+                  <div
+                    className={cn(
+                      'grid gap-2.5',
+                      habitSummaries.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2',
+                    )}
+                  >
+                    {habitSummaries.map((habit) => (
+                      <HabitReviewCard key={habit.id} habit={habit} />
+                    ))}
+                  </div>
+                </section>
               )}
 
               {barsActive && untargetedStats.length > 0 && (
-                <>
+                <section className="space-y-2.5">
                   <SectionLabel>Also this week</SectionLabel>
-                  {untargetedStats.map((stat) => (
-                    <div key={stat.id} className="min-h-0">
-                      <StatReviewCard stat={stat} />
-                    </div>
-                  ))}
-                </>
+                  <div
+                    className={cn(
+                      'grid gap-2.5',
+                      untargetedStats.length === 1
+                        ? 'grid-cols-1'
+                        : 'grid-cols-2 sm:grid-cols-3',
+                    )}
+                  >
+                    {untargetedStats.map((stat) => (
+                      <StatReviewCard key={stat.id} stat={stat} />
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
           )}
         </div>
 
-        <div className="shrink-0 border-t border-zinc-800/80 px-4 py-2.5">
-          {orderedGoals.length > 0 && (
-            <p className="mb-3 text-center text-xs text-zinc-500 sm:hidden">
-              {hits} of {orderedGoals.length} goals hit
+        <div className="shrink-0 border-t border-zinc-800/80 px-4 py-3.5 sm:px-5">
+          {hitSummary && (
+            <p
+              className={cn(
+                'mb-2.5 text-center text-xs sm:hidden',
+                hitRate === 1
+                  ? 'text-emerald-400'
+                  : hitRate === 0
+                    ? 'text-zinc-500'
+                    : 'text-[var(--accent-300)]',
+              )}
+            >
+              {hitSummary}
             </p>
           )}
-          {footerVisible && (
+          {footerVisible ? (
             <Button
               onClick={onClose}
-              className="w-full bg-[var(--accent-500)] font-bold text-black hover:bg-[var(--accent-400)]"
+              className="today-btn-breathe-accent w-full bg-[var(--accent-500)] font-bold text-black hover:bg-[var(--accent-400)]"
             >
               Start fresh
             </Button>
+          ) : (
+            <div className="h-10" aria-hidden />
           )}
         </div>
       </div>

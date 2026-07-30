@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RotateCcw, Settings2, SkipForward } from 'lucide-react'
+import { Maximize2, Minimize2, RotateCcw, Settings2, SkipForward } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { FocusHourlyChart } from '@/components/focus/FocusHourlyChart'
+import { FocusLabelPicker } from '@/components/focus/FocusLabelPicker'
+import { FocusScheduleAgenda } from '@/components/focus/FocusScheduleAgenda'
+import {
+  FocusScorePrompt,
+  type FocusScorePromptPayload,
+} from '@/components/focus/FocusScorePrompt'
 import { CycleStepper, LongBreakSettings, MinuteSlider, SkipBreaksToggle } from '@/components/focus/TimerControls'
 import { FocusGoalModal } from '@/components/focus/FocusGoalModal'
 import { ToggleRow } from '@/components/settings/SettingsControls'
@@ -9,6 +16,8 @@ import { useFocus } from '@/context/FocusContext'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth } from '@/hooks/useData'
 import { saveFocusGoal, syncFocusGoalFromSettings } from '@/lib/focusGoalSync'
+import { getLastFocusLabelId, setLastFocusLabelId } from '@/lib/focusLabels'
+import { addFocusScoreSession } from '@/lib/focusScores'
 import { getFocusSettings, saveFocusSettings } from '@/lib/focusStore'
 import {
   getBreakMinutesAfterFocus,
@@ -43,7 +52,8 @@ function PauseIcon() {
 }
 
 export function FocusTimerPage() {
-  const { focusToday, logFocusMinutes, setLiveFocusSeconds } = useFocus()
+  const { logFocusMinutes, setLiveFocusSeconds, liveFocusSeconds, focusImmersive, setFocusImmersive } =
+    useFocus()
   const { userId } = useAuth()
   const { settings: userPrefs, formatTime } = useSettings()
   const [settings, setSettings] = useState<FocusTimerSettings>(getFocusSettings)
@@ -55,16 +65,25 @@ export function FocusTimerPage() {
   const [running, setRunning] = useState(false)
   const [sessionStarted, setSessionStarted] = useState(false)
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
+  const [scorePrompt, setScorePrompt] = useState<FocusScorePromptPayload | null>(null)
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(() => getLastFocusLabelId())
 
   const settingsRef = useRef(settings)
   const phaseRef = useRef(phase)
   const cycleRef = useRef(cycle)
   const activeBreakMinutesRef = useRef(activeBreakMinutes)
+  const selectedLabelIdRef = useRef(selectedLabelId)
 
   settingsRef.current = settings
   phaseRef.current = phase
   cycleRef.current = cycle
   activeBreakMinutesRef.current = activeBreakMinutes
+  selectedLabelIdRef.current = selectedLabelId
+
+  const selectLabel = useCallback((labelId: string | null) => {
+    setSelectedLabelId(labelId)
+    setLastFocusLabelId(labelId)
+  }, [])
 
   const updateTimerSettings = useCallback((patch: Partial<FocusTimerSettings>) => {
     setSettings((prev) => {
@@ -156,6 +175,28 @@ export function FocusTimerPage() {
 
   useEffect(() => () => setLiveFocusSeconds(0), [setLiveFocusSeconds])
 
+  useEffect(() => {
+    if (!focusImmersive) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFocusImmersive(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [focusImmersive, setFocusImmersive])
+
+  useEffect(() => () => setFocusImmersive(false), [setFocusImmersive])
+
+  const maybePromptFocusScore = useCallback((startMs: number, minutes: number) => {
+    if (!settingsRef.current.promptFocusScore) return
+    const endMs = Date.now()
+    setScorePrompt({
+      date: formatDate(new Date()),
+      startMs,
+      endMs,
+      minutes,
+    })
+  }, [])
+
   const advancePhase = useCallback(async () => {
     const s = settingsRef.current
     const p = phaseRef.current
@@ -164,8 +205,10 @@ export function FocusTimerPage() {
     if (userPrefs.timerSoundEnabled) playTimerChime()
 
     if (p === 'focus') {
-      const elapsed = Math.max(1, Math.round((Date.now() - phaseStartRef.current) / 60000))
-      await logFocusMinutes(elapsed)
+      const sessionStart = phaseStartRef.current
+      const elapsed = Math.max(1, Math.round((Date.now() - sessionStart) / 60000))
+      await logFocusMinutes(elapsed, undefined, sessionStart, selectedLabelIdRef.current)
+      maybePromptFocusScore(sessionStart, elapsed)
 
       if (s.skipBreaks) {
         if (c >= s.iterations) {
@@ -195,7 +238,7 @@ export function FocusTimerPage() {
       setRemaining(s.focusMinutes * 60)
     }
     phaseStartRef.current = Date.now()
-  }, [logFocusMinutes, userPrefs.timerSoundEnabled])
+  }, [logFocusMinutes, maybePromptFocusScore, userPrefs.timerSoundEnabled])
 
   useEffect(() => {
     if (!running || phase === 'done') return
@@ -220,8 +263,10 @@ export function FocusTimerPage() {
   const endFocus = async () => {
     if (phase !== 'focus') return
 
-    const elapsed = Math.max(1, Math.round((Date.now() - phaseStartRef.current) / 60000))
-    await logFocusMinutes(elapsed)
+    const sessionStart = phaseStartRef.current
+    const elapsed = Math.max(1, Math.round((Date.now() - sessionStart) / 60000))
+    await logFocusMinutes(elapsed, undefined, sessionStart, selectedLabelIdRef.current)
+    maybePromptFocusScore(sessionStart, elapsed)
 
     if (settings.skipBreaks) {
       if (cycle >= settings.iterations) {
@@ -282,6 +327,28 @@ export function FocusTimerPage() {
 
   const isRest = phase === 'break'
 
+  const liveFocusSession = useMemo(() => {
+    if (phase !== 'focus' || !sessionStarted) return null
+    const startMs = phaseStartRef.current
+    const elapsedMs = running
+      ? Date.now() - startMs
+      : (settings.focusMinutes * 60 - remaining) * 1000
+    return { startMs, endMs: startMs + Math.max(0, elapsedMs) }
+  }, [
+    phase,
+    sessionStarted,
+    running,
+    remaining,
+    settings.focusMinutes,
+    liveFocusSeconds,
+  ])
+
+  const formatHourLabel = useCallback(
+    (date: Date) =>
+      formatTime(new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), 0)),
+    [formatTime],
+  )
+
   const progress =
     phaseDuration > 0
       ? Math.min(100, Math.max(0, ((phaseDuration - remaining) / phaseDuration) * 100))
@@ -289,25 +356,57 @@ export function FocusTimerPage() {
   const minutes = Math.floor(remaining / 60)
   const seconds = remaining % 60
 
+  const showSchedule = userPrefs.showFocusSchedule && !!userId
+
   return (
-    <div className={cn('mx-auto space-y-4', showSettings ? 'max-w-3xl' : 'max-w-lg')}>
+    <div
+      className={cn(
+        'relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6',
+        showSchedule && showSettings
+          ? 'max-w-5xl'
+          : showSchedule
+            ? 'max-w-4xl'
+            : showSettings
+              ? 'max-w-3xl'
+              : 'max-w-lg',
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setFocusImmersive(!focusImmersive)}
+        className="absolute right-0 top-0 z-10 rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        aria-pressed={focusImmersive}
+        aria-label={focusImmersive ? 'Exit fullscreen' : 'Enter fullscreen'}
+        title={focusImmersive ? 'Exit fullscreen (Esc)' : 'Hide sidebar'}
+      >
+        {focusImmersive ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+      </button>
+
       <header className="text-center">
         <h1 className="text-2xl font-bold text-zinc-100">Focus</h1>
-        <p className="text-xs text-zinc-500">
-          {formatDuration(focusToday)} focused today · {formatDate(new Date())}
-        </p>
       </header>
 
       <div
         className={cn(
           'flex items-start gap-4',
-          showSettings ? 'flex-col lg:flex-row lg:justify-center' : 'justify-center',
+          showSchedule ? 'flex-col lg:flex-row lg:justify-center' : 'justify-center',
         )}
       >
-        <div data-tour="focus-timer">
+        <div
+          className={cn(
+            'flex flex-col gap-4 self-center lg:self-start',
+            showSettings && !showSchedule ? 'w-full max-w-3xl' : 'w-full max-w-[480px]',
+          )}
+        >
+          <div
+            className={cn(
+              'flex w-full items-start gap-4',
+              showSettings ? 'flex-col lg:flex-row' : 'justify-center',
+            )}
+          >
         <Card
           className={cn(
-            'flex h-[35rem] w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-24',
+            'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6',
             showSettings && 'lg:max-w-md',
           )}
         >
@@ -352,6 +451,13 @@ export function FocusTimerPage() {
             </span>
           </div>
         </div>
+
+        <FocusLabelPicker
+          className="mb-4"
+          value={selectedLabelId}
+          onChange={selectLabel}
+          disabled={phase === 'done'}
+        />
 
         {sessionEndAt && phase !== 'done' ? (
           <div className="mb-5 flex h-11 shrink-0 flex-wrap items-center justify-center gap-1.5">
@@ -427,7 +533,6 @@ export function FocusTimerPage() {
           </Button>
         </div>
       </Card>
-        </div>
 
         {showSettings && (
           <Card title="Timer settings" className="w-full shrink-0 space-y-5 lg:w-72">
@@ -463,6 +568,13 @@ export function FocusTimerPage() {
               checked={settings.allowPause}
               onChange={(allowPause) => updateTimerSettings({ allowPause })}
             />
+            <ToggleRow
+              label="Ask for focus score"
+              description="After each focus block, rate how focused you felt (1–10)"
+              compact
+              checked={settings.promptFocusScore}
+              onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
+            />
             <LongBreakSettings
               enabled={settings.longBreakEnabled}
               afterCycles={settings.longBreakAfterCycles}
@@ -497,6 +609,24 @@ export function FocusTimerPage() {
             </div>
           </Card>
         )}
+          </div>
+
+          <Card title="Last 12 hours" className="w-full">
+            <FocusHourlyChart
+              formatHour={formatHourLabel}
+              liveSession={liveFocusSession}
+              useDevDummy={userPrefs.devMode}
+            />
+          </Card>
+        </div>
+
+        {showSchedule && userId && (
+          <FocusScheduleAgenda
+            userId={userId}
+            formatTime={formatTime}
+            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-80"
+          />
+        )}
       </div>
 
       {showFocusGoalModal && (
@@ -508,6 +638,17 @@ export function FocusTimerPage() {
           }}
           onSave={handleSaveFocusGoal}
           onClose={() => setShowFocusGoalModal(false)}
+        />
+      )}
+
+      {scorePrompt && (
+        <FocusScorePrompt
+          payload={scorePrompt}
+          onSkip={() => setScorePrompt(null)}
+          onSubmit={(score) => {
+            addFocusScoreSession({ ...scorePrompt, score })
+            setScorePrompt(null)
+          }}
         />
       )}
     </div>

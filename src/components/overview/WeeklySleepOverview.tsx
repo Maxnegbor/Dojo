@@ -9,7 +9,6 @@ import { formatShortDate } from '@/lib/overviewPeriods'
 import {
   averageBedtime,
   averageTime,
-  formatMorningMinutes,
   formatTime12h,
   getMorningLog,
 } from '@/lib/morningLog'
@@ -17,6 +16,7 @@ import {
   formatSleepMetricDisplay,
   getEnabledSleepMetrics,
   getSleepMetricValue,
+  type SleepMetricDefinition,
 } from '@/lib/sleepMetrics'
 import { cn, getWeekDates } from '@/lib/utils'
 import type { DailyLog, Goal } from '@/types'
@@ -37,6 +37,7 @@ interface WeeklySleepOverviewProps {
 }
 
 interface SleepStat {
+  id: string
   label: string
   value: string
   detail: string
@@ -49,7 +50,7 @@ function SleepStatCell({
   detail,
   accent,
   compact,
-}: SleepStat & { compact?: boolean }) {
+}: Omit<SleepStat, 'id'> & { compact?: boolean }) {
   return (
     <div
       className={cn(
@@ -72,6 +73,67 @@ function SleepStatCell({
       </p>
     </div>
   )
+}
+
+function emptyStat(metric: SleepMetricDefinition): SleepStat {
+  return {
+    id: metric.id,
+    label: metric.label,
+    value: '—',
+    detail: 'No sleep logged',
+  }
+}
+
+function buildMetricStat(
+  metric: SleepMetricDefinition,
+  inRange: DailyLog[],
+  period: string,
+  use24h: boolean,
+): SleepStat {
+  if (metric.id === 'bedtime') {
+    const times = inRange
+      .map((entry) => getMorningLog(entry)?.bedtime)
+      .filter((time): time is string => !!time)
+    if (times.length === 0) return emptyStat(metric)
+    return {
+      id: metric.id,
+      label: metric.label,
+      value: formatTime12h(averageBedtime(times), use24h),
+      detail: `${times.length} ${times.length === 1 ? 'night' : 'nights'} · ${period}`,
+    }
+  }
+
+  if (metric.id === 'wake_time') {
+    const times = inRange
+      .map((entry) => getMorningLog(entry)?.wake_time)
+      .filter((time): time is string => !!time)
+    if (times.length === 0) return emptyStat(metric)
+    return {
+      id: metric.id,
+      label: metric.label,
+      value: formatTime12h(averageTime(times), use24h),
+      detail: `${times.length} ${times.length === 1 ? 'night' : 'nights'} · ${period}`,
+    }
+  }
+
+  const samples = inRange
+    .map((entry) => ({
+      date: entry.date,
+      value: getSleepMetricValue(entry, metric),
+    }))
+    .filter((sample): sample is { date: string; value: number } => sample.value != null)
+
+  if (samples.length === 0) return emptyStat(metric)
+
+  const avg = samples.reduce((sum, sample) => sum + sample.value, 0) / samples.length
+  const latest = [...samples].sort((a, b) => b.date.localeCompare(a.date))[0]
+  return {
+    id: metric.id,
+    label: metric.label,
+    value: formatSleepMetricDisplay(metric, avg, use24h),
+    detail: `${samples.length} logged · latest ${formatShortDate(latest.date)}`,
+    accent: metric.unit === 'percent',
+  }
 }
 
 export function WeeklySleepOverview({
@@ -100,159 +162,10 @@ export function WeeklySleepOverview({
     [logs, rangeStart, rangeEnd],
   )
 
-  const morningEntries = useMemo(
-    () =>
-      inRange
-        .filter((l) => l.morning_log)
-        .map((entry) => ({ log: entry, morning: getMorningLog(entry)! }))
-        .sort((a, b) => b.log.date.localeCompare(a.log.date)),
-    [inRange],
-  )
-
-  const sleepHourLogs = useMemo(
-    () => inRange.filter((l) => l.sleep_hours != null && l.sleep_hours > 0),
-    [inRange],
-  )
-
   const stats = useMemo((): SleepStat[] => {
     const period = periodLabel.toLowerCase()
-    const displayMetrics = enabledMetrics.filter((m) => m.id !== 'in_bed')
-    const built: SleepStat[] = []
-
-    for (const metric of displayMetrics) {
-      if (metric.id === 'bedtime') {
-        const times = inRange
-          .map((entry) => getMorningLog(entry)?.bedtime)
-          .filter((time): time is string => !!time)
-        if (times.length === 0) continue
-        built.push({
-          label: metric.label,
-          value: formatTime12h(averageBedtime(times), use24h),
-          detail: `${times.length} ${times.length === 1 ? 'night' : 'nights'} · ${period}`,
-        })
-        continue
-      }
-
-      if (metric.id === 'wake_time') {
-        const times = inRange
-          .map((entry) => getMorningLog(entry)?.wake_time)
-          .filter((time): time is string => !!time)
-        if (times.length === 0) continue
-        built.push({
-          label: metric.label,
-          value: formatTime12h(averageTime(times), use24h),
-          detail: `${times.length} ${times.length === 1 ? 'night' : 'nights'} · ${period}`,
-        })
-        continue
-      }
-
-      const samples = inRange
-        .map((entry) => ({
-          date: entry.date,
-          value: getSleepMetricValue(entry, metric),
-        }))
-        .filter((sample): sample is { date: string; value: number } => sample.value != null)
-
-      if (samples.length === 0) continue
-
-      const avg = samples.reduce((sum, sample) => sum + sample.value, 0) / samples.length
-      const latest = [...samples].sort((a, b) => b.date.localeCompare(a.date))[0]
-      built.push({
-        label: metric.label,
-        value: formatSleepMetricDisplay(metric, avg, use24h),
-        detail: `${samples.length} logged · latest ${formatShortDate(latest.date)}`,
-        accent: metric.unit === 'percent',
-      })
-    }
-
-    if (built.length > 0) {
-      while (built.length < 4) {
-        built.push({
-          label: '—',
-          value: '—',
-          detail: 'No additional metrics',
-        })
-      }
-      return built.slice(0, 4)
-    }
-
-    if (morningEntries.length > 0) {
-      const avgInBed =
-        morningEntries.reduce((s, e) => s + e.morning.in_bed_minutes, 0) / morningEntries.length
-      const avgSleep =
-        morningEntries.reduce((s, e) => s + e.morning.sleep_minutes, 0) / morningEntries.length
-      const avgAlertness =
-        morningEntries.reduce((s, e) => s + e.morning.alertness, 0) / morningEntries.length
-      const latest = morningEntries[0]
-      const avgBedtime = averageBedtime(morningEntries.map((e) => e.morning.bedtime))
-      const avgWake = averageTime(morningEntries.map((e) => e.morning.wake_time))
-      const mornings =
-        morningEntries.length === 1 ? '1 morning logged' : `${morningEntries.length} mornings logged`
-
-      return [
-        {
-          label: 'In bed',
-          value: formatMorningMinutes(Math.round(avgInBed)),
-          detail: `${mornings} · ${period}`,
-        },
-        {
-          label: 'Sleep',
-          value: formatMorningMinutes(Math.round(avgSleep)),
-          detail: `Alertness ${avgAlertness.toFixed(1)}/10`,
-        },
-        {
-          label: 'Bedtime',
-          value: formatTime12h(avgBedtime, use24h),
-          detail: `Wake ${formatTime12h(avgWake, use24h)}`,
-        },
-        {
-          label: 'Latest wake',
-          value: formatTime12h(latest.morning.wake_time, use24h),
-          detail: `In bed ${formatMorningMinutes(latest.morning.in_bed_minutes)} · ${formatShortDate(latest.log.date)}`,
-          accent: true,
-        },
-      ]
-    }
-
-    if (sleepHourLogs.length > 0) {
-      const avgSleep =
-        sleepHourLogs.reduce((s, l) => s + (l.sleep_hours ?? 0), 0) / sleepHourLogs.length
-      const latest = [...sleepHourLogs].sort((a, b) => b.date.localeCompare(a.date))[0]
-      const nights =
-        sleepHourLogs.length === 1 ? '1 night logged' : `${sleepHourLogs.length} nights logged`
-
-      return [
-        {
-          label: 'Sleep',
-          value: `${avgSleep.toFixed(1)}h`,
-          detail: `${nights} · ${period}`,
-        },
-        {
-          label: 'Latest night',
-          value: `${(latest.sleep_hours ?? 0).toFixed(1)}h`,
-          detail: formatShortDate(latest.date),
-          accent: true,
-        },
-        {
-          label: 'In bed',
-          value: '—',
-          detail: 'Use morning log for timing',
-        },
-        {
-          label: 'Alertness',
-          value: '—',
-          detail: 'Use morning log for timing',
-        },
-      ]
-    }
-
-    return [
-      { label: 'In bed', value: '—', detail: 'No sleep logged' },
-      { label: 'Sleep', value: '—', detail: 'No sleep logged' },
-      { label: 'Bedtime', value: '—', detail: 'No sleep logged' },
-      { label: 'Latest wake', value: '—', detail: 'No sleep logged' },
-    ]
-  }, [enabledMetrics, inRange, morningEntries, sleepHourLogs, periodLabel, use24h])
+    return enabledMetrics.map((metric) => buildMetricStat(metric, inRange, period, use24h))
+  }, [enabledMetrics, inRange, periodLabel, use24h])
 
   const sleepGoal = goals.find((g) => g.is_active && g.metric_key === 'sleep' && hasTarget(g))
   const weekDates = getWeekDates(new Date(date), weekStartsOn)
@@ -269,7 +182,19 @@ export function WeeklySleepOverview({
       )
     : null
 
-  const loggedCount = morningEntries.length > 0 ? morningEntries.length : sleepHourLogs.length
+  const loggedCount = useMemo(() => {
+    if (enabledMetrics.length === 0) return 0
+    return inRange.filter((entry) =>
+      enabledMetrics.some((metric) => {
+        if (metric.id === 'bedtime') return Boolean(getMorningLog(entry)?.bedtime)
+        if (metric.id === 'wake_time') return Boolean(getMorningLog(entry)?.wake_time)
+        return getSleepMetricValue(entry, metric) != null
+      }),
+    ).length
+  }, [enabledMetrics, inRange])
+
+  const gridCols =
+    stats.length <= 1 ? 'grid-cols-1' : stats.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'
 
   return (
     <Card className={cn('flex h-full flex-col', compact ? 'p-3' : 'p-4 sm:p-5')}>
@@ -277,19 +202,29 @@ export function WeeklySleepOverview({
         <h3 className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Sleep</h3>
         {loggedCount > 0 && (
           <p className="truncate text-[10px] text-zinc-500">
-            {loggedCount} {morningEntries.length > 0 ? 'morning' : 'night'}
-            {loggedCount === 1 ? '' : 's'}
+            {loggedCount} night{loggedCount === 1 ? '' : 's'}
           </p>
         )}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/40">
-        <div className="grid grid-cols-2 divide-x divide-y divide-zinc-800/60">
-          {stats.map((stat) => (
-            <SleepStatCell key={stat.label} {...stat} compact={compact} />
-          ))}
+      {stats.length === 0 ? (
+        <p
+          className={cn(
+            'rounded-lg border border-dashed border-zinc-800 px-3 py-4 text-zinc-500',
+            compact ? 'text-[11px]' : 'text-sm',
+          )}
+        >
+          No sleep metrics selected. Enable them in Settings → Sleep to track here.
+        </p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/40">
+          <div className={cn('grid divide-x divide-y divide-zinc-800/60', gridCols)}>
+            {stats.map((stat) => (
+              <SleepStatCell key={stat.id} {...stat} compact={compact} />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {showGoalProgress && sleepGoal && sleepProgress && (
         <div

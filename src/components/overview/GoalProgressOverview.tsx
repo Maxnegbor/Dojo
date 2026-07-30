@@ -16,6 +16,7 @@ import {
   formatWeightDelta,
   formatWeightGoalDateRange,
   formatWeightGoalRange,
+  getActiveWeightGoal,
   getWeightGoalProgress,
   isWeightGoal,
   weightGoalMode,
@@ -31,6 +32,8 @@ interface GoalProgressOverviewProps {
   weekWorkouts: Workout[]
   date: string
   weekStartsOn: 0 | 1
+  /** Only show goals in this Metrics category. */
+  categoryId?: string
   /** Hide workout goal cards (e.g. when shown elsewhere on the page). */
   excludeWorkouts?: boolean
   /** Hide sleep goal cards (e.g. when shown in the sleep overview). */
@@ -189,11 +192,12 @@ export function GoalProgressOverview(props: GoalProgressOverviewProps) {
     excludeWorkouts = false,
     excludeSleep = false,
     excludeWeight = false,
+    categoryId,
     compact = false,
     hideTitle = false,
   } = props
   const { settings } = useSettings()
-  const showWorkouts = settings.showWorkoutMetrics && !excludeWorkouts
+  const showWorkouts = settings.showWorkoutMetrics && !excludeWorkouts && !categoryId
 
   const metricGoals = goals.filter(
     (g) =>
@@ -201,9 +205,12 @@ export function GoalProgressOverview(props: GoalProgressOverviewProps) {
       !g.metric_key.startsWith('workout_') &&
       !isWeightGoal(g) &&
       g.metric_key !== 'focus' &&
-      !(excludeSleep && g.metric_key === 'sleep'),
+      !(excludeSleep && g.metric_key === 'sleep') &&
+      (!categoryId || resolveGoalCategoryId(g.category_id) === categoryId),
   )
-  const goalCategories = getVisibleGoalCategories()
+  const goalCategories = categoryId
+    ? getVisibleGoalCategories().filter((category) => category.id === categoryId)
+    : getVisibleGoalCategories()
   const categorySections = goalCategories
     .map((category) => ({
       category,
@@ -214,14 +221,15 @@ export function GoalProgressOverview(props: GoalProgressOverviewProps) {
       ),
     }))
     .filter(({ goals: sectionGoals }) => sectionGoals.length > 0)
-  const activeWeightGoal = goals.find((g) => g.is_active && isWeightGoal(g))
+  const activeWeightGoal =
+    !categoryId && !excludeWeight ? getActiveWeightGoal(goals) : undefined
   const hasWorkoutGoals =
     showWorkouts &&
     goals.some((g) => g.is_active && g.metric_key.startsWith('workout_') && hasTarget(g))
 
   const hasProgress =
     categorySections.length > 0 ||
-    (!excludeWeight && !!activeWeightGoal) ||
+    !!activeWeightGoal ||
     hasWorkoutGoals
 
   const flatGoals = categorySections.flatMap(({ goals: sectionGoals }) => sectionGoals)
@@ -230,7 +238,9 @@ export function GoalProgressOverview(props: GoalProgressOverviewProps) {
     if (compact) return null
     return (
       <p className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-8 text-center text-sm text-zinc-500">
-        Set targets on the Metrics page to track progress here.
+        {categoryId
+          ? 'No targets in this category yet. Set them on the Metrics page.'
+          : 'Set targets on the Metrics page to track progress here.'}
       </p>
     )
   }

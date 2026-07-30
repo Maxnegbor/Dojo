@@ -13,6 +13,9 @@ interface NotesAndRemindersProps {
   onAdd: (item: Reminder) => void
   onUpdate: (item: Reminder) => void
   onRemove: (id: string) => void
+  /** Only show reminders due on viewDate (default: due on or before). */
+  exactDueDate?: boolean
+  className?: string
 }
 
 export function NotesAndReminders({
@@ -22,6 +25,8 @@ export function NotesAndReminders({
   onAdd,
   onUpdate,
   onRemove,
+  exactDueDate = false,
+  className,
 }: NotesAndRemindersProps) {
   const [composing, setComposing] = useState(false)
   const [title, setTitle] = useState('')
@@ -32,7 +37,10 @@ export function NotesAndReminders({
   const editInputRef = useRef<HTMLTextAreaElement>(null)
 
   const visible = items.filter(
-    (r) => !r.completed && r.due_date <= viewDate && r.kind !== 'note',
+    (r) =>
+      !r.completed &&
+      r.kind !== 'note' &&
+      (exactDueDate ? r.due_date === viewDate : r.due_date <= viewDate),
   )
 
   const handleDismiss = useCallback((id: string) => onRemove(id), [onRemove])
@@ -148,7 +156,7 @@ export function NotesAndReminders({
   }
 
   return (
-    <Card title="Reminders">
+    <Card title="Reminders" className={className}>
       <ul className="flex flex-col gap-1">
         {visible.map((item) => {
           const phase = getPhase(item.id)
@@ -192,8 +200,8 @@ export function NotesAndReminders({
                     className={cn(
                       'relative z-10 mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200',
                       checkActive
-                        ? 'border-emerald-500 bg-emerald-500 text-zinc-950'
-                        : 'border-zinc-600 text-transparent group-hover:border-emerald-500/70 group-hover:bg-emerald-500/10 hover:!border-emerald-500 hover:!bg-emerald-500/20 hover:!text-emerald-400',
+                        ? 'border-[var(--accent-500)] bg-[var(--accent-500)] text-black'
+                        : 'border-zinc-600 text-transparent group-hover:border-[var(--accent-500)]/70 group-hover:bg-[var(--accent-500)]/10 hover:!border-[var(--accent-500)] hover:!bg-[var(--accent-500)]/20 hover:!text-[var(--accent-400)]',
                     )}
                   >
                     {checkActive ? (
@@ -212,7 +220,7 @@ export function NotesAndReminders({
                         e.target.style.height = 'auto'
                         e.target.style.height = `${e.target.scrollHeight}px`
                       }}
-                      className="relative z-10 min-w-0 flex-1 resize-none bg-transparent text-sm leading-snug text-zinc-200 outline-none"
+                      className="relative z-10 min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-sm leading-snug text-zinc-200 outline-none"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault()
@@ -229,7 +237,7 @@ export function NotesAndReminders({
                       onClick={() => startEdit(item)}
                       className={cn(
                         'relative z-10 min-w-0 flex-1 whitespace-normal break-words text-left text-sm leading-snug transition-colors duration-300',
-                        exiting ? 'text-emerald-300/90' : 'text-zinc-200 hover:text-zinc-100',
+                        exiting ? 'text-[var(--accent-200)]' : 'text-zinc-200 hover:text-zinc-100',
                       )}
                     >
                       {item.title}
@@ -257,7 +265,7 @@ export function NotesAndReminders({
                 e.target.style.height = `${e.target.scrollHeight}px`
               }}
               placeholder="Reminder…"
-              className="min-w-0 flex-1 resize-none bg-transparent text-sm leading-snug text-zinc-200 placeholder:text-zinc-600 outline-none"
+              className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-sm leading-snug text-zinc-200 placeholder:text-zinc-600 outline-none"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()

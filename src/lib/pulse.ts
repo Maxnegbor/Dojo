@@ -1,11 +1,13 @@
 import type { CSSProperties } from 'react'
 import { addDays, format, parseISO } from 'date-fns'
+import { getLogValueForGoal } from '@/lib/dailyLog'
 import { getDraft, mergeDraftWithLog } from '@/lib/dailyLogDraft'
 import { getDailyLogHabitTypes, type HabitTypeDefinition } from '@/lib/habitTypes'
 import { getHabitStreak } from '@/lib/habitStreaks'
 import { hasTarget } from '@/lib/goals'
 import {
   computeExerciseRate,
+  getPulseCustomMetricGoals,
   getPulseFormulaForDate,
   type PulseConfig,
   type PulseFormula,
@@ -27,6 +29,8 @@ export interface DayPulse {
   focusRate: number
   sleepRate: number
   exerciseRate: number
+  /** Completion % for custom metrics with pulse weight. */
+  metricRates: Record<string, number>
 }
 
 export interface PulseInsight {
@@ -63,6 +67,14 @@ function logForDate(
   return logs.find((l) => l.date === date)
 }
 
+function computeCustomMetricRate(log: DailyLog | undefined, goal: Goal): number {
+  const target = goal.target_value ?? 0
+  if (target <= 0) return 0
+  const value = log ? getLogValueForGoal(log, goal) : null
+  if (value == null || value <= 0) return 0
+  return Math.min(100, (value / target) * 100)
+}
+
 export function computeDayPulse(
   date: string,
   log: DailyLog | undefined,
@@ -79,15 +91,18 @@ export function computeDayPulse(
     focusRate: 0,
     sleepRate: 0,
     exerciseRate: 0,
+    metricRates: {},
   }
 
   if (!formula) return empty
 
   const { weights } = formula
+  const metricWeights = formula.metricWeights ?? {}
   let habitRate = 0
   let focusRate = 0
   let sleepRate = 0
   let exerciseRate = 0
+  const metricRates: Record<string, number> = {}
   const parts: { weight: number; value: number }[] = []
 
   if (weights.habits > 0 && habits.length > 0) {
@@ -109,11 +124,16 @@ export function computeDayPulse(
 
   if (weights.sleep > 0) {
     const sleepConfig = sleepMetricsConfig ?? getSleepMetricsConfig()
-    if (getPulseSleepMetrics(sleepConfig).length > 0) {
-      const sleepGoal = goals.find((g) => g.metric_key === 'sleep' && hasTarget(g))
-      sleepRate = computeSleepPulseRate(log, sleepGoal?.target_value ?? null, sleepConfig)
-      parts.push({ weight: weights.sleep, value: sleepRate })
-    }
+    const sleepGoal = goals.find((g) => g.metric_key === 'sleep' && hasTarget(g))
+    const legacyHours = sleepGoal?.target_value ?? null
+    const pulseMetrics = getPulseSleepMetrics(sleepConfig)
+    sleepRate =
+      pulseMetrics.length > 0
+        ? computeSleepPulseRate(log, sleepConfig, legacyHours)
+        : legacyHours != null && legacyHours > 0 && log?.sleep_hours != null
+          ? Math.min(100, (log.sleep_hours / legacyHours) * 100)
+          : 0
+    parts.push({ weight: weights.sleep, value: sleepRate })
   }
 
   if (weights.exercise > 0) {
@@ -126,12 +146,26 @@ export function computeDayPulse(
     }
   }
 
-  if (parts.length === 0) return { ...empty, habitRate, focusRate, sleepRate, exerciseRate }
+  const customGoalsByKey = new Map(
+    getPulseCustomMetricGoals(goals).map((g) => [g.metric_key as string, g]),
+  )
+  for (const [key, weight] of Object.entries(metricWeights)) {
+    if (weight <= 0) continue
+    const goal = customGoalsByKey.get(key)
+    if (!goal) continue
+    const rate = computeCustomMetricRate(log, goal)
+    metricRates[key] = rate
+    parts.push({ weight, value: rate })
+  }
+
+  if (parts.length === 0) {
+    return { ...empty, habitRate, focusRate, sleepRate, exerciseRate, metricRates }
+  }
 
   const totalWeight = parts.reduce((s, p) => s + p.weight, 0)
   const score = Math.round(parts.reduce((s, p) => s + p.value * p.weight, 0) / totalWeight)
 
-  return { date, score, habitRate, focusRate, sleepRate, exerciseRate }
+  return { date, score, habitRate, focusRate, sleepRate, exerciseRate, metricRates }
 }
 
 export function computePulseSeries(
@@ -311,7 +345,7 @@ export function pulseLoadRange(today: string, days = 35): { start: string; end: 
 }
 
 export function pulseScoreLabel(score: number): string {
-  if (score >= 85) return 'Radiant'
+  if (score >= 100) return 'Radiant'
   if (score >= 70) return 'Strong'
   if (score >= 50) return 'Steady'
   if (score >= 25) return 'Quiet'
@@ -328,7 +362,7 @@ export type PulseScoreTier =
   | 'radiant'
 
 export function pulseScoreTier(score: number): PulseScoreTier {
-  if (score >= 85) return 'radiant'
+  if (score >= 100) return 'radiant'
   if (score >= 70) return 'strong'
   if (score >= 50) return 'steady'
   if (score >= 25) return 'quiet'
@@ -342,19 +376,22 @@ export const PULSE_PREVIEW_LEVELS = [
   { label: 'Quiet', score: 35 },
   { label: 'Steady', score: 64 },
   { label: 'Strong', score: 77 },
-  { label: 'Radiant', score: 92 },
+  { label: 'Radiant', score: 100 },
 ] as const
 
 export function previewPulseBreakdown(score: number): Pick<
   DayPulse,
-  'habitRate' | 'focusRate' | 'sleepRate' | 'exerciseRate'
+  'habitRate' | 'focusRate' | 'sleepRate' | 'exerciseRate' | 'metricRates'
 > {
-  if (score <= 0) return { habitRate: 0, focusRate: 0, sleepRate: 0, exerciseRate: 0 }
+  if (score <= 0) {
+    return { habitRate: 0, focusRate: 0, sleepRate: 0, exerciseRate: 0, metricRates: {} }
+  }
   return {
     habitRate: Math.min(100, Math.round(score * 1.05)),
     focusRate: Math.min(100, Math.round(score * 0.85)),
     sleepRate: Math.min(100, Math.round(score * 0.7)),
     exerciseRate: Math.min(100, Math.round(score * 0.6)),
+    metricRates: {},
   }
 }
 
@@ -365,6 +402,8 @@ export const PULSE_COMPACT_SCALE = 0.5
 
 /** Inline pulse in the Home header. */
 export const PULSE_HEADER_SCALE = 1.0
+/** Smaller meter on the Pulse page — less reserved glow space than the home header. */
+export const PULSE_PAGE_SCALE = 1.1
 
 export function pulseCorePx(scale = 1): number {
   return PULSE_CORE_PX * scale
@@ -409,21 +448,22 @@ export function pulseIntensityT(t: number): number {
   return knee + (maxI - knee) * ramp
 }
 
-/** Higher score → faster pulse, brighter accent, stronger glow. */
+/** Higher score → faster pulse, brighter accent, stronger glow — not a larger footprint. */
 export function pulseMeterVisuals(score: number, scale = 1): PulseMeterVisuals {
   const t = Math.max(0, Math.min(100, score)) / 100
   const i = pulseIntensityT(t)
-  const ringArenaPx = (176 + t * 96) * scale
+  // Fixed arena / zone so score (and radiant burst at 100) never resizes the meter.
+  const ringArenaPx = 224 * scale
   const ringExpandEnd = 1 + i * 0.45
-  const ringExtentPx = ringArenaPx * ringExpandEnd
-  const glowBleedPx = (24 + i * 40) * scale
-  const meterZonePx = ringExtentPx + glowBleedPx * 2
+  const maxRingExpandEnd = 1 + pulseIntensityT(1) * 0.45
+  const glowBleedPx = (24 + pulseIntensityT(1) * 40) * scale
+  const meterZonePx = ringArenaPx * maxRingExpandEnd + glowBleedPx * 2
   const coreBorderPx = (2.5 + t * 0.5) * scale
   const coreBorderPeakPx = coreBorderPx + (2 + i * 2.5) * scale
   const corePx = pulseCorePx(scale)
   const ringStartOuterPx = corePx + 2 * coreBorderPx
   return {
-    animationDuration: (5.4 - i * 3.6) * 1.5,
+    animationDuration: (5.4 - i * 3.6) * 2.25,
     ringStartScale: ringStartOuterPx / ringArenaPx,
     ringExpandEnd,
     ringFadeAt: 0.28 + i * 0.72,

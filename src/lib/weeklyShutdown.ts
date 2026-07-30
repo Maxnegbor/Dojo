@@ -4,6 +4,7 @@ import type { DailyLog, Goal, MetricKey, Workout, WeeklyShutdownCheckGroup } fro
 import { normalizeHabits } from '@/types'
 import {
   BUILTIN_METRICS,
+  dedupeActiveGoalsByMetricKey,
   getActiveGoals,
   getGoalsWithoutTarget,
   goalLogPeriod,
@@ -11,6 +12,7 @@ import {
 } from '@/lib/goals'
 import {
   getGoalTimeHorizon,
+  goalTargetPeriod,
   isCustomTargetPeriod,
   isGoalLongerThanWeek,
 } from '@/lib/goalPeriod'
@@ -25,14 +27,17 @@ import { formatWeightStepper } from '@/lib/settingsStore'
 import {
   formatWeightGoalRange,
   getWeightGoalProgress,
+  getActiveWeightGoal,
   isWeightGoal,
   weightGoalMode,
 } from '@/lib/weightGoal'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { goalProgressPeriodLabel } from '@/lib/goalLabels'
 import { getPreviousWeekDates } from '@/lib/weightGoal'
-import { getWeekDates, generateId } from '@/lib/utils'
+import { getWeekDates, generateId, formatDate } from '@/lib/utils'
 import { formatMetricAmount, usesTimedMetricDisplay } from '@/lib/timedMetrics'
+import { getFocusSettings } from '@/lib/focusStore'
+import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
 
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 
@@ -184,10 +189,39 @@ export function isWeeklyShutdownDay(date: Date): boolean {
   return date.getDay() === 0
 }
 
+/** Week dates for the calendar week that closes on the given Sunday. */
+function weekDatesEndingOnSunday(sunday: Date, weekStartsOn: 0 | 1): string[] {
+  if (weekStartsOn === 1) return getWeekDates(sunday, weekStartsOn)
+  return getWeekDates(addDays(sunday, -1), weekStartsOn)
+}
+
+/**
+ * The week whose shutdown is currently due — the one that closed on the most recent Sunday.
+ * Available from that Sunday through the following Mon–Sat if missed. Older skipped weeks are
+ * not carried forward; a new Sunday starts the next week's shutdown.
+ */
+export function getPendingWeeklyShutdownWeekDates(
+  today: Date,
+  weekStartsOn: 0 | 1,
+): string[] {
+  const todayAtNoon = parseISO(`${formatDate(today)}T12:00:00`)
+  const sunday = addDays(today, -today.getDay())
+  const weekDates = weekDatesEndingOnSunday(sunday, weekStartsOn)
+  if (weekDates.length === 0) return []
+
+  const weekEnd = weekDates[weekDates.length - 1]!
+  const weekEndDate = parseISO(`${weekEnd}T12:00:00`)
+  const weekKey = getWeeklyShutdownWeekKey(weekDates)
+
+  if (!isWeeklyShutdownCompleted(weekKey) && todayAtNoon >= weekEndDate) {
+    return weekDates
+  }
+
+  return []
+}
+
 export function getWeeklyShutdownWeekDates(today: Date, weekStartsOn: 0 | 1): string[] {
-  if (!isWeeklyShutdownDay(today)) return []
-  if (weekStartsOn === 1) return getWeekDates(today, weekStartsOn)
-  return getWeekDates(addDays(today, -1), weekStartsOn)
+  return getPendingWeeklyShutdownWeekDates(today, weekStartsOn)
 }
 
 export function getWeeklyReviewWeekDates(today: Date, weekStartsOn: 0 | 1): string[] {
@@ -290,7 +324,7 @@ function buildWorkoutGoalSummary(
 ): WeeklyShutdownGoalSummary {
   const weeklyTotal = getWeeklyMetricValue(goal.metric_key, logs, workouts, weekDates, weekKey)
   const target = goal.target_value ?? 0
-  const weeklyTarget = goalLogPeriod(goal) === 'weekly'
+  const targetPeriod = goalTargetPeriod(goal)
   const lastDate = weekDates[weekDates.length - 1]
   const prevLastDate = prevWeekDates[prevWeekDates.length - 1]
   const periodLabel = goalProgressPeriodLabel(goal, lastDate, weekStartsOn)
@@ -303,7 +337,9 @@ function buildWorkoutGoalSummary(
     })
   }
 
-  if (weeklyTarget) {
+  // Weekly / short custom blocks: week total vs target (matches Home workouts card).
+  // Only true daily targets use the daily-average path.
+  if (targetPeriod !== 'daily') {
     const percent = target > 0 ? (weeklyTotal / target) * 100 : 0
     const prevTotal = getWeeklyMetricValue(goal.metric_key, logs, workouts, prevWeekDates, prevWeekKey)
     const percentBefore = target > 0 ? (prevTotal / target) * 100 : 0
@@ -372,17 +408,28 @@ export function buildWeeklyShutdownSummaries(
   const prevLastDate = prevWeekDates[prevWeekDates.length - 1] ?? lastDate
   const lastLog = logs.find((l) => l.date === lastDate)
   const prevLastLog = logForDate(logs, prevLastDate)
-  const targeted = getActiveGoals(goals).filter(hasTarget)
+  const focusEnabled = getFocusSettings().focusGoalEnabled
+  const knownWorkoutKeys = new Set(
+    getWorkoutTypes().map((type) => workoutMetricKey(type.id)),
+  )
+  const targeted = dedupeActiveGoalsByMetricKey(goals).filter((goal) => {
+    if (!hasTarget(goal)) return false
+    if (goal.metric_key === 'focus' && !focusEnabled) return false
+    if (goal.metric_key.startsWith('workout_') && !knownWorkoutKeys.has(goal.metric_key)) {
+      return false
+    }
+    return true
+  })
   const workoutGoals = targeted.filter((g) => g.metric_key.startsWith('workout_'))
   const metricGoals = targeted.filter((g) => !g.metric_key.startsWith('workout_'))
-  const weightGoals = metricGoals.filter(isWeightGoal)
+  const weightGoal = getActiveWeightGoal(metricGoals)
   const nonWeightMetrics = metricGoals.filter((g) => !isWeightGoal(g))
 
   const weeklyGoals = nonWeightMetrics.filter(
-    (g) => goalLogPeriod(g) === 'weekly' && !isCustomTargetPeriod(g),
+    (g) => goalTargetPeriod(g) === 'weekly' && !isCustomTargetPeriod(g),
   )
   const dailyGoals = nonWeightMetrics.filter(
-    (g) => goalLogPeriod(g) === 'daily' && !isCustomTargetPeriod(g),
+    (g) => goalTargetPeriod(g) === 'daily' && !isCustomTargetPeriod(g),
   )
   const customPeriodGoals = nonWeightMetrics.filter(
     (g) => isCustomTargetPeriod(g) && isGoalLongerThanWeek(g, lastDate),
@@ -459,31 +506,36 @@ export function buildWeeklyShutdownSummaries(
     buildPaceReviewGoalSummary(goal, logs, workouts, lastDate, prevLastDate, weekStartsOn),
   )
 
-  const weightSummaries: WeeklyShutdownGoalSummary[] = weightGoals.map((goal) => {
-    const start = goal.goal_weight_start!
-    const target = goal.goal_weight_target!
-    const unit = goal.unit || weightUnit
-    const progress = getWeightGoalProgress(goal, logs, weekDates, weekStartsOn)
-    const mode = weightGoalMode(goal)
+  const weightSummaries: WeeklyShutdownGoalSummary[] = weightGoal
+    ? [
+        (() => {
+          const goal = weightGoal
+          const start = goal.goal_weight_start!
+          const target = goal.goal_weight_target!
+          const unit = goal.unit || weightUnit
+          const progress = getWeightGoalProgress(goal, logs, weekDates, weekStartsOn)
+          const mode = weightGoalMode(goal)
 
-    return {
-      id: goal.id,
-      name: goal.name,
-      metricKey: goal.metric_key,
-      unit,
-      current: progress.thisWeekAvg,
-      target,
-      percent: progress.percentAfter,
-      percentBefore: progress.percentBefore,
-      hit: progress.hit,
-      kind: 'weekly',
-      isWeight: true,
-      weightMode: mode,
-      weightLabel: progress.label,
-      detail: `${goalProgressPeriodLabel(goal, lastDate, weekStartsOn)} · ${formatWeightGoalRange(start, target, unit as AppSettings['weightUnit'])} · ${progress.detail}`,
-      timeElapsedPercent: getGoalTimeHorizon(goal, lastDate, weekStartsOn)?.elapsedPercent,
-    }
-  })
+          return {
+            id: goal.id,
+            name: goal.name,
+            metricKey: goal.metric_key,
+            unit,
+            current: progress.thisWeekAvg,
+            target,
+            percent: progress.percentAfter,
+            percentBefore: progress.percentBefore,
+            hit: progress.hit,
+            kind: 'weekly' as const,
+            isWeight: true,
+            weightMode: mode,
+            weightLabel: progress.label,
+            detail: `${goalProgressPeriodLabel(goal, lastDate, weekStartsOn)} · ${formatWeightGoalRange(start, target, unit as AppSettings['weightUnit'])} · ${progress.detail}`,
+            timeElapsedPercent: getGoalTimeHorizon(goal, lastDate, weekStartsOn)?.elapsedPercent,
+          }
+        })(),
+      ]
+    : []
 
   const workoutSummaries = workoutGoals.map((goal) =>
     buildWorkoutGoalSummary(

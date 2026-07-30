@@ -1,3 +1,6 @@
+import { useId, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
+import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl'
 import { cn } from '@/lib/utils'
 
 interface SegmentedControlOption<T extends string> {
@@ -25,29 +28,17 @@ export function SegmentedControl<T extends string>({
       {label && (
         <span className="mb-2 block text-xs font-medium text-zinc-400">{label}</span>
       )}
-      <div
-        className="flex rounded-xl border border-zinc-700/80 bg-zinc-900/80 p-1"
-        role="group"
+      <SlidingSegmentedControl
+        value={value}
+        options={options}
+        onChange={onChange}
+        size="md"
+        bordered
+        equalWidth
         aria-label={label}
-      >
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={value === option.value}
-            onClick={() => onChange(option.value)}
-            className={cn(
-              'flex-1 rounded-lg px-3 py-2.5 text-xs font-medium transition-all duration-200',
-              value === option.value
-                ? 'bg-[var(--accent-600)] text-white shadow-[0_0_12px_var(--accent-glow)]'
-                : 'text-zinc-500 hover:text-zinc-300',
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+        className="rounded-xl border-zinc-700/80 bg-zinc-900/80"
+        buttonClassName="rounded-lg px-3 py-2.5 text-xs"
+      />
     </div>
   )
 }
@@ -94,41 +85,57 @@ interface SettingsSectionProps {
   title: string
   description?: string
   children: React.ReactNode
+  /** When true, the section body can be toggled from the header. */
+  collapsible?: boolean
+  /** Initial open state when collapsible. Defaults to true. */
+  defaultOpen?: boolean
 }
 
-export function SettingsSection({ title, description, children }: SettingsSectionProps) {
+export function SettingsSection({
+  title,
+  description,
+  children,
+  collapsible = false,
+  defaultOpen = true,
+}: SettingsSectionProps) {
+  const [open, setOpen] = useState(defaultOpen)
+  const panelId = useId()
+  const showBody = !collapsible || open
+
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
-        {description && <p className="mt-0.5 text-xs text-zinc-500">{description}</p>}
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  )
-}
-
-export function SettingsNavButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'w-full shrink-0 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors sm:w-full',
-        active
-          ? 'bg-[var(--accent-950)] text-[var(--accent-300)] ring-1 ring-[var(--accent-ring)]'
-          : 'text-zinc-400 ring-1 ring-transparent hover:bg-zinc-900/80 hover:text-zinc-200',
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="-m-1 flex w-[calc(100%+0.5rem)] items-start gap-3 rounded-lg p-1 text-left transition-colors hover:bg-zinc-900/50"
+          aria-expanded={open}
+          aria-controls={panelId}
+        >
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
+            {description && <p className="mt-0.5 text-xs text-zinc-500">{description}</p>}
+          </div>
+          <ChevronDown
+            size={16}
+            className={cn(
+              'mt-0.5 shrink-0 text-zinc-500 transition-transform',
+              open && 'rotate-180',
+            )}
+            aria-hidden
+          />
+        </button>
+      ) : (
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-zinc-500">{description}</p>}
+        </div>
       )}
-    >
-      {label}
-    </button>
+      {showBody && (
+        <div id={collapsible ? panelId : undefined} className="space-y-4">
+          {children}
+        </div>
+      )}
+    </section>
   )
 }

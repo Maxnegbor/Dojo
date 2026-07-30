@@ -8,7 +8,11 @@ import { YearlyOverviewPanel } from '@/components/overview/YearlyOverviewPanel'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth, useDailyLog } from '@/hooks/useData'
 import { localStore } from '@/lib/localStore'
-import type { OverviewCategory } from '@/lib/overviewCategories'
+import {
+  getOverviewCategories,
+  type OverviewCategory,
+} from '@/lib/overviewCategories'
+import { METRICS_SECTIONS_CHANGED } from '@/lib/metricsSections'
 import type { OverviewPeriod } from '@/lib/overviewPeriods'
 import {
   formatOverviewNavLabel,
@@ -28,12 +32,32 @@ export function OverviewPage() {
   const { log } = useDailyLog(today)
   const [period, setPeriod] = useState<OverviewPeriod>('week')
   const [periodOffset, setPeriodOffset] = useState(0)
-  const [category, setCategory] = useState<OverviewCategory>('fitness')
+  const [sectionsRevision, setSectionsRevision] = useState(0)
+  const overviewCategories = useMemo(
+    () => getOverviewCategories(),
+    [sectionsRevision],
+  )
+  const [category, setCategory] = useState<OverviewCategory>(
+    () => getOverviewCategories()[0]?.id ?? 'fitness',
+  )
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const { userId } = useAuth()
   const { settings } = useSettings()
+
+  useEffect(() => {
+    const refresh = () => setSectionsRevision((n) => n + 1)
+    window.addEventListener(METRICS_SECTIONS_CHANGED, refresh)
+    return () => window.removeEventListener(METRICS_SECTIONS_CHANGED, refresh)
+  }, [])
+
+  useEffect(() => {
+    if (overviewCategories.length === 0) return
+    if (!overviewCategories.some((entry) => entry.id === category)) {
+      setCategory(overviewCategories[0].id)
+    }
+  }, [overviewCategories, category])
 
   useEffect(() => {
     setPeriodOffset(0)
@@ -160,7 +184,11 @@ export function OverviewPage() {
       </header>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-10 xl:gap-12">
-        <OverviewCategoryNav value={category} onChange={setCategory} />
+        <OverviewCategoryNav
+          value={category}
+          onChange={setCategory}
+          categories={overviewCategories}
+        />
         <div className="min-w-0 flex-1 lg:max-w-none">
           {period === 'week' && <WeeklyOverviewPanel {...panelProps} />}
           {period === 'month' && <MonthlyOverviewPanel {...panelProps} />}

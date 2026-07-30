@@ -8,6 +8,7 @@ interface WeeklyFocusOverviewProps {
   dailyAverage: number
   dailyAveragePctVsPrevious: number | null
   previousLabel: string
+  avgFocusScoreLabel?: string
 }
 
 function StatCell({
@@ -42,6 +43,7 @@ export function WeeklyFocusOverview({
   dailyAverage,
   dailyAveragePctVsPrevious,
   previousLabel,
+  avgFocusScoreLabel,
 }: WeeklyFocusOverviewProps) {
   const avgComparison = formatPeriodComparison(
     dailyAveragePctVsPrevious,
@@ -68,11 +70,26 @@ export function WeeklyFocusOverview({
         ),
       accent: dailyAverage > 0,
     },
+    ...(avgFocusScoreLabel
+      ? [
+          {
+            label: 'Avg focus score',
+            value: avgFocusScoreLabel,
+            detail: 'Subjective 1–10',
+            accent: avgFocusScoreLabel !== '—',
+          },
+        ]
+      : []),
   ]
 
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/40">
-      <div className="grid grid-cols-2 divide-x divide-zinc-800/60">
+      <div
+        className={cn(
+          'grid divide-x divide-zinc-800/60',
+          avgFocusScoreLabel ? 'grid-cols-3' : 'grid-cols-2',
+        )}
+      >
         {stats.map((stat) => (
           <StatCell key={stat.label} {...stat} />
         ))}

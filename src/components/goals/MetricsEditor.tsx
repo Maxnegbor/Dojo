@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pencil, Trash2, Check, X, ChevronDown, History } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Pencil, Trash2, Check, X, ChevronDown, History, Brain, Moon, Repeat, Scale, Dumbbell, Shapes } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { SlidingNavList } from '@/components/ui/SlidingNavList'
+import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl'
 import { Card } from '@/components/ui/Card'
 import { MetricInput } from '@/components/ui/MetricInput'
 import { DurationMetricInput } from '@/components/ui/DurationMetricInput'
-import { WorkoutColorPicker } from '@/components/goals/WorkoutColorPicker'
 import { HabitMetricsReorderList } from '@/components/goals/HabitMetricsReorderList'
 import { AddGhostCard } from '@/components/goals/AddGhostCard'
 import { EditLogsModal } from '@/components/goals/EditLogsModal'
+import { MetricHistoryModal } from '@/components/goals/MetricHistoryModal'
+import type { MetricHistoryTarget } from '@/lib/metricHistory'
 import { SleepMetricTemplatePicker } from '@/components/goals/SleepMetricTemplatePicker'
 import { ToggleRow } from '@/components/settings/SettingsControls'
 import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
@@ -15,9 +18,14 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import type { Goal, GoalPeriod, GoalTargetPeriod, MetricKey } from '@/types'
 import {
   defaultUnitForMetric,
+  getActiveGoalByMetricKey,
   goalLogPeriod,
+  goalLogWhen,
+  goalMorningDay,
   hasTarget,
   normalizeGoal,
+  type GoalLogWhen,
+  type GoalMorningDay,
 } from '@/lib/goals'
 import {
   addDays,
@@ -30,11 +38,15 @@ import {
 } from '@/lib/goalPeriod'
 import {
   habitLogPeriod,
+  habitLogWhen,
+  habitMorningDay,
   saveHabitTypes,
   slugifyHabitId,
   useHabitTypes,
   type HabitTypeDefinition,
   type HabitRampConfig,
+  type HabitLogWhen,
+  type HabitMorningDay,
 } from '@/lib/habitTypes'
 import {
   formatHabitRampTarget,
@@ -54,23 +66,38 @@ import {
 import { getFocusSettings, saveFocusSettings } from '@/lib/focusStore'
 import {
   WORKOUT_COLOR_PRESETS,
+  WORKOUT_UNIT_OPTIONS,
+  DEFAULT_WORKOUT_UNIT,
   getWorkoutTypes,
+  normalizeWorkoutUnit,
   saveWorkoutTypes,
   slugifyWorkoutId,
+  workoutGoalUnitLabel,
+  workoutLogWhen,
+  workoutLogPeriod,
   workoutMetricKey,
+  workoutMorningDay,
   type WorkoutTypeDefinition,
+  type WorkoutLogWhen,
+  type WorkoutMorningDay,
 } from '@/lib/workoutTypes'
 import { cn, generateId, formatDate } from '@/lib/utils'
 import { displayToKg, kgToDisplay } from '@/lib/settingsStore'
-import { formatWeightGoalRange, formatWeightGoalDateRange, isWeightGoal, weightGoalMode, weightGoalModeLabel, type WeightGoalMode } from '@/lib/weightGoal'
+import { formatWeightGoalRange, formatWeightGoalDateRange, getActiveWeightGoal, getDuplicateActiveWeightGoals, isWeightGoal, weightGoalMode, weightGoalModeLabel, type WeightGoalMode } from '@/lib/weightGoal'
+import {
+  getMorningLogGoalKeys,
+  getMorningLogYesterdayKeys,
+  saveMorningLogGoalKeys,
+  saveMorningLogYesterdayKeys,
+} from '@/lib/morningLogConfig'
 import { useSettings } from '@/context/SettingsContext'
 import {
   DEFAULT_GOAL_CATEGORY_ID,
+  DEFAULT_GOAL_CATEGORY_LABEL,
   getCustomGoalCategories,
   isDefaultGoalCategory,
   resolveGoalCategoryId,
   saveCustomGoalCategories,
-  slugifyGoalCategoryId,
   type GoalCategoryDefinition,
 } from '@/lib/goalCategories'
 import {
@@ -84,8 +111,14 @@ import {
 } from '@/lib/metricsSections'
 import {
   sleepMetricDisplayUnit,
+  sleepMetricSupportsTarget,
+  sleepMetricTargetFromInputValue,
+  sleepMetricTargetInputUnit,
+  sleepMetricTargetToInputValue,
   getEnabledSleepMetrics,
+  getSleepMetricTarget,
   removeCustomSleepMetric,
+  setSleepMetricTarget,
   toggleSleepMetric,
   type SleepMetricDefinition,
 } from '@/lib/sleepMetrics'
@@ -142,6 +175,14 @@ interface MetricFormState {
   workoutId?: string
   name: string
   logPeriod: GoalPeriod
+  habitLogWhen: HabitLogWhen
+  habitMorningDay: HabitMorningDay
+  goalLogWhen: GoalLogWhen
+  goalMorningDay: GoalMorningDay
+  workoutLogWhen: WorkoutLogWhen
+  workoutMorningDay: WorkoutMorningDay
+  /** Comma-separated plan subtitles (e.g. Push, Pull, Legs). */
+  workoutSubtypes: string
   targetPeriod: GoalTargetPeriod
   customPeriodMode: CustomPeriodMode
   periodAmount: string
@@ -174,6 +215,32 @@ function goalKeyFromName(name: string): MetricKey {
   return `custom:${slugifyWorkoutId(name)}` as MetricKey
 }
 
+function SegmentPicker<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-14 shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+        {label}
+      </span>
+      <SlidingSegmentedControl
+        className="min-w-0 flex-1"
+        value={value}
+        options={options}
+        onChange={onChange}
+      />
+    </div>
+  )
+}
+
 function PeriodPicker({
   value,
   onChange,
@@ -183,26 +250,16 @@ function PeriodPicker({
   onChange: (period: GoalPeriod) => void
   label: string
 }) {
-  const presetClass = (active: boolean) =>
-    cn(
-      'flex-1 rounded-md py-1 text-[11px] transition-colors',
-      active ? 'bg-[var(--accent-600)] text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200',
-    )
-
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-14 shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-        {label}
-      </span>
-      <div className="flex min-w-0 flex-1 gap-1">
-        <button type="button" onClick={() => onChange('daily')} className={presetClass(value === 'daily')}>
-          daily
-        </button>
-        <button type="button" onClick={() => onChange('weekly')} className={presetClass(value === 'weekly')}>
-          weekly
-        </button>
-      </div>
-    </div>
+    <SegmentPicker
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: 'daily', label: 'daily' },
+        { value: 'weekly', label: 'weekly' },
+      ]}
+    />
   )
 }
 
@@ -253,11 +310,7 @@ function TargetPeriodPicker({
 }) {
   const isCustom = value === 'custom_duration' || value === 'custom_date'
   const showDatePicker = value === 'custom_date'
-  const presetClass = (active: boolean) =>
-    cn(
-      'flex-1 rounded-md py-1 text-[11px] transition-colors',
-      active ? 'bg-[var(--accent-600)] text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200',
-    )
+  const customModeValue = showDatePicker ? 'date' : 'duration'
 
   const selectCustomMode = (mode: CustomPeriodMode) => {
     onCustomModeChange(mode)
@@ -269,41 +322,34 @@ function TargetPeriodPicker({
         <span className="w-14 shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
           Target
         </span>
-        <div className="flex min-w-0 flex-1 gap-1">
-          <button type="button" onClick={() => onChange('daily')} className={presetClass(value === 'daily')}>
-            daily
-          </button>
-          <button type="button" onClick={() => onChange('weekly')} className={presetClass(value === 'weekly')}>
-            weekly
-          </button>
-          <button
-            type="button"
-            onClick={() => onChange(customMode === 'date' ? 'custom_date' : 'custom_duration')}
-            className={presetClass(isCustom)}
-          >
-            custom
-          </button>
-        </div>
+        <SlidingSegmentedControl
+          className="min-w-0 flex-1"
+          value={isCustom ? 'custom' : value}
+          options={[
+            { value: 'daily', label: 'daily' },
+            { value: 'weekly', label: 'weekly' },
+            { value: 'custom', label: 'custom' },
+          ]}
+          onChange={(next) => {
+            if (next === 'custom') {
+              onChange(customMode === 'date' ? 'custom_date' : 'custom_duration')
+              return
+            }
+            onChange(next)
+          }}
+        />
       </div>
 
       {isCustom && (
         <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => selectCustomMode('duration')}
-              className={presetClass(!showDatePicker)}
-            >
-              Duration
-            </button>
-            <button
-              type="button"
-              onClick={() => selectCustomMode('date')}
-              className={presetClass(showDatePicker)}
-            >
-              By date
-            </button>
-          </div>
+          <SlidingSegmentedControl
+            value={customModeValue}
+            options={[
+              { value: 'duration', label: 'Duration' },
+              { value: 'date', label: 'By date' },
+            ]}
+            onChange={(mode) => selectCustomMode(mode)}
+          />
 
           {showDatePicker ? (
             <DatePickerField
@@ -322,32 +368,17 @@ function TargetPeriodPicker({
                 placeholder="2"
                 className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none"
               />
-              <div className="flex overflow-hidden rounded-md border border-zinc-700">
-                <button
-                  type="button"
-                  onClick={() => onPeriodUnitChange('days')}
-                  className={cn(
-                    'px-2 py-1.5 text-[10px]',
-                    periodUnit === 'days'
-                      ? 'bg-[var(--accent-600)] text-white'
-                      : 'bg-zinc-900 text-zinc-400',
-                  )}
-                >
-                  days
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onPeriodUnitChange('weeks')}
-                  className={cn(
-                    'px-2 py-1.5 text-[10px]',
-                    periodUnit === 'weeks'
-                      ? 'bg-[var(--accent-600)] text-white'
-                      : 'bg-zinc-900 text-zinc-400',
-                  )}
-                >
-                  weeks
-                </button>
-              </div>
+              <SlidingSegmentedControl
+                value={periodUnit}
+                options={[
+                  { value: 'days', label: 'days' },
+                  { value: 'weeks', label: 'weeks' },
+                ]}
+                onChange={onPeriodUnitChange}
+                className="gap-0 rounded-md border border-zinc-700 bg-zinc-900 p-0"
+                buttonClassName="px-2 py-1.5 text-[10px] flex-none"
+                equalWidth={false}
+              />
             </div>
           )}
         </div>
@@ -476,7 +507,7 @@ function GoalCategoryPicker({
         aria-expanded={open}
       >
         <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">Category</span>
-        <span>{selected?.label ?? 'Goals'}</span>
+        <span>{selected?.label ?? 'Custom'}</span>
         <ChevronDown size={12} className={cn('transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
@@ -512,56 +543,33 @@ function WeightModePicker({
   value: WeightGoalMode
   onChange: (mode: WeightGoalMode) => void
 }) {
-  const presetClass = (active: boolean) =>
-    cn(
-      'flex-1 rounded-md py-1 text-[11px] transition-colors',
-      active ? 'bg-[var(--accent-600)] text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200',
-    )
-
   return (
     <div className="flex items-center gap-2">
       <span className="w-14 shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
         Goal
       </span>
-      <div className="flex min-w-0 flex-1 gap-1">
-        <button type="button" onClick={() => onChange('bulk')} className={presetClass(value === 'bulk')}>
-          Bulk
-        </button>
-        <button type="button" onClick={() => onChange('cut')} className={presetClass(value === 'cut')}>
-          Cut
-        </button>
-        <button type="button" onClick={() => onChange('maintain')} className={presetClass(value === 'maintain')}>
-          Maintain
-        </button>
-      </div>
+      <SlidingSegmentedControl
+        className="min-w-0 flex-1"
+        value={value}
+        options={[
+          { value: 'bulk', label: 'Bulk' },
+          { value: 'cut', label: 'Cut' },
+          { value: 'maintain', label: 'Maintain' },
+        ]}
+        onChange={onChange}
+      />
     </div>
   )
 }
 
-function MetricsNavButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'shrink-0 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors sm:w-full',
-        active
-          ? 'bg-[var(--accent-950)] text-[var(--accent-300)] ring-1 ring-[var(--accent-ring)]'
-          : 'text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-200',
-      )}
-    >
-      {label}
-    </button>
-  )
-}
+const METRIC_TEMPLATE_ICONS = {
+  habits: Repeat,
+  sleep: Moon,
+  focus: Brain,
+  weight: Scale,
+  workouts: Dumbbell,
+  default: Shapes,
+} as const
 
 function emptyForm(
   kind: MetricKind = 'goal',
@@ -574,7 +582,14 @@ function emptyForm(
     kind,
     categoryId,
     name: kind === 'weight' ? 'Weight' : kind === 'focus' ? 'Focus' : kind === 'sleep' ? 'Sleep' : '',
-    logPeriod: 'daily',
+    logPeriod: kind === 'weight' ? 'weekly' : 'daily',
+    habitLogWhen: 'home',
+    habitMorningDay: 'today',
+    goalLogWhen: 'home',
+    goalMorningDay: 'today',
+    workoutLogWhen: 'home',
+    workoutMorningDay: 'today',
+    workoutSubtypes: '',
     targetPeriod: kind === 'workout' ? 'weekly' : 'daily',
     customPeriodMode: 'duration',
     periodAmount: '2',
@@ -650,12 +665,31 @@ function applyHabitDurationFields(habit: HabitTypeDefinition, form: MetricFormSt
   return habit
 }
 
+function goalAskFieldsFromForm(
+  form: MetricFormState,
+): Pick<Goal, 'log_when' | 'morning_day'> | { log_when?: undefined; morning_day?: undefined } {
+  const logPeriod = form.setTarget ? form.logPeriod : 'daily'
+  if (logPeriod !== 'daily') {
+    return { log_when: undefined, morning_day: undefined }
+  }
+  return {
+    log_when: form.goalLogWhen,
+    morning_day: form.goalLogWhen === 'morning' ? form.goalMorningDay : undefined,
+  }
+}
+
 function buildHabitFields(form: MetricFormState): HabitTypeDefinition {
   const ramp = habitRampFromForm(form)
   const habit: HabitTypeDefinition = {
     id: form.habitId ?? '',
     label: form.name.trim(),
     log_period: form.logPeriod,
+  }
+  if (form.logPeriod === 'daily') {
+    habit.log_when = form.habitLogWhen
+    if (form.habitLogWhen === 'morning') {
+      habit.morning_day = form.habitMorningDay
+    }
   }
   if (ramp) habit.ramp = ramp
   return applyHabitDurationFields(habit, form)
@@ -670,6 +704,17 @@ function applyHabitFormFields(
     ...existing,
     label: form.name.trim(),
     log_period: form.logPeriod,
+  }
+  if (form.logPeriod === 'daily') {
+    next.log_when = form.habitLogWhen
+    if (form.habitLogWhen === 'morning') {
+      next.morning_day = form.habitMorningDay
+    } else {
+      delete next.morning_day
+    }
+  } else {
+    delete next.log_when
+    delete next.morning_day
   }
   if (ramp) {
     next.ramp = ramp
@@ -687,6 +732,7 @@ export function MetricsEditor({
 }: MetricsEditorProps) {
   const { settings, updateSettings } = useSettings()
   const { config: sleepMetricsConfig, saveConfig: saveSleepMetricsConfig } = useSleepMetricsConfig()
+  const migratedSleepTargetRef = useRef(false)
   const showWorkouts = settings.showWorkoutMetrics
   const today = formatDate(new Date())
   const habits = useHabitTypes()
@@ -698,7 +744,6 @@ export function MetricsEditor({
     getEnabledMetricsSections(),
   )
   const [form, setForm] = useState<MetricFormState | null>(null)
-  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false)
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
@@ -706,6 +751,8 @@ export function MetricsEditor({
   const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState<MetricsSection | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingMetricDelete | null>(null)
   const [editLogsOpen, setEditLogsOpen] = useState(false)
+  const [historyTarget, setHistoryTarget] = useState<MetricHistoryTarget | null>(null)
+  const [editingSleepMetricId, setEditingSleepMetricId] = useState<string | null>(null)
   const [addingSleepMetric, setAddingSleepMetric] = useState(false)
   const [activeSection, setActiveSection] = useState<MetricsSection>('habits')
 
@@ -716,9 +763,9 @@ export function MetricsEditor({
       g.metric_key !== 'sleep' &&
       g.metric_key !== 'focus',
   )
-  const activeWeightGoal = goals.find(isWeightGoal)
-  const activeSleepGoal = goals.find((g) => g.metric_key === 'sleep')
-  const activeFocusGoal = goals.find((g) => g.metric_key === 'focus')
+  const activeWeightGoal = getActiveWeightGoal(goals)
+  const activeSleepGoal = getActiveGoalByMetricKey(goals, 'sleep')
+  const activeFocusGoal = getActiveGoalByMetricKey(goals, 'focus')
 
   const refreshWorkouts = useCallback(() => setWorkoutTypes(getWorkoutTypes()), [])
   const refreshCategories = useCallback(() => setGoalCategories(getVisibleGoalCategories()), [])
@@ -736,28 +783,31 @@ export function MetricsEditor({
     return () => window.removeEventListener(METRICS_SECTIONS_CHANGED, refresh)
   }, [refreshCategories, refreshEnabledSections])
 
+  useEffect(() => {
+    if (migratedSleepTargetRef.current) return
+    const goal = activeSleepGoal
+    if (!goal || !hasTarget(goal) || goal.target_value == null) {
+      migratedSleepTargetRef.current = true
+      return
+    }
+    if (getSleepMetricTarget(sleepMetricsConfig, 'sleep_duration') != null) {
+      migratedSleepTargetRef.current = true
+      return
+    }
+    migratedSleepTargetRef.current = true
+    let next = sleepMetricsConfig
+    if (!next.enabledIds.includes('sleep_duration')) {
+      next = toggleSleepMetric(next, 'sleep_duration', true)
+    }
+    saveSleepMetricsConfig(setSleepMetricTarget(next, 'sleep_duration', goal.target_value * 60))
+  }, [activeSleepGoal, sleepMetricsConfig, saveSleepMetricsConfig])
+
   const goalsForCategory = (categoryId: string) =>
     customGoals.filter((g) => resolveGoalCategoryId(g.category_id) === categoryId)
 
   const persistCategories = (custom: GoalCategoryDefinition[]) => {
     saveCustomGoalCategories(custom)
     refreshCategories()
-  }
-
-  const createCategory = (label: string): string | null => {
-    const trimmed = label.trim()
-    if (!trimmed) return null
-
-    let id = slugifyGoalCategoryId(trimmed)
-    const existing = getCustomGoalCategories()
-    let n = 2
-    while (existing.some((c) => c.id === id)) {
-      id = `${slugifyGoalCategoryId(trimmed)}_${n}`
-      n++
-    }
-
-    persistCategories([...existing, { id, label: trimmed }])
-    return id
   }
 
   const renameCategory = (categoryId: string, label: string) => {
@@ -771,11 +821,10 @@ export function MetricsEditor({
   }
 
   const workoutGoal = (typeId: string) =>
-    goals.find((g) => g.metric_key === workoutMetricKey(typeId))
+    getActiveGoalByMetricKey(goals, workoutMetricKey(typeId))
 
   const closeForm = () => {
     setForm(null)
-    setColorPickerOpen(false)
     setCategoryPickerOpen(false)
   }
 
@@ -789,33 +838,32 @@ export function MetricsEditor({
 
   const openAddHabit = () => {
     setForm(emptyForm('habit', 'add'))
-    setColorPickerOpen(false)
   }
 
   const openAddWeight = () => {
     setForm(emptyForm('weight', 'add'))
-    setColorPickerOpen(false)
   }
 
   const openAddSleep = () => {
     setForm(emptyForm('sleep', 'add'))
-    setColorPickerOpen(false)
   }
 
   const openAddFocus = () => {
     setForm(emptyForm('focus', 'add'))
-    setColorPickerOpen(false)
   }
 
   const openAdd = (categoryId: string = DEFAULT_GOAL_CATEGORY_ID) => {
     setForm(emptyForm('goal', 'add', categoryId))
-    setColorPickerOpen(false)
     setCategoryPickerOpen(false)
   }
 
   const openAddWorkout = () => {
     setForm(emptyForm('workout', 'add'))
-    setColorPickerOpen(false)
+  }
+
+  const openMetricHistory = (target: MetricHistoryTarget) => {
+    setHistoryTarget(target)
+    setEditingSleepMetricId(null)
   }
 
   const openEditHabit = (habit: HabitTypeDefinition) => {
@@ -824,6 +872,8 @@ export function MetricsEditor({
       habitId: habit.id,
       name: habit.label,
       logPeriod: habitLogPeriod(habit),
+      habitLogWhen: habitLogWhen(habit),
+      habitMorningDay: habitMorningDay(habit),
       setTarget: false,
       rampEnabled: habit.ramp?.enabled ?? false,
       rampStartValue: habit.ramp ? String(habit.ramp.start_value) : '5',
@@ -849,6 +899,9 @@ export function MetricsEditor({
       ...emptyForm('weight', 'edit'),
       goalId: goal.id,
       unit,
+      logPeriod: goalLogPeriod(goal),
+      goalLogWhen: goalLogWhen(goal),
+      goalMorningDay: goalMorningDay(goal),
       weightMode: weightGoalMode(goal),
       weightStart:
         goal.goal_weight_start != null
@@ -891,6 +944,8 @@ export function MetricsEditor({
         setTarget: hasTarget(goal),
         targetValue: goal.target_value != null ? String(goal.target_value) : '8',
         unit: goal.unit || 'hrs',
+        goalLogWhen: goalLogWhen(goal),
+        goalMorningDay: goalMorningDay(goal),
       })
       return
     }
@@ -901,6 +956,8 @@ export function MetricsEditor({
       goalId: goal.id,
       name: goal.name,
       logPeriod: goalLogPeriod(goal),
+      goalLogWhen: goalLogWhen(goal),
+      goalMorningDay: goalMorningDay(goal),
       ...goalToFormPeriod(goal),
       setTarget: hasTarget(goal),
       targetValue: goal.target_value != null ? String(goal.target_value) : '',
@@ -910,15 +967,21 @@ export function MetricsEditor({
 
   const openEditWorkout = (type: WorkoutTypeDefinition) => {
     const goal = workoutGoal(type.id)
+    const logPeriod =
+      goal && hasTarget(goal) ? goalLogPeriod(goal) : workoutLogPeriod(type)
     setForm({
       ...emptyForm('workout', 'edit'),
       workoutId: type.id,
       name: type.label,
-      logPeriod: goal ? goalLogPeriod(goal) : 'daily',
+      logPeriod,
       ...(goal ? goalToFormPeriod(goal) : { targetPeriod: 'weekly' as GoalTargetPeriod }),
       setTarget: goal ? hasTarget(goal) : false,
       targetValue: goal?.target_value != null ? String(goal.target_value) : '',
+      unit: normalizeWorkoutUnit(goal?.unit || type.unit),
       color: type.color,
+      workoutLogWhen: logPeriod === 'weekly' ? 'home' : workoutLogWhen(type),
+      workoutMorningDay: workoutMorningDay(type),
+      workoutSubtypes: (type.subtypes ?? []).join(', '),
     })
   }
 
@@ -941,6 +1004,7 @@ export function MetricsEditor({
   ) => {
     const existing = existingGoal ?? workoutGoal(typeId)
     const value = parseFloat(targetRaw)
+    const unit = normalizeWorkoutUnit(formState.unit || DEFAULT_WORKOUT_UNIT)
 
     if (!setTarget || !targetRaw.trim() || Number.isNaN(value) || value <= 0) {
       if (existing) onDeleteGoal(existing)
@@ -957,7 +1021,7 @@ export function MetricsEditor({
         ...periodFieldsFromForm(formState, existing),
         goal_weight_start: null,
         goal_weight_target: null,
-        unit: 'min',
+        unit,
         is_active: true,
         created_at: existing?.created_at ?? new Date().toISOString(),
       }),
@@ -1020,21 +1084,27 @@ export function MetricsEditor({
           ? goals.find((g) => g.id === form.goalId)
           : activeSleepGoal
 
-      onSaveGoal(
-        normalizeGoal({
-          id: existing?.id ?? generateId(),
-          user_id: userId,
-          metric_key: 'sleep',
-          name: 'Sleep',
-          target_value: form.setTarget ? value : null,
-          ...periodFieldsFromForm(form, existing),
-          goal_weight_start: null,
-          goal_weight_target: null,
-          unit: 'hrs',
-          is_active: true,
-          created_at: existing?.created_at ?? new Date().toISOString(),
-        }),
-      )
+      const nextSleep: Goal = {
+        id: existing?.id ?? generateId(),
+        user_id: userId,
+        metric_key: 'sleep',
+        name: 'Sleep',
+        target_value: form.setTarget ? value : null,
+        ...periodFieldsFromForm(form, existing),
+        goal_weight_start: null,
+        goal_weight_target: null,
+        unit: 'hrs',
+        is_active: true,
+        created_at: existing?.created_at ?? new Date().toISOString(),
+      }
+      delete nextSleep.log_when
+      delete nextSleep.morning_day
+      if (form.logPeriod === 'daily') {
+        nextSleep.log_when = form.goalLogWhen
+        if (form.goalLogWhen === 'morning') nextSleep.morning_day = form.goalMorningDay
+      }
+
+      onSaveGoal(normalizeGoal(nextSleep))
       closeForm()
       return
     }
@@ -1043,39 +1113,49 @@ export function MetricsEditor({
       const value = form.setTarget ? parseFloat(form.targetValue) : null
       if (form.setTarget && (value == null || Number.isNaN(value))) return
 
+      const askFields = goalAskFieldsFromForm(form)
+
       if (form.mode === 'edit' && form.goalId) {
         const existing = goals.find((g) => g.id === form.goalId)
         if (!existing) return
-        onSaveGoal(
-          normalizeGoal({
-            ...existing,
-            name,
-            ...periodFieldsFromForm(form, existing),
-            target_value: form.setTarget ? value : null,
-            unit: form.unit.trim() || existing.unit,
-            category_id:
-              form.categoryId === DEFAULT_GOAL_CATEGORY_ID ? null : form.categoryId,
-          }),
-        )
+        const nextGoal: Goal = {
+          ...existing,
+          name,
+          ...periodFieldsFromForm(form, existing),
+          target_value: form.setTarget ? value : null,
+          unit: form.unit.trim() || existing.unit,
+          category_id:
+            form.categoryId === DEFAULT_GOAL_CATEGORY_ID ? null : form.categoryId,
+        }
+        delete nextGoal.log_when
+        delete nextGoal.morning_day
+        if (askFields.log_when) {
+          nextGoal.log_when = askFields.log_when
+          if (askFields.morning_day) nextGoal.morning_day = askFields.morning_day
+        }
+        onSaveGoal(normalizeGoal(nextGoal))
       } else {
         const resolvedKey = goalKeyFromName(name)
-        onSaveGoal(
-          normalizeGoal({
-            id: generateId(),
-            user_id: userId,
-            metric_key: resolvedKey,
-            name,
-            target_value: form.setTarget ? value : null,
-            ...periodFieldsFromForm(form),
-            goal_weight_start: null,
-            goal_weight_target: null,
-            unit: form.unit.trim() || defaultUnitForMetric(resolvedKey),
-            category_id:
-              form.categoryId === DEFAULT_GOAL_CATEGORY_ID ? null : form.categoryId,
-            is_active: true,
-            created_at: new Date().toISOString(),
-          }),
-        )
+        const nextGoal: Goal = {
+          id: generateId(),
+          user_id: userId,
+          metric_key: resolvedKey,
+          name,
+          target_value: form.setTarget ? value : null,
+          ...periodFieldsFromForm(form),
+          goal_weight_start: null,
+          goal_weight_target: null,
+          unit: form.unit.trim() || defaultUnitForMetric(resolvedKey),
+          category_id:
+            form.categoryId === DEFAULT_GOAL_CATEGORY_ID ? null : form.categoryId,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        }
+        if (askFields.log_when) {
+          nextGoal.log_when = askFields.log_when
+          if (askFields.morning_day) nextGoal.morning_day = askFields.morning_day
+        }
+        onSaveGoal(normalizeGoal(nextGoal))
       }
       closeForm()
       return
@@ -1110,23 +1190,41 @@ export function MetricsEditor({
         ? goals.find((g) => g.id === form.goalId)
         : activeWeightGoal
 
-      onSaveGoal(
-        normalizeGoal({
-          id: existing?.id ?? generateId(),
-          user_id: userId,
-          metric_key: 'weight',
-          name: 'Weight',
-          target_value: null,
-          log_period: 'weekly',
-          goal_weight_start: startKg,
-          goal_weight_target: targetKg,
-          period_start_date: form.weightStartDate,
-          period_end_date: form.weightTargetDate,
-          unit,
-          is_active: true,
-          created_at: existing?.created_at ?? new Date().toISOString(),
-        }),
-      )
+      const savedWeightGoal = normalizeGoal({
+        id: existing?.id ?? generateId(),
+        user_id: userId,
+        metric_key: 'weight',
+        name: 'Weight',
+        target_value: null,
+        log_period: form.logPeriod,
+        ...(form.logPeriod === 'daily'
+          ? {
+              log_when: form.goalLogWhen,
+              ...(form.goalLogWhen === 'morning'
+                ? { morning_day: form.goalMorningDay }
+                : {}),
+            }
+          : {}),
+        goal_weight_start: startKg,
+        goal_weight_target: targetKg,
+        period_start_date: form.weightStartDate,
+        period_end_date: form.weightTargetDate,
+        unit,
+        is_active: true,
+        created_at: existing?.created_at ?? new Date().toISOString(),
+      })
+      onSaveGoal(savedWeightGoal)
+      // Weekly weight can't live on the morning log — clear any leftover assignment.
+      if (form.logPeriod === 'weekly') {
+        saveMorningLogGoalKeys(getMorningLogGoalKeys().filter((key) => key !== 'weight'))
+        saveMorningLogYesterdayKeys(
+          getMorningLogYesterdayKeys().filter((key) => key !== 'weight'),
+        )
+      }
+      // Only one weight campaign should be active — retire stale duplicates.
+      for (const duplicate of getDuplicateActiveWeightGoals(goals, savedWeightGoal.id)) {
+        onSaveGoal({ ...duplicate, is_active: false })
+      }
       closeForm()
       return
     }
@@ -1137,9 +1235,35 @@ export function MetricsEditor({
         if (Number.isNaN(value) || value <= 0) return
       }
 
+      const logPeriod = form.setTarget ? form.logPeriod : 'daily'
+      const askFields =
+        logPeriod === 'weekly'
+          ? { log_period: 'weekly' as const }
+          : {
+              log_period: 'daily' as const,
+              log_when: form.workoutLogWhen,
+              ...(form.workoutLogWhen === 'morning'
+                ? { morning_day: form.workoutMorningDay }
+                : {}),
+            }
+      const subtypes = form.workoutSubtypes
+        .split(/[,;\n]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+
       if (form.mode === 'edit' && form.workoutId) {
+        const unit = normalizeWorkoutUnit(form.unit || DEFAULT_WORKOUT_UNIT)
         const updated = workoutTypes.map((t) =>
-          t.id === form.workoutId ? { ...t, label: name, color: form.color } : t,
+          t.id === form.workoutId
+            ? {
+                ...t,
+                label: name,
+                unit,
+                ...askFields,
+                subtypes: subtypes.length > 0 ? subtypes : undefined,
+              }
+            : t,
         )
         persistWorkoutTypes(updated)
         saveWorkoutGoal(form.workoutId, name, form.setTarget, form.targetValue, form, workoutGoal(form.workoutId))
@@ -1150,13 +1274,19 @@ export function MetricsEditor({
           id = `${slugifyWorkoutId(name)}_${n}`
           n++
         }
-        const usedColors = new Set(workoutTypes.map((t) => t.color))
-        const color =
-          form.color ||
-          WORKOUT_COLOR_PRESETS.find((c) => !usedColors.has(c)) ||
-          WORKOUT_COLOR_PRESETS[workoutTypes.length % WORKOUT_COLOR_PRESETS.length]
+        const unit = normalizeWorkoutUnit(form.unit || DEFAULT_WORKOUT_UNIT)
 
-        persistWorkoutTypes([...workoutTypes, { id, label: name, color }])
+        persistWorkoutTypes([
+          ...workoutTypes,
+          {
+            id,
+            label: name,
+            color: WORKOUT_COLOR_PRESETS[0],
+            unit,
+            ...askFields,
+            ...(subtypes.length > 0 ? { subtypes } : {}),
+          },
+        ])
         saveWorkoutGoal(id, name, form.setTarget, form.targetValue, form)
       }
       closeForm()
@@ -1196,7 +1326,7 @@ export function MetricsEditor({
       case 'habits':
         return habits.length
       case 'sleep':
-        return (activeSleepGoal ? 1 : 0) + sleepMetricsConfig.enabledIds.length
+        return sleepMetricsConfig.enabledIds.length
       case 'focus':
         return activeFocusGoal ? 1 : 0
       case 'weight':
@@ -1300,9 +1430,9 @@ export function MetricsEditor({
     }
 
     return (
-      <Card key={goal.id} onClick={() => openEditGoal(goal)}>
-        <div className="flex items-start justify-between">
-          <div>
+      <Card key={goal.id} onClick={() => openMetricHistory({ kind: 'goal', goalId: goal.id })}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
             <h3 className="text-sm font-medium text-zinc-200">{goal.name}</h3>
             <p className="text-[10px] text-zinc-500">
               {formatGoalScheduleLabel(goal, today)}
@@ -1311,17 +1441,30 @@ export function MetricsEditor({
                 : ' · track only'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              requestDelete({ kind: 'goal', id: goal.id })
-            }}
-            className="shrink-0 text-zinc-600 hover:text-red-400"
-            aria-label={`Delete ${goal.name}`}
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openEditGoal(goal)
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label={`Edit ${goal.name} settings`}
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                requestDelete({ kind: 'goal', id: goal.id })
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400"
+              aria-label={`Delete ${goal.name}`}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
       </Card>
     )
@@ -1348,33 +1491,49 @@ export function MetricsEditor({
     }
 
     return (
-      <Card key={type.id} onClick={() => openEditWorkout(type)}>
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-2">
-            <span
-              className="mt-1 h-3 w-3 shrink-0 rounded-full"
-              style={{ backgroundColor: type.color }}
-            />
-            <div>
+      <Card
+        key={type.id}
+        onClick={() => openMetricHistory({ kind: 'workout', workoutTypeId: type.id })}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-start gap-2">
+            <span className="mt-1 h-3 w-3 shrink-0 rounded-full bg-[var(--accent-500)]" />
+            <div className="min-w-0">
               <h3 className="text-sm font-medium text-zinc-200">{type.label}</h3>
               <p className="text-[10px] text-zinc-500">
                 {goal && hasTarget(goal)
-                  ? `${formatGoalScheduleLabel(goal, today)} · ${goal.target_value} min`
-                  : 'min · track only'}
+                  ? `${formatGoalScheduleLabel(goal, today)} · ${goal.target_value} ${workoutGoalUnitLabel(goal.unit || type.unit, goalLogPeriod(goal))}`
+                  : `${type.unit || DEFAULT_WORKOUT_UNIT} · track only`}
+                {type.subtypes && type.subtypes.length > 0
+                  ? ` · ${type.subtypes.join(' / ')}`
+                  : ''}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              requestDelete({ kind: 'workout', id: type.id })
-            }}
-            className="shrink-0 text-zinc-600 hover:text-red-400"
-            aria-label={`Delete ${type.label}`}
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openEditWorkout(type)
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label={`Edit ${type.label} settings`}
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                requestDelete({ kind: 'workout', id: type.id })
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400"
+              aria-label={`Delete ${type.label}`}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
       </Card>
     )
@@ -1407,11 +1566,11 @@ export function MetricsEditor({
     }
 
     return (
-      <Card key={goal.id} onClick={() => openEditWeight(goal)}>
+      <Card key={goal.id} onClick={() => openMetricHistory({ kind: 'weight', goalId: goal.id })}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-              {weightGoalModeLabel(mode)} goal
+              {weightGoalModeLabel(mode)} goal · {goalLogPeriod(goal) === 'daily' ? 'daily' : 'weekly'}
             </p>
             {range && (
               <p className="mt-1 text-lg font-semibold tabular-nums leading-tight text-zinc-100">
@@ -1422,17 +1581,30 @@ export function MetricsEditor({
               <p className="mt-0.5 text-[10px] text-zinc-500">{dateRange}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              requestDelete({ kind: 'goal', id: goal.id })
-            }}
-            className="shrink-0 text-zinc-600 hover:text-red-400"
-            aria-label="Delete weight goal"
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openEditWeight(goal)
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label="Edit weight goal settings"
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                requestDelete({ kind: 'goal', id: goal.id })
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400"
+              aria-label="Delete weight goal"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
       </Card>
     )
@@ -1504,6 +1676,14 @@ export function MetricsEditor({
       items.push({ id: 'focus', label: 'Focus' })
     }
 
+    if (enabled.has('weight')) {
+      items.push({ id: 'weight', label: 'Weight Goal' })
+    }
+
+    if (enabled.has('workouts') && showWorkouts) {
+      items.push({ id: 'workouts', label: 'Workouts' })
+    }
+
     for (const category of goalCategories) {
       if (!isDefaultGoalCategory(category.id) && enabled.has(category.id)) {
         items.push({ id: category.id, label: category.label })
@@ -1511,13 +1691,7 @@ export function MetricsEditor({
     }
 
     if (enabled.has('default')) {
-      items.push({ id: 'default', label: 'Goals' })
-    }
-    if (enabled.has('weight')) {
-      items.push({ id: 'weight', label: 'Weight Goal' })
-    }
-    if (enabled.has('workouts') && showWorkouts) {
-      items.push({ id: 'workouts', label: 'Workouts' })
+      items.push({ id: 'default', label: DEFAULT_GOAL_CATEGORY_LABEL })
     }
 
     return items
@@ -1535,7 +1709,6 @@ export function MetricsEditor({
 
   useEffect(() => {
     setForm(null)
-    setColorPickerOpen(false)
     setCategoryPickerOpen(false)
     setSectionDeleteConfirm(null)
     setAddingSleepMetric(false)
@@ -1557,24 +1730,14 @@ export function MetricsEditor({
     return (
       <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
         {form.kind === 'workout' && (
-          <div className="flex items-end gap-2">
-            <WorkoutColorPicker
-              color={form.color}
-              open={colorPickerOpen}
-              onToggle={() => setColorPickerOpen((v) => !v)}
-              onSelect={(color) => setForm({ ...form, color })}
-            />
-            <div className="min-w-0 flex-1">
-              <MetricInput
-                compact
-                label="Name"
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. HIIT, Zone 2"
-              />
-            </div>
-          </div>
+          <MetricInput
+            compact
+            label="Name"
+            type="text"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="e.g. HIIT, Zone 2"
+          />
         )}
 
         {form.kind !== 'workout' && form.kind !== 'weight' && form.kind !== 'focus' && form.kind !== 'sleep' && (
@@ -1625,32 +1788,15 @@ export function MetricsEditor({
                 <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                   Unit
                 </span>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleFocusUnitChange('hours')}
-                    className={cn(
-                      'flex-1 rounded-md py-1.5 text-[11px] transition-colors',
-                      form.focusUnit === 'hours'
-                        ? 'bg-[var(--accent-600)] text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200',
-                    )}
-                  >
-                    Hours
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFocusUnitChange('minutes')}
-                    className={cn(
-                      'flex-1 rounded-md py-1.5 text-[11px] transition-colors',
-                      form.focusUnit === 'minutes'
-                        ? 'bg-[var(--accent-600)] text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200',
-                    )}
-                  >
-                    Minutes
-                  </button>
-                </div>
+                <SlidingSegmentedControl
+                  className="w-full"
+                  value={form.focusUnit}
+                  options={[
+                    { value: 'hours', label: 'Hours' },
+                    { value: 'minutes', label: 'Minutes' },
+                  ]}
+                  onChange={handleFocusUnitChange}
+                />
               </div>
             </div>
             <p className="text-[10px] leading-snug text-zinc-500">
@@ -1664,7 +1810,13 @@ export function MetricsEditor({
             <PeriodPicker
               label="Log"
               value={form.logPeriod}
-              onChange={(logPeriod) => setForm({ ...form, logPeriod })}
+              onChange={(logPeriod) =>
+                setForm({
+                  ...form,
+                  logPeriod,
+                  goalLogWhen: logPeriod === 'weekly' ? 'home' : form.goalLogWhen,
+                })
+              }
             />
             <ToggleRow
               label="Set target"
@@ -1684,9 +1836,46 @@ export function MetricsEditor({
                 placeholder="8"
               />
             )}
-            <p className="text-[10px] leading-snug text-zinc-500">
-              Logged in your morning sleep check-in and daily log.
-            </p>
+            {form.logPeriod === 'daily' && (
+              <>
+                <SegmentPicker
+                  label="Ask in"
+                  value={form.goalLogWhen}
+                  onChange={(goalLogWhen) => setForm({ ...form, goalLogWhen })}
+                  options={[
+                    { value: 'home', label: 'Home' },
+                    { value: 'morning', label: 'Morning' },
+                    { value: 'shutdown', label: 'Shutdown' },
+                  ]}
+                />
+                {form.goalLogWhen === 'morning' && (
+                  <SegmentPicker
+                    label="For"
+                    value={form.goalMorningDay}
+                    onChange={(goalMorningDay) => setForm({ ...form, goalMorningDay })}
+                    options={[
+                      { value: 'today', label: 'Today' },
+                      { value: 'yesterday', label: 'Yesterday' },
+                    ]}
+                  />
+                )}
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  {form.goalLogWhen === 'home' &&
+                    'Sleep hours can also be logged on Home when configured.'}
+                  {form.goalLogWhen === 'morning' &&
+                    (form.goalMorningDay === 'yesterday'
+                      ? 'Asked in the morning log for yesterday’s sleep.'
+                      : 'Asked in the morning log for last night’s sleep.')}
+                  {form.goalLogWhen === 'shutdown' &&
+                    'Asked during evening shutdown.'}
+                </p>
+              </>
+            )}
+            {form.logPeriod === 'weekly' && (
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Weekly sleep is reviewed at weekly shutdown.
+              </p>
+            )}
           </>
         )}
 
@@ -1747,10 +1936,51 @@ export function MetricsEditor({
                 onChange={(weightTargetDate) => setForm({ ...form, weightTargetDate })}
               />
             </div>
-            <p className="text-[10px] leading-snug text-zinc-500">
-              Log weight during weekly shutdown. Each week compares last week&apos;s weight to
-              this week&apos;s against your bulk, cut, or maintain goal.
-            </p>
+            <PeriodPicker
+              label="Log"
+              value={form.logPeriod}
+              onChange={(logPeriod) =>
+                setForm({
+                  ...form,
+                  logPeriod,
+                  goalLogWhen: logPeriod === 'weekly' ? 'home' : form.goalLogWhen,
+                })
+              }
+            />
+            {form.logPeriod === 'daily' ? (
+              <>
+                <SegmentPicker
+                  label="Ask in"
+                  value={form.goalLogWhen}
+                  onChange={(goalLogWhen) => setForm({ ...form, goalLogWhen })}
+                  options={[
+                    { value: 'home', label: 'Home' },
+                    { value: 'morning', label: 'Morning' },
+                    { value: 'shutdown', label: 'Shutdown' },
+                  ]}
+                />
+                {form.goalLogWhen === 'morning' && (
+                  <SegmentPicker
+                    label="For"
+                    value={form.goalMorningDay}
+                    onChange={(goalMorningDay) => setForm({ ...form, goalMorningDay })}
+                    options={[
+                      { value: 'today', label: 'Today' },
+                      { value: 'yesterday', label: 'Yesterday' },
+                    ]}
+                  />
+                )}
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  Daily weigh-ins. Weekly shutdown won&apos;t ask for weight.
+                </p>
+              </>
+            ) : (
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Log once at weekly shutdown. Can&apos;t also be on the morning log — each week
+                compares last week&apos;s weight to this week&apos;s against your bulk, cut, or
+                maintain goal.
+              </p>
+            )}
           </>
         )}
 
@@ -1759,11 +1989,52 @@ export function MetricsEditor({
             <PeriodPicker
               label="Log"
               value={form.logPeriod}
-              onChange={(logPeriod) => setForm({ ...form, logPeriod })}
+              onChange={(logPeriod) =>
+                setForm({
+                  ...form,
+                  logPeriod,
+                  habitLogWhen: logPeriod === 'weekly' ? 'home' : form.habitLogWhen,
+                })
+              }
             />
+            {form.logPeriod === 'daily' && (
+              <>
+                <SegmentPicker
+                  label="Ask in"
+                  value={form.habitLogWhen}
+                  onChange={(habitLogWhen) => setForm({ ...form, habitLogWhen })}
+                  options={[
+                    { value: 'home', label: 'Home' },
+                    { value: 'morning', label: 'Morning' },
+                    { value: 'shutdown', label: 'Shutdown' },
+                  ]}
+                />
+                {form.habitLogWhen === 'morning' && (
+                  <SegmentPicker
+                    label="For"
+                    value={form.habitMorningDay}
+                    onChange={(habitMorningDay) => setForm({ ...form, habitMorningDay })}
+                    options={[
+                      { value: 'today', label: 'Today' },
+                      { value: 'yesterday', label: 'Yesterday' },
+                    ]}
+                  />
+                )}
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  {form.habitLogWhen === 'home' &&
+                    'Shows in Habits on the homepage throughout the day.'}
+                  {form.habitLogWhen === 'morning' &&
+                    (form.habitMorningDay === 'yesterday'
+                      ? 'Asked in the morning log for yesterday’s value.'
+                      : 'Asked in the morning log for today’s value.')}
+                  {form.habitLogWhen === 'shutdown' &&
+                    'Asked during evening shutdown.'}
+                </p>
+              </>
+            )}
             <ToggleRow
-              label="Duration"
-              description="Optional target time or amount for this habit"
+              label="Target units"
+              description="Optional target amount for this habit"
               checked={form.habitDurationEnabled}
               compact
               onChange={(habitDurationEnabled) => setForm({ ...form, habitDurationEnabled })}
@@ -1874,6 +2145,7 @@ export function MetricsEditor({
                   ...form,
                   setTarget,
                   targetPeriod: setTarget ? form.targetPeriod : 'daily',
+                  logPeriod: setTarget ? form.logPeriod : 'daily',
                 })
               }
             />
@@ -1898,7 +2170,13 @@ export function MetricsEditor({
                 <PeriodPicker
                   label="Log"
                   value={form.logPeriod}
-                  onChange={(logPeriod) => setForm({ ...form, logPeriod })}
+                  onChange={(logPeriod) =>
+                    setForm({
+                      ...form,
+                      logPeriod,
+                      goalLogWhen: logPeriod === 'weekly' ? 'home' : form.goalLogWhen,
+                    })
+                  }
                 />
                 {(form.targetPeriod === 'custom_duration' ||
                   form.targetPeriod === 'custom_date') && (
@@ -1910,6 +2188,50 @@ export function MetricsEditor({
                     onChange={(periodRecurring) => setForm({ ...form, periodRecurring })}
                   />
                 )}
+              </div>
+            )}
+            {(!form.setTarget || form.logPeriod === 'daily') && (
+              <>
+                <SegmentPicker
+                  label="Ask in"
+                  value={form.goalLogWhen}
+                  onChange={(goalLogWhen) => setForm({ ...form, goalLogWhen })}
+                  options={[
+                    { value: 'home', label: 'Home' },
+                    { value: 'morning', label: 'Morning' },
+                    { value: 'shutdown', label: 'Shutdown' },
+                  ]}
+                />
+                {form.goalLogWhen === 'morning' && (
+                  <SegmentPicker
+                    label="For"
+                    value={form.goalMorningDay}
+                    onChange={(goalMorningDay) => setForm({ ...form, goalMorningDay })}
+                    options={[
+                      { value: 'today', label: 'Today' },
+                      { value: 'yesterday', label: 'Yesterday' },
+                    ]}
+                  />
+                )}
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  {form.goalLogWhen === 'home' &&
+                    'Shows with daily metrics on the homepage.'}
+                  {form.goalLogWhen === 'morning' &&
+                    (form.goalMorningDay === 'yesterday'
+                      ? 'Asked in the morning log for yesterday’s value.'
+                      : 'Asked in the morning log for today’s value.')}
+                  {form.goalLogWhen === 'shutdown' &&
+                    'Asked during evening shutdown.'}
+                </p>
+              </>
+            )}
+            {form.setTarget && form.logPeriod === 'weekly' && (
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Weekly log entries are entered at weekly shutdown.
+              </p>
+            )}
+            {form.setTarget && (
+              <div className="space-y-1.5">
                 <div className="grid grid-cols-2 gap-1.5">
                   {usesTimedMetricInput(form.unit) ? (
                     <DurationMetricInput
@@ -1959,10 +2281,35 @@ export function MetricsEditor({
                     </div>
                   </div>
                 </div>
-                <p className="text-[10px] leading-snug text-zinc-500">
-                  Daily log entries appear on Home. Weekly log entries are entered at weekly
-                  shutdown.
-                </p>
+              </div>
+            )}
+            {!form.setTarget && (
+              <div className="grid grid-cols-2 gap-1.5">
+                <MetricInput
+                  compact
+                  label="Unit"
+                  type="text"
+                  value={form.unit}
+                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                  placeholder="hrs, min, hrs:min, kg"
+                />
+                <div className="flex flex-wrap content-end gap-1 pb-0.5">
+                  {METRIC_UNIT_OPTIONS.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setForm({ ...form, unit: option })}
+                      className={cn(
+                        'rounded-md border px-1.5 py-0.5 text-[9px] transition-colors',
+                        form.unit === option
+                          ? 'border-[var(--accent-500)]/50 bg-[var(--accent-500)]/10 text-[var(--accent-300)]'
+                          : 'border-zinc-700/60 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
+                      )}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </>
@@ -1970,6 +2317,50 @@ export function MetricsEditor({
 
         {form.kind === 'workout' && (
           <>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Tracking unit
+              </p>
+              <div className="mb-1.5">
+                <MetricInput
+                  compact
+                  label="Unit"
+                  type="text"
+                  value={form.unit || DEFAULT_WORKOUT_UNIT}
+                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                  placeholder="min, km, cal…"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {WORKOUT_UNIT_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setForm({ ...form, unit: option })}
+                    className={cn(
+                      'rounded-md border px-1.5 py-0.5 text-[9px] transition-colors',
+                      normalizeWorkoutUnit(form.unit) === option
+                        ? 'border-[var(--accent-500)]/50 bg-[var(--accent-500)]/10 text-[var(--accent-300)]'
+                        : 'border-zinc-700/60 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
+                    )}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <MetricInput
+              compact
+              label="Subcategories"
+              type="text"
+              value={form.workoutSubtypes}
+              onChange={(e) => setForm({ ...form, workoutSubtypes: e.target.value })}
+              placeholder="e.g. Push, Pull, Legs"
+            />
+            <p className="-mt-1 text-[10px] leading-snug text-zinc-500">
+              Optional. Comma-separated. Home planner and the weekly exercise template ask you to pick
+              one after choosing this workout.
+            </p>
             <ToggleRow
               label="Set a target"
               checked={form.setTarget}
@@ -2003,7 +2394,13 @@ export function MetricsEditor({
                 <PeriodPicker
                   label="Log"
                   value={form.logPeriod}
-                  onChange={(logPeriod) => setForm({ ...form, logPeriod })}
+                  onChange={(logPeriod) =>
+                    setForm({
+                      ...form,
+                      logPeriod,
+                      workoutLogWhen: logPeriod === 'weekly' ? 'home' : form.workoutLogWhen,
+                    })
+                  }
                 />
                 {(form.targetPeriod === 'custom_duration' ||
                   form.targetPeriod === 'custom_date') && (
@@ -2018,14 +2415,56 @@ export function MetricsEditor({
                 <MetricInput
                   compact
                   label={`Target (${targetLabelForForm(form)})`}
-                  unit="min"
+                  unit={normalizeWorkoutUnit(form.unit || DEFAULT_WORKOUT_UNIT)}
                   value={form.targetValue}
                   onChange={(e) => setForm({ ...form, targetValue: e.target.value })}
                 />
                 <p className="text-[10px] leading-snug text-zinc-500">
-                  Workout minutes are tracked per session. Weekly log totals them at shutdown.
+                  {form.logPeriod === 'weekly'
+                    ? 'Weekly totals are entered at weekly shutdown.'
+                    : 'Sessions are logged in this unit.'}
                 </p>
               </div>
+            )}
+            {(!form.setTarget || form.logPeriod === 'daily') && (
+              <>
+                <SegmentPicker
+                  label="Ask in"
+                  value={form.workoutLogWhen}
+                  onChange={(workoutLogWhen) => setForm({ ...form, workoutLogWhen })}
+                  options={[
+                    { value: 'home', label: 'Home' },
+                    { value: 'morning', label: 'Morning' },
+                    { value: 'shutdown', label: 'Shutdown' },
+                  ]}
+                />
+                {form.workoutLogWhen === 'morning' && (
+                  <SegmentPicker
+                    label="For"
+                    value={form.workoutMorningDay}
+                    onChange={(workoutMorningDay) => setForm({ ...form, workoutMorningDay })}
+                    options={[
+                      { value: 'today', label: 'Today' },
+                      { value: 'yesterday', label: 'Yesterday' },
+                    ]}
+                  />
+                )}
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  {form.workoutLogWhen === 'home' &&
+                    'Shows on the Workouts card on the homepage.'}
+                  {form.workoutLogWhen === 'morning' &&
+                    (form.workoutMorningDay === 'yesterday'
+                      ? 'Asked in the morning log for yesterday’s sessions.'
+                      : 'Asked in the morning log for today’s sessions.')}
+                  {form.workoutLogWhen === 'shutdown' &&
+                    'Asked during evening shutdown.'}
+                </p>
+              </>
+            )}
+            {form.setTarget && form.logPeriod === 'weekly' && (
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Ask in is weekly shutdown — enter the week’s total when you close out the week.
+              </p>
             )}
           </>
         )}
@@ -2056,6 +2495,7 @@ export function MetricsEditor({
       <HabitMetricsReorderList
         habits={habits}
         onReorder={persistHabit}
+        onView={(habit) => openMetricHistory({ kind: 'habit', habitId: habit.id })}
         onEdit={openEditHabit}
         onDelete={(habit) => {
           if (habits.length <= 1) return
@@ -2084,30 +2524,172 @@ export function MetricsEditor({
     </div>
   )
 
+  const syncSleepDurationGoal = (targetMinutes: number | null) => {
+    const hours =
+      targetMinutes != null && targetMinutes > 0
+        ? Math.round((targetMinutes / 60) * 100) / 100
+        : null
+    const existing = activeSleepGoal
+
+    if (hours == null) {
+      if (existing && hasTarget(existing)) {
+        onSaveGoal(normalizeGoal({ ...existing, target_value: null }))
+      }
+      return
+    }
+
+    const nextSleep: Goal = {
+      id: existing?.id ?? generateId(),
+      user_id: userId,
+      metric_key: 'sleep',
+      name: existing?.name ?? 'Sleep',
+      target_value: hours,
+      log_period: existing?.log_period ?? 'daily',
+      target_period: existing?.target_period ?? 'daily',
+      goal_weight_start: null,
+      goal_weight_target: null,
+      unit: 'hrs',
+      is_active: true,
+      created_at: existing?.created_at ?? new Date().toISOString(),
+      log_when: existing?.log_when ?? 'morning',
+      morning_day: existing?.morning_day ?? 'today',
+    }
+    if (existing?.period_start_date) nextSleep.period_start_date = existing.period_start_date
+    if (existing?.period_end_date) nextSleep.period_end_date = existing.period_end_date
+    if (existing?.period_days) nextSleep.period_days = existing.period_days
+    if (existing?.period_recurring != null) nextSleep.period_recurring = existing.period_recurring
+    onSaveGoal(normalizeGoal(nextSleep))
+  }
+
   const renderSleepMetricCard = (metric: SleepMetricDefinition) => {
     const unitLabel = sleepMetricDisplayUnit(metric)
+    const supportsTarget = sleepMetricSupportsTarget(metric)
+    const target = getSleepMetricTarget(sleepMetricsConfig, metric.id)
+    const targetInput = sleepMetricTargetToInputValue(metric, target)
+    const targetUnit = sleepMetricTargetInputUnit(metric)
+    const isEditingSettings = editingSleepMetricId === metric.id
+
+    if (isEditingSettings) {
+      return (
+        <Card key={metric.id} className="ring-1 ring-[var(--accent-500)]/25">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium text-zinc-200">{metric.label}</h3>
+              <p className="text-[10px] text-zinc-500">{unitLabel} · settings</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditingSleepMetricId(null)}
+              className="shrink-0 rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label="Close settings"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {supportsTarget && (
+            <div className="mt-3">
+              <MetricInput
+                compact
+                label="Target"
+                unit={targetUnit}
+                step={metric.unit === 'score10' || metric.id === 'sleep_duration' || metric.id === 'in_bed' ? '0.5' : '1'}
+                value={targetInput}
+                onChange={(e) => {
+                  const nextTarget = sleepMetricTargetFromInputValue(metric, e.target.value)
+                  saveSleepMetricsConfig(
+                    setSleepMetricTarget(sleepMetricsConfig, metric.id, nextTarget),
+                  )
+                  if (metric.id === 'sleep_duration') syncSleepDurationGoal(nextTarget)
+                }}
+                placeholder={
+                  metric.id === 'sleep_duration' || metric.id === 'in_bed'
+                    ? '8'
+                    : metric.unit === 'percent'
+                      ? '85'
+                      : metric.unit === 'score10'
+                        ? '7'
+                        : ''
+                }
+              />
+              <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+                Optional — used for Pulse when this metric is weighted.
+              </p>
+            </div>
+          )}
+          <div className="mt-3 flex gap-2 border-t border-zinc-800/80 pt-3">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setEditingSleepMetricId(null)}
+            >
+              Done
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              className="flex-1"
+              onClick={() => {
+                if (metric.source === 'custom') {
+                  saveSleepMetricsConfig(removeCustomSleepMetric(sleepMetricsConfig, metric.id))
+                } else {
+                  saveSleepMetricsConfig(toggleSleepMetric(sleepMetricsConfig, metric.id, false))
+                }
+                if (metric.id === 'sleep_duration') syncSleepDurationGoal(null)
+                setEditingSleepMetricId(null)
+              }}
+            >
+              Remove
+            </Button>
+          </div>
+        </Card>
+      )
+    }
+
+    const targetSummary =
+      supportsTarget && target != null
+        ? `Target ${sleepMetricTargetToInputValue(metric, target)} ${targetUnit}`
+        : 'Tap to view history'
 
     return (
-      <Card key={metric.id}>
+      <Card
+        key={metric.id}
+        onClick={() => openMetricHistory({ kind: 'sleep_metric', metricId: metric.id })}
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="text-sm font-medium text-zinc-200">{metric.label}</h3>
-            <p className="text-[10px] text-zinc-500">{unitLabel}</p>
+            <p className="text-[10px] text-zinc-500">{targetSummary}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (metric.source === 'custom') {
-                saveSleepMetricsConfig(removeCustomSleepMetric(sleepMetricsConfig, metric.id))
-              } else {
-                saveSleepMetricsConfig(toggleSleepMetric(sleepMetricsConfig, metric.id, false))
-              }
-            }}
-            className="shrink-0 text-zinc-600 hover:text-red-400"
-            aria-label={`Remove ${metric.label}`}
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setEditingSleepMetricId(metric.id)
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label={`Edit ${metric.label} settings`}
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (metric.source === 'custom') {
+                  saveSleepMetricsConfig(removeCustomSleepMetric(sleepMetricsConfig, metric.id))
+                } else {
+                  saveSleepMetricsConfig(toggleSleepMetric(sleepMetricsConfig, metric.id, false))
+                }
+                if (metric.id === 'sleep_duration') syncSleepDurationGoal(null)
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400"
+              aria-label={`Remove ${metric.label}`}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
       </Card>
     )
@@ -2118,12 +2700,6 @@ export function MetricsEditor({
 
     return (
       <div className="grid items-start gap-3 sm:grid-cols-2">
-        {activeSleepGoal && renderGoalCard(activeSleepGoal)}
-        {isAddingInSection && !activeSleepGoal && renderInlineFormCard('add-sleep')}
-        {!activeSleepGoal && !isAddingInSection && (
-          <AddGhostCard onClick={openAddSleep} label="Add sleep goal" />
-        )}
-
         {enabledSleepMetrics.map(renderSleepMetricCard)}
 
         {addingSleepMetric && (
@@ -2197,18 +2773,6 @@ export function MetricsEditor({
     )
   }
 
-  const startAddCustomCategory = () => {
-    const id = createCategory('New category')
-    if (!id) return
-    enableMetricsSection(id)
-    refreshEnabledSections()
-    refreshCategories()
-    setActiveSection(id)
-    setEditingCategoryId(id)
-    setEditingCategoryName('New category')
-    setTemplatePickerOpen(false)
-  }
-
   const activateBuiltinSection = (sectionId: (typeof BUILTIN_METRICS_SECTIONS)[number]) => {
     enableMetricsSection(sectionId)
     if (sectionId === 'workouts') {
@@ -2220,11 +2784,13 @@ export function MetricsEditor({
     setTemplatePickerOpen(false)
   }
 
-  const templateOptions = getAvailableMetricTemplates()
+  const templateOptions = getAvailableMetricTemplates({
+    showWorkoutMetrics: showWorkouts,
+  })
   const metricsEmpty = navItems.length === 0
 
   return (
-    <div className="space-y-4" data-tour="metrics-content">
+    <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-zinc-100">Metrics</h2>
         <Button
@@ -2240,16 +2806,16 @@ export function MetricsEditor({
 
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
         {!metricsEmpty && (
-          <nav className="flex gap-1 overflow-x-auto pb-1 sm:block sm:w-44 sm:shrink-0 sm:space-y-0.5 sm:overflow-visible sm:pb-0">
-            {navItems.map((item) => (
-              <MetricsNavButton
-                key={item.id}
-                label={item.label}
-                active={activeSection === item.id}
-                onClick={() => setActiveSection(item.id)}
-              />
-            ))}
-          </nav>
+          <SlidingNavList
+            activeId={activeSection}
+            items={navItems}
+            getKey={(item) => item.id}
+            onSelect={(item) => setActiveSection(item.id)}
+            ariaLabel="Metrics sections"
+            className="flex gap-1 overflow-x-auto pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-0.5 sm:overflow-visible sm:pb-0"
+            itemClassName="shrink-0 px-3 py-2 sm:w-full"
+            renderItem={(item) => item.label}
+          />
         )}
 
         <div className="min-w-0 flex-1">
@@ -2268,20 +2834,27 @@ export function MetricsEditor({
             </button>
             {templatePickerOpen && (
               <div className="absolute left-0 top-full z-20 mt-2 w-full max-w-sm overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl">
-                {templateOptions.map((option) => (
-                  <button
-                    key={option.kind === 'builtin' ? option.id : 'custom'}
-                    type="button"
-                    onClick={() => {
-                      if (option.kind === 'custom') startAddCustomCategory()
-                      else activateBuiltinSection(option.id)
-                    }}
-                    className="flex w-full flex-col items-start gap-0.5 border-b border-zinc-800/80 px-4 py-3 text-left last:border-b-0 hover:bg-zinc-900/80"
-                  >
-                    <span className="text-sm font-medium text-zinc-100">{option.label}</span>
-                    <span className="text-[11px] leading-snug text-zinc-500">{option.description}</span>
-                  </button>
-                ))}
+                {templateOptions.map((option) => {
+                  const Icon = METRIC_TEMPLATE_ICONS[option.id]
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => activateBuiltinSection(option.id)}
+                      className="flex w-full items-start gap-3 border-b border-zinc-800/80 px-4 py-3 text-left last:border-b-0 hover:bg-zinc-900/80"
+                    >
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-zinc-300 ring-1 ring-zinc-800">
+                        <Icon size={16} />
+                      </span>
+                      <span className="min-w-0 flex flex-col gap-0.5">
+                        <span className="text-sm font-medium text-zinc-100">{option.label}</span>
+                        <span className="text-[11px] leading-snug text-zinc-500">
+                          {option.description}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -2413,6 +2986,18 @@ export function MetricsEditor({
           goals={goals}
           userId={userId}
           onClose={() => setEditLogsOpen(false)}
+        />
+      )}
+
+      {historyTarget && (
+        <MetricHistoryModal
+          target={historyTarget}
+          goals={goals}
+          userId={userId}
+          habits={habits}
+          workoutTypes={workoutTypes}
+          sleepMetricsConfig={sleepMetricsConfig}
+          onClose={() => setHistoryTarget(null)}
         />
       )}
     </div>

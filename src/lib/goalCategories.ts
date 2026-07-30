@@ -8,7 +8,7 @@ import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 const STORAGE_KEY = 'personal-os-goal-categories'
 
 export const DEFAULT_GOAL_CATEGORY_ID = 'default'
-export const DEFAULT_GOAL_CATEGORY_LABEL = 'Goals'
+export const DEFAULT_GOAL_CATEGORY_LABEL = 'Custom'
 
 export function slugifyGoalCategoryId(label: string): string {
   const slug = label

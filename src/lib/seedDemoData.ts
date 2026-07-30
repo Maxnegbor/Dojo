@@ -38,8 +38,8 @@ export function seedDemoData(userId: string): { logs: number; workouts: number }
   ])
 
   saveWorkoutTypes([
-    { id: 'hiit', label: 'HIIT', color: '#ef4444' },
-    { id: 'zone2', label: 'Zone 2', color: '#3b82f6' },
+    { id: 'hiit', label: 'HIIT', color: '#ef4444', unit: 'min' },
+    { id: 'zone2', label: 'Zone 2', color: '#3b82f6', unit: 'min' },
   ])
 
   saveCustomGoalCategories([

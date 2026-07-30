@@ -26,9 +26,9 @@ export function Card({ children, className, title, action, onClick }: CardProps)
           : undefined
       }
       className={cn(
-        'rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-4 backdrop-blur-sm',
+        'rounded-xl border border-zinc-800/80 bg-zinc-900 p-4',
         onClick &&
-          'cursor-pointer text-left transition-colors hover:border-zinc-700/80 hover:bg-zinc-900/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-500)]',
+          'cursor-pointer text-left transition-colors hover:border-zinc-700/80 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-500)]',
         className,
       )}
     >

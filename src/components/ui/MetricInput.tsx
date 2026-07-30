@@ -10,14 +10,16 @@ interface MetricInputProps extends InputHTMLAttributes<HTMLInputElement> {
 export function MetricInput({ label, unit, compact, className, type = 'number', ...props }: MetricInputProps) {
   return (
     <label className="block">
-      <span
-        className={cn(
-          'block font-medium text-zinc-400',
-          compact ? 'mb-0.5 text-[10px] uppercase tracking-wide' : 'mb-1 text-xs',
-        )}
-      >
-        {label}
-      </span>
+      {label ? (
+        <span
+          className={cn(
+            'block font-medium text-zinc-400',
+            compact ? 'mb-0.5 text-[10px] uppercase tracking-wide' : 'mb-1 text-xs',
+          )}
+        >
+          {label}
+        </span>
+      ) : null}
       <div className="relative">
         <input
           type={type}

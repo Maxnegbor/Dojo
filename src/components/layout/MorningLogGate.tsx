@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Sun } from 'lucide-react'
 import { MorningLogModal } from '@/components/today/MorningLogModal'
 import { Button } from '@/components/ui/Button'
@@ -15,15 +16,14 @@ import { persistMorningLogPayload } from '@/lib/morningLogSave'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import type { DailyLog, Goal } from '@/types'
-import { useOnboardingTourActive } from '@/hooks/useOnboardingTourActive'
 import type { MorningLogSavePayload } from '@/components/today/MorningLogModal'
 import { formatDate } from '@/lib/utils'
 
 interface MorningLogGateProps {
-  children: React.ReactNode
+  children?: React.ReactNode
 }
 
-export function MorningLogGate({ children }: MorningLogGateProps) {
+export function MorningLogGate(_props: MorningLogGateProps) {
   const { pathname } = useLocation()
   const { userId } = useAuth()
   const { settings } = useSettings()
@@ -92,15 +92,12 @@ export function MorningLogGate({ children }: MorningLogGateProps) {
     return () => window.removeEventListener(MORNING_LOG_CHANGED, onMorningLogChanged)
   }, [syncFromStore, loadYesterdayLog])
 
-  const tourActive = useOnboardingTourActive()
-
   const morningLogStartDate = settings.morningLogStartDate ?? settings.memberSinceDate
   const beforeMorningLogStart =
     morningLogStartDate != null && today < morningLogStartDate
 
   const morningLogPending =
     pathname !== '/settings' &&
-    !tourActive &&
     !beforeMorningLogStart &&
     settings.requireMorningLog &&
     goalsReady &&
@@ -128,33 +125,34 @@ export function MorningLogGate({ children }: MorningLogGateProps) {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {children}
-
-      {morningLogPending && (
-        <div
-          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/50 p-6 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="morning-log-gate-title"
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-950/80 ring-1 ring-amber-500/30">
-            <Sun size={24} className="text-amber-400" />
-          </div>
-          <div className="max-w-xs text-center">
-            <h2 id="morning-log-gate-title" className="text-base font-semibold text-zinc-100">
-              Good morning
-            </h2>
-            <p className="mt-1 text-sm text-zinc-400">
-              Start your day by doing your morning log.
-            </p>
-          </div>
-          <Button size="lg" onClick={() => setShowModal(true)} disabled={!goalsReady}>
-            <Sun size={16} className="text-amber-300" />
-            Morning Log
-          </Button>
-        </div>
-      )}
+    <>
+      {morningLogPending &&
+        !showModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-4 bg-black/50 p-6 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="morning-log-gate-title"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-950/80 ring-1 ring-amber-500/30">
+              <Sun size={24} className="text-amber-400" />
+            </div>
+            <div className="max-w-xs text-center">
+              <h2 id="morning-log-gate-title" className="text-base font-semibold text-zinc-100">
+                Good morning
+              </h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Start your day by doing your morning log.
+              </p>
+            </div>
+            <Button size="lg" onClick={() => setShowModal(true)} disabled={!goalsReady}>
+              <Sun size={16} className="text-amber-300" />
+              Morning Log
+            </Button>
+          </div>,
+          document.body,
+        )}
 
       {showModal && userId && log && goalsReady && (
         <MorningLogModal
@@ -172,6 +170,6 @@ export function MorningLogGate({ children }: MorningLogGateProps) {
           onSave={saveMorningLog}
         />
       )}
-    </div>
+    </>
   )
 }

@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { ChevronDown, History, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import { MetricInput } from '@/components/ui/MetricInput'
-import type { DailyLog, Goal, Workout } from '@/types'
+import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
 import { normalizeHabits } from '@/types'
-import { getDailyLogGoals } from '@/lib/goals'
-import {
-  getDailyLogHabitTypes,
-  getWeeklyLogHabitTypes,
-  habitWeeklyLogKey,
-} from '@/lib/habitTypes'
+import { habitWeeklyLogKey } from '@/lib/habitTypes'
 import { clearDraft } from '@/lib/dailyLogDraft'
 import {
   EDIT_LOGS_LOOKBACK_DAYS,
@@ -22,19 +24,25 @@ import {
 import {
   buildEditLogDaySleepUpdates,
   formatSleepMetricUnit,
-  getEnabledSleepMetrics,
   getSleepMetricValue,
-  getSleepMetricsConfig,
   type SleepMetricDefinition,
 } from '@/lib/sleepMetrics'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import { getWeeklyLog, setWeeklyLogValue } from '@/lib/weeklyLogStore'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
-import { isWeightGoal } from '@/lib/weightGoal'
+import { getActiveWeightGoal, isWeightGoal } from '@/lib/weightGoal'
 import { displayToKg, kgToDisplay } from '@/lib/settingsStore'
+import {
+  getTrackedDailyEditGoals,
+  getTrackedDailyEditHabits,
+  getTrackedDailySleepMetrics,
+  getTrackedWeeklyEditGoals,
+  getTrackedWeeklyEditHabits,
+} from '@/lib/trackedLogsNet'
 import { useSettings } from '@/context/SettingsContext'
 import { cn } from '@/lib/utils'
+import { parseHrsMinToMinutes, usesTimedMetricInput } from '@/lib/timedMetrics'
 
 interface EditLogsModalProps {
   goals: Goal[]
@@ -86,9 +94,11 @@ function EditLogsDaySection({
   showFocus,
   showWorkouts,
   dailyHabits,
+  weightUnit,
   expanded,
   onToggle,
   onSaved,
+  registerPendingSave,
   userId,
 }: {
   date: string
@@ -98,22 +108,27 @@ function EditLogsDaySection({
   sleepMetrics: SleepMetricDefinition[]
   showFocus: boolean
   showWorkouts: boolean
-  dailyHabits: ReturnType<typeof getDailyLogHabitTypes>
+  dailyHabits: ReturnType<typeof getTrackedDailyEditHabits>
+  weightUnit: 'kg' | 'lb'
   expanded: boolean
   onToggle: () => void
   onSaved: () => void
+  registerPendingSave?: (promise: Promise<void>) => void
   userId: string
 }) {
-  const dailyGoals = useMemo(() => getDailyLogGoals(goals), [goals])
-  const scalarGoals = dailyGoals.filter(
-    (g) =>
-      g.metric_key !== 'focus' &&
-      g.metric_key !== 'steps' &&
-      g.metric_key !== 'screen_time' &&
-      !g.metric_key.startsWith('workout_'),
+  const trackedGoals = useMemo(() => getTrackedDailyEditGoals(goals), [goals])
+  const sleepGoal = trackedGoals.find((g) => g.metric_key === 'sleep')
+  const weightGoal =
+    getActiveWeightGoal(trackedGoals) ??
+    trackedGoals.find((g) => g.metric_key === 'weight')
+  const otherGoals = trackedGoals.filter(
+    (g) => g.metric_key !== 'sleep' && g.metric_key !== 'weight' && !isWeightGoal(g),
   )
 
   const [sleepHours, setSleepHours] = useState<number | null>(log?.sleep_hours ?? null)
+  const [weightDisplay, setWeightDisplay] = useState<number | null>(() =>
+    log?.weight != null ? kgToDisplay(log.weight, weightUnit) : null,
+  )
   const [customMetrics, setCustomMetrics] = useState<Record<string, number | null>>(
     () => ({ ...(log?.custom_metrics ?? {}) }),
   )
@@ -132,8 +147,26 @@ function EditLogsDaySection({
   const [deletedWorkoutIds, setDeletedWorkoutIds] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
 
+  const sleepHoursRef = useRef(sleepHours)
+  const weightDisplayRef = useRef(weightDisplay)
+  const customMetricsRef = useRef(customMetrics)
+  const focusMinutesRef = useRef(focusMinutes)
+  const habitsRef = useRef(habits)
+  const sleepMetricValuesRef = useRef(sleepMetricValues)
+  const workoutDurationsRef = useRef(workoutDurations)
+  const deletedWorkoutIdsRef = useRef(deletedWorkoutIds)
+  sleepHoursRef.current = sleepHours
+  weightDisplayRef.current = weightDisplay
+  customMetricsRef.current = customMetrics
+  focusMinutesRef.current = focusMinutes
+  habitsRef.current = habits
+  sleepMetricValuesRef.current = sleepMetricValues
+  workoutDurationsRef.current = workoutDurations
+  deletedWorkoutIdsRef.current = deletedWorkoutIds
+
   useEffect(() => {
     setSleepHours(log?.sleep_hours ?? null)
+    setWeightDisplay(log?.weight != null ? kgToDisplay(log.weight, weightUnit) : null)
     setCustomMetrics({ ...(log?.custom_metrics ?? {}) })
     setFocusMinutes(log?.focus_minutes ?? null)
     setHabits(normalizeHabits(log?.habits))
@@ -144,15 +177,13 @@ function EditLogsDaySection({
     setSleepMetricValues(nextSleep)
     setWorkoutDurations(Object.fromEntries(dayWorkouts.map((w) => [w.id, w.duration_minutes])))
     setDeletedWorkoutIds(new Set())
-  }, [date, log, dayWorkouts, sleepMetrics])
+  }, [date, log, dayWorkouts, sleepMetrics, weightUnit])
 
   const visibleWorkouts = dayWorkouts.filter((w) => !deletedWorkoutIds.has(w.id))
 
-  const sleepGoal = scalarGoals.find((g) => g.metric_key === 'sleep')
-  const customGoals = scalarGoals.filter((g) => g.metric_key.startsWith('custom:'))
-
   const persistDay = async (overrides?: {
     sleepHours?: number | null
+    weightDisplay?: number | null
     customMetrics?: Record<string, number | null>
     focusMinutes?: number | null
     habits?: ReturnType<typeof normalizeHabits>
@@ -161,79 +192,126 @@ function EditLogsDaySection({
     workoutDurations?: Record<string, number>
   }) => {
     setSaving(true)
-    try {
-      const nextSleepHours = overrides?.sleepHours !== undefined ? overrides.sleepHours : sleepHours
-      const nextCustomMetrics = overrides?.customMetrics ?? customMetrics
-      const nextFocusMinutes =
-        overrides?.focusMinutes !== undefined ? overrides.focusMinutes : focusMinutes
-      const nextHabits = overrides?.habits ?? habits
-      const nextSleepMetricValues = overrides?.sleepMetricValues ?? sleepMetricValues
-      const nextDeletedWorkoutIds = overrides?.deletedWorkoutIds ?? deletedWorkoutIds
-      const nextWorkoutDurations = overrides?.workoutDurations ?? workoutDurations
-      const nextVisibleWorkouts = dayWorkouts.filter((w) => !nextDeletedWorkoutIds.has(w.id))
+    const run = (async () => {
+      try {
+        const nextSleepHours =
+          overrides?.sleepHours !== undefined ? overrides.sleepHours : sleepHoursRef.current
+        const nextWeightDisplay =
+          overrides?.weightDisplay !== undefined
+            ? overrides.weightDisplay
+            : weightDisplayRef.current
+        const nextCustomMetrics = overrides?.customMetrics ?? customMetricsRef.current
+        const nextFocusMinutes =
+          overrides?.focusMinutes !== undefined
+            ? overrides.focusMinutes
+            : focusMinutesRef.current
+        const nextHabits = overrides?.habits ?? habitsRef.current
+        const nextSleepMetricValues =
+          overrides?.sleepMetricValues ?? sleepMetricValuesRef.current
+        const nextDeletedWorkoutIds =
+          overrides?.deletedWorkoutIds ?? deletedWorkoutIdsRef.current
+        const nextWorkoutDurations =
+          overrides?.workoutDurations ?? workoutDurationsRef.current
+        const nextVisibleWorkouts = dayWorkouts.filter((w) => !nextDeletedWorkoutIds.has(w.id))
 
-      const sleepFieldUpdates = buildEditLogDaySleepUpdates(log, nextSleepMetricValues, sleepMetrics)
-      const tracksSleepDuration = sleepMetrics.some((metric) => metric.id === 'sleep_duration')
-      const updates: Partial<DailyLog> = {
-        ...sleepFieldUpdates,
-        sleep_hours: tracksSleepDuration
-          ? sleepFieldUpdates.sleep_hours
-          : sleepGoal
-            ? nextSleepHours
-            : sleepFieldUpdates.sleep_hours,
-        focus_minutes: nextFocusMinutes ?? 0,
-        habits: normalizeHabits(nextHabits),
-        custom_metrics: { ...nextCustomMetrics },
-      }
-
-      if (isSupabaseConfigured) {
-        const { updateDailyLogForDate, deleteWorkout, updateWorkout } = await import(
-          '@/lib/supabase'
+        const sleepFieldUpdates = buildEditLogDaySleepUpdates(
+          log,
+          nextSleepMetricValues,
+          sleepMetrics,
         )
-        await updateDailyLogForDate(userId, date, updates)
-        for (const workoutId of nextDeletedWorkoutIds) {
-          await deleteWorkout(workoutId)
+        const tracksSleepDuration = sleepMetrics.some((metric) => metric.id === 'sleep_duration')
+        const updates: Partial<DailyLog> = {
+          ...sleepFieldUpdates,
+          sleep_hours: tracksSleepDuration
+            ? sleepFieldUpdates.sleep_hours
+            : sleepGoal
+              ? nextSleepHours
+              : sleepFieldUpdates.sleep_hours,
+          focus_minutes: nextFocusMinutes ?? 0,
+          habits: normalizeHabits(nextHabits),
+          custom_metrics: { ...nextCustomMetrics },
         }
-        for (const workout of nextVisibleWorkouts) {
-          const nextDuration = nextWorkoutDurations[workout.id]
-          if (nextDuration != null && nextDuration !== workout.duration_minutes) {
-            await updateWorkout(workout.id, { duration_minutes: nextDuration })
-          }
+        if (weightGoal) {
+          updates.weight =
+            nextWeightDisplay != null && !Number.isNaN(nextWeightDisplay)
+              ? displayToKg(nextWeightDisplay, weightUnit)
+              : null
         }
-      } else {
-        localStore.updateDailyLog(date, updates)
-        for (const workoutId of nextDeletedWorkoutIds) {
-          localStore.deleteWorkout(workoutId)
-        }
-        for (const workout of nextVisibleWorkouts) {
-          const nextDuration = nextWorkoutDurations[workout.id]
-          if (nextDuration != null && nextDuration !== workout.duration_minutes) {
-            localStore.updateWorkout(workout.id, { duration_minutes: nextDuration })
-          }
-        }
-      }
 
-      clearDraft(date)
-      onSaved()
-    } finally {
-      setSaving(false)
-    }
+        if (isSupabaseConfigured) {
+          const { updateDailyLogForDate, deleteWorkout, updateWorkout } = await import(
+            '@/lib/supabase'
+          )
+          await updateDailyLogForDate(userId, date, updates)
+          for (const workoutId of nextDeletedWorkoutIds) {
+            await deleteWorkout(workoutId)
+          }
+          for (const workout of nextVisibleWorkouts) {
+            const nextDuration = nextWorkoutDurations[workout.id]
+            if (nextDuration != null && nextDuration !== workout.duration_minutes) {
+              await updateWorkout(workout.id, { duration_minutes: nextDuration })
+            }
+          }
+        } else {
+          localStore.updateDailyLog(date, updates)
+          for (const workoutId of nextDeletedWorkoutIds) {
+            localStore.deleteWorkout(workoutId)
+          }
+          for (const workout of nextVisibleWorkouts) {
+            const nextDuration = nextWorkoutDurations[workout.id]
+            if (nextDuration != null && nextDuration !== workout.duration_minutes) {
+              localStore.updateWorkout(workout.id, { duration_minutes: nextDuration })
+            }
+          }
+        }
+
+        clearDraft(date)
+        onSaved()
+      } finally {
+        setSaving(false)
+      }
+    })()
+
+    registerPendingSave?.(run)
+    await run
   }
 
   const saveDay = () => {
     const tracksSleepDuration = sleepMetrics.some((metric) => metric.id === 'sleep_duration')
+    const latestSleep = sleepMetricValuesRef.current
     const durationCleared =
-      tracksSleepDuration && (sleepMetricValues.sleep_duration ?? null) == null
+      tracksSleepDuration && (latestSleep.sleep_duration ?? null) == null
     void persistDay(
-      durationCleared ? { sleepHours: null, sleepMetricValues } : undefined,
+      durationCleared ? { sleepHours: null, sleepMetricValues: latestSleep } : undefined,
     )
   }
 
+  const updateSleepMetric = (metricId: string, value: number | null) => {
+    const nextSleepMetricValues = {
+      ...sleepMetricValuesRef.current,
+      [metricId]: value,
+    }
+    sleepMetricValuesRef.current = nextSleepMetricValues
+    setSleepMetricValues(nextSleepMetricValues)
+    if (metricId === 'sleep_duration') {
+      const nextSleepHours = value != null ? value / 60 : null
+      sleepHoursRef.current = nextSleepHours
+      setSleepHours(nextSleepHours)
+      void persistDay({
+        sleepMetricValues: nextSleepMetricValues,
+        sleepHours: nextSleepHours,
+      })
+      return
+    }
+    void persistDay({ sleepMetricValues: nextSleepMetricValues })
+  }
+
   const hasLoggedData =
-    scalarGoals.some((g) => {
-      if (g.metric_key === 'sleep') return sleepHours != null
+    (sleepGoal && sleepHours != null) ||
+    (weightGoal && weightDisplay != null) ||
+    otherGoals.some((g) => {
       if (g.metric_key.startsWith('custom:')) return customMetrics[g.metric_key] != null
-      return false
+      return customMetrics[g.metric_key] != null
     }) ||
     (showFocus && (focusMinutes ?? 0) > 0) ||
     dailyHabits.some((h) => habits[h.id]) ||
@@ -241,14 +319,7 @@ function EditLogsDaySection({
     sleepMetrics.some((m) => sleepMetricValues[m.id] != null)
 
   const clearSleepMetric = (metricId: string) => {
-    const nextSleepMetricValues = { ...sleepMetricValues, [metricId]: null }
-    const nextSleepHours = metricId === 'sleep_duration' ? null : sleepHours
-    setSleepMetricValues(nextSleepMetricValues)
-    if (metricId === 'sleep_duration') setSleepHours(null)
-    void persistDay({
-      sleepMetricValues: nextSleepMetricValues,
-      sleepHours: nextSleepHours,
-    })
+    updateSleepMetric(metricId, null)
   }
 
   const clearSleepGoal = () => {
@@ -256,7 +327,12 @@ function EditLogsDaySection({
     void persistDay({ sleepHours: null })
   }
 
-  const clearCustomMetric = (metricKey: string) => {
+  const clearWeight = () => {
+    setWeightDisplay(null)
+    void persistDay({ weightDisplay: null })
+  }
+
+  const clearGoalMetric = (metricKey: MetricKey) => {
     const nextCustomMetrics = { ...customMetrics, [metricKey]: null }
     setCustomMetrics(nextCustomMetrics)
     void persistDay({ customMetrics: nextCustomMetrics })
@@ -301,7 +377,11 @@ function EditLogsDaySection({
 
       {expanded && (
         <div className="space-y-4 border-t border-zinc-800/80 px-4 pb-4 pt-4">
-          {(sleepGoal || customGoals.length > 0 || showFocus || sleepMetrics.length > 0) && (
+          {(sleepGoal ||
+            weightGoal ||
+            otherGoals.length > 0 ||
+            showFocus ||
+            sleepMetrics.length > 0) && (
             <div className="grid gap-3 sm:grid-cols-2">
               {sleepGoal && (
                 <MetricFieldRow
@@ -319,12 +399,28 @@ function EditLogsDaySection({
                 </MetricFieldRow>
               )}
 
-              {customGoals.map((goal) => (
+              {weightGoal && (
+                <MetricFieldRow
+                  label={weightGoal.name}
+                  hasValue={weightDisplay != null}
+                  onDelete={clearWeight}
+                >
+                  <GoalMetricInput
+                    label={weightGoal.name}
+                    unit={weightUnit}
+                    step="0.1"
+                    value={weightDisplay}
+                    onChange={setWeightDisplay}
+                  />
+                </MetricFieldRow>
+              )}
+
+              {otherGoals.map((goal) => (
                 <MetricFieldRow
                   key={goal.id}
                   label={goal.name}
                   hasValue={customMetrics[goal.metric_key] != null}
-                  onDelete={() => clearCustomMetric(goal.metric_key)}
+                  onDelete={() => clearGoalMetric(goal.metric_key)}
                 >
                   <GoalMetricInput
                     label={goal.name}
@@ -369,9 +465,7 @@ function EditLogsDaySection({
                     }
                     metricKey={metric.id}
                     value={sleepMetricValues[metric.id] ?? null}
-                    onChange={(value) =>
-                      setSleepMetricValues((prev) => ({ ...prev, [metric.id]: value }))
-                    }
+                    onChange={(value) => updateSleepMetric(metric.id, value)}
                   />
                 </MetricFieldRow>
               ))}
@@ -465,7 +559,8 @@ function EditLogsDaySection({
           )}
 
           {!sleepGoal &&
-            customGoals.length === 0 &&
+            !weightGoal &&
+            otherGoals.length === 0 &&
             !showFocus &&
             sleepMetrics.length === 0 &&
             dailyHabits.length === 0 &&
@@ -492,18 +587,29 @@ function EditLogsWeekSection({
 }: {
   weekKey: string
   goals: Goal[]
-  weeklyHabits: ReturnType<typeof getWeeklyLogHabitTypes>
+  weeklyHabits: ReturnType<typeof getTrackedWeeklyEditHabits>
   weightUnit: 'kg' | 'lb'
   expanded: boolean
   onToggle: () => void
 }) {
-  const weightGoal = goals.find(isWeightGoal)
+  const weeklyGoals = useMemo(() => getTrackedWeeklyEditGoals(goals), [goals])
+  const weightGoal = getActiveWeightGoal(weeklyGoals)
+  const otherWeeklyGoals = weeklyGoals.filter((g) => !isWeightGoal(g))
   const stored = getWeeklyLog(weekKey)
   const storedWeightKg = stored.weight ?? null
 
   const [weightDisplay, setWeightDisplay] = useState<number | null>(() =>
     storedWeightKg != null ? kgToDisplay(storedWeightKg, weightUnit) : null,
   )
+  const [weeklyValues, setWeeklyValues] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {}
+    for (const goal of getTrackedWeeklyEditGoals(goals)) {
+      if (isWeightGoal(goal)) continue
+      const v = stored[goal.metric_key]
+      if (v != null) initial[goal.metric_key] = String(v)
+    }
+    return initial
+  })
   const [habitDone, setHabitDone] = useState<Record<string, boolean>>(() => {
     const next: Record<string, boolean> = {}
     for (const habit of weeklyHabits) {
@@ -516,14 +622,21 @@ function EditLogsWeekSection({
   useEffect(() => {
     const fresh = getWeeklyLog(weekKey)
     setWeightDisplay(fresh.weight != null ? kgToDisplay(fresh.weight, weightUnit) : null)
+    const nextValues: Record<string, string> = {}
+    for (const goal of getTrackedWeeklyEditGoals(goals)) {
+      if (isWeightGoal(goal)) continue
+      const v = fresh[goal.metric_key]
+      if (v != null) nextValues[goal.metric_key] = String(v)
+    }
+    setWeeklyValues(nextValues)
     const next: Record<string, boolean> = {}
     for (const habit of weeklyHabits) {
       next[habit.id] = fresh[habitWeeklyLogKey(habit.id)] === 1
     }
     setHabitDone(next)
-  }, [weekKey, weeklyHabits, weightUnit])
+  }, [weekKey, weeklyHabits, weightUnit, goals])
 
-  if (!weightGoal && weeklyHabits.length === 0) return null
+  if (!weightGoal && otherWeeklyGoals.length === 0 && weeklyHabits.length === 0) return null
 
   const saveWeek = async () => {
     setSaving(true)
@@ -534,6 +647,19 @@ function EditLogsWeekSection({
             ? displayToKg(weightDisplay, weightUnit)
             : null
         setWeeklyLogValue(weekKey, 'weight', kg)
+      }
+      for (const goal of otherWeeklyGoals) {
+        const raw = weeklyValues[goal.metric_key]?.trim()
+        if (!raw) {
+          setWeeklyLogValue(weekKey, goal.metric_key, null)
+          continue
+        }
+        if (usesTimedMetricInput(goal.unit, goal.metric_key)) {
+          setWeeklyLogValue(weekKey, goal.metric_key, parseHrsMinToMinutes(raw))
+          continue
+        }
+        const parsed = parseFloat(raw)
+        setWeeklyLogValue(weekKey, goal.metric_key, Number.isNaN(parsed) ? null : parsed)
       }
       for (const habit of weeklyHabits) {
         const key = habitWeeklyLogKey(habit.id)
@@ -578,6 +704,43 @@ function EditLogsWeekSection({
                 onChange={setWeightDisplay}
               />
             </MetricFieldRow>
+          )}
+
+          {otherWeeklyGoals.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {otherWeeklyGoals.map((goal) => (
+                <MetricFieldRow
+                  key={goal.id}
+                  label={goal.name}
+                  hasValue={Boolean(weeklyValues[goal.metric_key]?.trim())}
+                  onDelete={() => {
+                    setWeeklyValues((prev) => {
+                      const next = { ...prev }
+                      delete next[goal.metric_key]
+                      return next
+                    })
+                    setWeeklyLogValue(weekKey, goal.metric_key, null)
+                  }}
+                >
+                  <GoalMetricInput
+                    label={goal.name}
+                    unit={goal.unit}
+                    metricKey={goal.metric_key}
+                    value={
+                      weeklyValues[goal.metric_key] != null && weeklyValues[goal.metric_key] !== ''
+                        ? Number(weeklyValues[goal.metric_key])
+                        : null
+                    }
+                    onChange={(value) =>
+                      setWeeklyValues((prev) => ({
+                        ...prev,
+                        [goal.metric_key]: value == null ? '' : String(value),
+                      }))
+                    }
+                  />
+                </MetricFieldRow>
+              ))}
+            </div>
           )}
 
           {weeklyHabits.length > 0 && (
@@ -651,14 +814,32 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
   const [loading, setLoading] = useState(true)
   const [expandedDate, setExpandedDate] = useState<string | null>(dates[0] ?? null)
   const [expandedWeek, setExpandedWeek] = useState<string | null>(weekKeys[0] ?? null)
+  const pendingSavesRef = useRef(Promise.resolve())
 
-  const sleepMetrics = useMemo(() => getEnabledSleepMetrics(getSleepMetricsConfig()), [])
-  const dailyHabits = useMemo(() => getDailyLogHabitTypes(), [])
-  const weeklyHabits = useMemo(() => getWeeklyLogHabitTypes(), [])
+  const registerPendingSave = useCallback((promise: Promise<void>) => {
+    pendingSavesRef.current = pendingSavesRef.current
+      .then(() => promise)
+      .catch(() => undefined)
+  }, [])
+
+  const handleDone = async () => {
+    const active = document.activeElement
+    if (active instanceof HTMLElement) active.blur()
+    // Let blur handlers enqueue their saves before we wait.
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 0)
+    })
+    await pendingSavesRef.current
+    onClose()
+  }
+
+  const sleepMetrics = useMemo(() => getTrackedDailySleepMetrics(), [])
+  const dailyHabits = useMemo(() => getTrackedDailyEditHabits(), [])
+  const weeklyHabits = useMemo(() => getTrackedWeeklyEditHabits(), [])
+  const weeklyGoals = useMemo(() => getTrackedWeeklyEditGoals(goals), [goals])
   const showFocus = goals.some((g) => g.metric_key === 'focus' && g.is_active)
   const showWorkouts = settings.showWorkoutMetrics && getWorkoutTypes().length > 0
-  const hasWeightGoal = goals.some(isWeightGoal)
-  const showWeeklySection = hasWeightGoal || weeklyHabits.length > 0
+  const showWeeklySection = weeklyGoals.length > 0 || weeklyHabits.length > 0
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -703,7 +884,7 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
-      onClick={onClose}
+      onClick={() => void handleDone()}
     >
       <div
         role="dialog"
@@ -727,7 +908,7 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void handleDone()}
             className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
             aria-label="Close"
           >
@@ -779,11 +960,13 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
                       showFocus={showFocus}
                       showWorkouts={showWorkouts}
                       dailyHabits={dailyHabits}
+                      weightUnit={settings.weightUnit}
                       expanded={expandedDate === date}
                       onToggle={() =>
                         setExpandedDate((current) => (current === date ? null : date))
                       }
                       onSaved={handleDaySaved}
+                      registerPendingSave={registerPendingSave}
                       userId={userId}
                     />
                   ))}
@@ -794,7 +977,7 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
         </div>
 
         <div className="flex justify-end border-t border-zinc-800/80 px-5 py-4 sm:px-6">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={() => void handleDone()}>
             Done
           </Button>
         </div>

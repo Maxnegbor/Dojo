@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Flame, GripVertical, Trash2 } from 'lucide-react'
+import { Flame, GripVertical, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { AddGhostCard } from '@/components/goals/AddGhostCard'
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 interface HabitMetricsReorderListProps {
   habits: HabitTypeDefinition[]
   onReorder: (next: HabitTypeDefinition[]) => void
+  onView: (habit: HabitTypeDefinition) => void
   onEdit: (habit: HabitTypeDefinition) => void
   onDelete: (habit: HabitTypeDefinition) => void
   deleteConfirmId?: string | null
@@ -39,6 +40,7 @@ function DropIndicator({ className }: { className?: string }) {
 export function HabitMetricsReorderList({
   habits,
   onReorder,
+  onView,
   onEdit,
   onDelete,
   deleteConfirmId = null,
@@ -173,7 +175,7 @@ export function HabitMetricsReorderList({
                 ) : (
                   <Card
                     onClick={() => {
-                      if (!draggingId) onEdit(habit)
+                      if (!draggingId) onView(habit)
                     }}
                     className={cn(draggingId === habit.id && 'invisible')}
                   >
@@ -194,18 +196,31 @@ export function HabitMetricsReorderList({
                           <p className="text-[10px] text-zinc-500">{formatHabitCardSubtitle(habit)}</p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onDelete(habit)
-                        }}
-                        disabled={habits.length <= 1}
-                        className="shrink-0 text-zinc-600 hover:text-red-400 disabled:opacity-30"
-                        aria-label={`Delete ${habit.label}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onEdit(habit)
+                          }}
+                          className="rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+                          aria-label={`Edit ${habit.label} settings`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDelete(habit)
+                          }}
+                          disabled={habits.length <= 1}
+                          className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400 disabled:opacity-30"
+                          aria-label={`Delete ${habit.label}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </Card>
                 )}

@@ -6,6 +6,7 @@ import { groupMorningLogItemsByCategory, type MorningLogItem } from '@/lib/morni
 import { SLEEP_METRIC_UNIT_LABELS, SLEEP_METRICS_CHANGED } from '@/lib/sleepMetrics'
 import { HABIT_TYPES_CHANGED } from '@/lib/habitTypes'
 import { METRICS_SECTIONS_CHANGED } from '@/lib/metricsSections'
+import { WORKOUT_TYPES_CHANGED } from '@/lib/workoutTypes'
 import type { Goal, MetricKey } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +21,8 @@ interface LogMetricsEditorProps {
   onSleepFieldIdsChange: (ids: string[]) => void
   onYesterdayKeysChange?: (keys: MetricKey[]) => void
   onPickerOpenChange?: (open: boolean) => void
+  /** Override default remove (e.g. morning → move to shutdown). */
+  onRemoveItem?: (item: MorningLogItem) => void
   getConfiguredItems: (goals: Goal[], sleepConfig: import('@/lib/sleepMetrics').SleepMetricsConfig) => MorningLogItem[]
   getAddableItems: (
     goals: Goal[],
@@ -54,6 +57,7 @@ export function LogMetricsEditor({
   onSleepFieldIdsChange,
   onYesterdayKeysChange,
   onPickerOpenChange,
+  onRemoveItem,
   getConfiguredItems,
   getAddableItems,
   description,
@@ -70,10 +74,12 @@ export function LogMetricsEditor({
     const refresh = () => setMetricsRevision((value) => value + 1)
     window.addEventListener(METRICS_SECTIONS_CHANGED, refresh)
     window.addEventListener(HABIT_TYPES_CHANGED, refresh)
+    window.addEventListener(WORKOUT_TYPES_CHANGED, refresh)
     window.addEventListener(SLEEP_METRICS_CHANGED, refresh)
     return () => {
       window.removeEventListener(METRICS_SECTIONS_CHANGED, refresh)
       window.removeEventListener(HABIT_TYPES_CHANGED, refresh)
+      window.removeEventListener(WORKOUT_TYPES_CHANGED, refresh)
       window.removeEventListener(SLEEP_METRICS_CHANGED, refresh)
     }
   }, [])
@@ -131,6 +137,10 @@ export function LogMetricsEditor({
   const yesterdayKeySet = useMemo(() => new Set(yesterdayKeys), [yesterdayKeys])
 
   const removeItem = (item: MorningLogItem) => {
+    if (onRemoveItem) {
+      onRemoveItem(item)
+      return
+    }
     if (item.kind === 'sleep' && item.sleepFieldId) {
       onSleepFieldIdsChange(sleepFieldIds.filter((id) => id !== item.sleepFieldId))
       return

@@ -2,7 +2,7 @@ import { getDailyLogHabitTypes } from '@/lib/habitTypes'
 
 export type WorkoutCategory = string
 
-export type ScheduleBlockColor = 'blue' | 'rose' | 'amber'
+export type ScheduleBlockColor = string
 export type ScheduleBlockState = 'grey' | ScheduleBlockColor
 
 export type GoalPeriod = 'daily' | 'weekly'
@@ -114,6 +114,13 @@ export interface Goal {
   is_active: boolean
   /** User-defined grouping for goals on Metrics / Overview. */
   category_id?: string | null
+  /**
+   * Where daily metrics are collected: Home card, morning log, or evening shutdown.
+   * Ignored when log_period is weekly. Defaults to home.
+   */
+  log_when?: 'home' | 'morning' | 'shutdown'
+  /** When log_when is morning: which calendar day the value applies to. */
+  morning_day?: 'today' | 'yesterday'
   /** @deprecated Derived from log_period === 'daily' */
   show_in_daily_log?: boolean
   created_at: string
@@ -141,6 +148,8 @@ export interface FocusTimerSettings {
   longBreakAfterCycles: number
   longBreakMinutes: number
   allowPause: boolean
+  /** After each focus cycle, ask for a 1–10 subjective focus score. */
+  promptFocusScore: boolean
   focusGoalEnabled: boolean
   focusGoalPeriod: GoalPeriod
   focusGoalAmount: number
@@ -166,6 +175,9 @@ export interface WeeklyShutdownCheckGroup {
 export type DailyCheckItem = WeeklyShutdownCheckItem
 export type DailyCheckGroup = WeeklyShutdownCheckGroup
 
+/** Built-in steps available for the daily shutdown flow. */
+export type DailyShutdownStepId = 'wrap-up' | 'habits' | 'schedule' | 'checklist'
+
 export interface AppSettings {
   weekStartsOn: WeekStartDay
   timeFormat: TimeFormat
@@ -179,16 +191,61 @@ export interface AppSettings {
   timerSoundEnabled: boolean
   /** Show workout types and goals on the Metrics page and in daily log. */
   showWorkoutMetrics: boolean
+  /** Show the weekly exercise planner card on Home. */
+  showHomeWorkoutPlanner: boolean
+  /**
+   * When true, the weekly exercise plan editor asks for a start time per session.
+   * Default off — duration-only planning.
+   */
+  exerciseWeekPlanIncludeTime: boolean
+  /** Show the Pulse score meter on the Home header. */
+  showHomePulse: boolean
+  /**
+   * When true, completed Home habits collapse behind an “N done” toggle.
+   * When false, the toggle is removed and completed habits stay in the main list.
+   */
+  hideCompletedHabitsInToggle: boolean
+  /** Show Focus in the sidebar and allow /focus. */
+  showFocusPage: boolean
+  /** Show a clean read-only agenda of today’s schedule beside the Focus timer. */
+  showFocusSchedule: boolean
+  /** Show Pulse in the sidebar and allow /pulse. */
+  showPulsePage: boolean
   /** Checklist sections shown during weekly shutdown. */
   weeklyShutdownChecklist: WeeklyShutdownCheckGroup[]
   /** Optional checklist after morning log. */
   morningLogChecklist: DailyCheckGroup[]
-  /** When true, blur-lock all screens until today's morning log is saved. */
+  /** When true, blur-lock all screens until today's morning log is saved (no Home button). */
   requireMorningLog: boolean
   /** First calendar day morning logging applies (e.g. day after signup). */
   morningLogStartDate?: string
   /** Optional checklist after daily shutdown log. */
   dailyShutdownChecklist: DailyCheckGroup[]
+  /**
+   * Ordered preset steps for the daily shutdown modal.
+   * Habits may still be skipped at runtime when nothing is pending.
+   */
+  dailyShutdownSteps: DailyShutdownStepId[]
+  /** When true, blur-lock screens after the require time until shutdown is completed. */
+  requireShutdown: boolean
+  /** When to require shutdown: end of Home schedule hours, or a custom clock time. */
+  shutdownRequireAt: 'schedule_end' | 'custom'
+  /** HH:mm when shutdownRequireAt is custom. */
+  shutdownCustomTime: string
+  /**
+   * Affirmation typed exactly before finishing morning log
+   * (when requireTypedReminderMorning is on).
+   */
+  typedReminderMorningText: string
+  /** Gate morning log finish behind typing typedReminderMorningText. */
+  requireTypedReminderMorning: boolean
+  /**
+   * Affirmation typed exactly before finishing daily shutdown
+   * (when requireTypedReminderShutdown is on).
+   */
+  typedReminderShutdownText: string
+  /** Gate daily shutdown finish behind typing typedReminderShutdownText. */
+  requireTypedReminderShutdown: boolean
   /** Temporary developer perspective — unlocks dev settings and test flows. */
   devMode: boolean
   /** Set true after completing first-run onboarding. */
@@ -253,6 +310,7 @@ export const DEFAULT_FOCUS_SETTINGS: FocusTimerSettings = {
   longBreakAfterCycles: 4,
   longBreakMinutes: 15,
   allowPause: false,
+  promptFocusScore: false,
   focusGoalEnabled: false,
   focusGoalPeriod: 'daily',
   focusGoalAmount: 60,
@@ -269,10 +327,25 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   timelineEndHour: 23,
   timerSoundEnabled: false,
   showWorkoutMetrics: false,
+  showHomeWorkoutPlanner: true,
+  exerciseWeekPlanIncludeTime: false,
+  showHomePulse: true,
+  hideCompletedHabitsInToggle: true,
+  showFocusPage: true,
+  showFocusSchedule: false,
+  showPulsePage: true,
   weeklyShutdownChecklist: [],
   morningLogChecklist: [],
   requireMorningLog: false,
   dailyShutdownChecklist: [],
+  dailyShutdownSteps: ['wrap-up', 'habits', 'schedule'],
+  requireShutdown: false,
+  shutdownRequireAt: 'schedule_end',
+  shutdownCustomTime: '21:00',
+  typedReminderMorningText: '',
+  requireTypedReminderMorning: false,
+  typedReminderShutdownText: '',
+  requireTypedReminderShutdown: false,
   devMode: false,
 }
 
