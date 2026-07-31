@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Pencil } from 'lucide-react'
+import { FocusLabelsModal } from '@/components/focus/FocusLabelsModal'
 import {
-  createFocusLabel,
   FOCUS_LABELS_CHANGED,
   getFocusLabels,
-  saveFocusLabels,
   type FocusLabel,
 } from '@/lib/focusLabels'
 import { cn } from '@/lib/utils'
@@ -23,6 +22,7 @@ export function FocusLabelPicker({
   className,
 }: FocusLabelPickerProps) {
   const [labels, setLabels] = useState<FocusLabel[]>(() => getFocusLabels())
+  const [editorOpen, setEditorOpen] = useState(false)
 
   useEffect(() => {
     const sync = () => setLabels(getFocusLabels())
@@ -33,14 +33,6 @@ export function FocusLabelPicker({
       window.removeEventListener('user-storage-ready', sync)
     }
   }, [])
-
-  const addLabel = () => {
-    if (disabled) return
-    const created = createFocusLabel()
-    const next = saveFocusLabels([...getFocusLabels(), created])
-    setLabels(next)
-    onChange(created.id)
-  }
 
   return (
     <div className={cn('w-full', className)}>
@@ -94,17 +86,25 @@ export function FocusLabelPicker({
         <button
           type="button"
           disabled={disabled}
-          onClick={addLabel}
-          aria-label="Add label"
-          title="Add label"
+          onClick={() => setEditorOpen(true)}
+          aria-label="Edit labels"
+          title="Edit labels"
           className={cn(
             'inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-zinc-700 text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200',
             disabled && 'cursor-not-allowed opacity-50',
           )}
         >
-          <Plus size={14} strokeWidth={2.25} />
+          <Pencil size={12} strokeWidth={2.25} />
         </button>
       </div>
+
+      {editorOpen && (
+        <FocusLabelsModal
+          selectedId={value}
+          onSelect={onChange}
+          onClose={() => setEditorOpen(false)}
+        />
+      )}
     </div>
   )
 }
