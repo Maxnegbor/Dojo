@@ -75,12 +75,14 @@ export function normalizeFocusLabels(labels: FocusLabel[] | undefined | null): F
 export function getFocusLabels(): FocusLabel[] {
   try {
     const raw = storageGetItem(STORAGE_KEY)
-    if (!raw) return DEFAULT_FOCUS_LABELS.map((entry) => ({ ...entry }))
+    // No key yet → seed defaults for first visit. An explicit `[]` means the user
+    // deleted every label and must stay empty.
+    if (raw == null) return DEFAULT_FOCUS_LABELS.map((entry) => ({ ...entry }))
     const parsed = JSON.parse(raw) as FocusLabel[]
-    const normalized = normalizeFocusLabels(parsed)
-    return normalized.length > 0
-      ? normalized
-      : DEFAULT_FOCUS_LABELS.map((entry) => ({ ...entry }))
+    if (!Array.isArray(parsed)) {
+      return DEFAULT_FOCUS_LABELS.map((entry) => ({ ...entry }))
+    }
+    return normalizeFocusLabels(parsed)
   } catch {
     return DEFAULT_FOCUS_LABELS.map((entry) => ({ ...entry }))
   }

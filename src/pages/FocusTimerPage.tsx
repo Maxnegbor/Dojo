@@ -383,7 +383,7 @@ export function FocusTimerPage() {
       className={cn(
         'relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6',
         showSchedule && showSettings
-          ? 'max-w-5xl'
+          ? 'max-w-6xl'
           : showSchedule
             ? 'max-w-4xl'
             : showSettings
@@ -409,27 +409,17 @@ export function FocusTimerPage() {
       <div
         className={cn(
           'flex items-start gap-4',
-          showSchedule ? 'flex-col lg:flex-row lg:justify-center' : 'justify-center',
+          showSchedule || showSettings
+            ? 'flex-col lg:flex-row lg:justify-center'
+            : 'justify-center',
         )}
       >
-        <div
-          className={cn(
-            'flex flex-col gap-4 self-center lg:self-start',
-            showSettings && !showSchedule ? 'w-full max-w-3xl' : 'w-full max-w-[480px]',
-          )}
-        >
-          <div
+        <div className="flex w-full max-w-[480px] flex-col gap-4 self-center lg:self-start">
+          <Card
             className={cn(
-              'flex w-full items-start gap-4',
-              showSettings ? 'flex-col lg:flex-row' : 'justify-center',
+              'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6',
             )}
           >
-        <Card
-          className={cn(
-            'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6',
-            showSettings && 'lg:max-w-md',
-          )}
-        >
         <p
           className={cn(
             'mb-1 h-4 text-xs font-medium uppercase tracking-widest',
@@ -554,8 +544,17 @@ export function FocusTimerPage() {
         </div>
       </Card>
 
+          <Card title="Last 12 hours" className="w-full">
+            <FocusHourlyChart
+              formatHour={formatHourLabel}
+              liveSession={liveFocusSession}
+              useDevDummy={userPrefs.devMode}
+            />
+          </Card>
+        </div>
+
         {showSettings && (
-          <Card title="Timer settings" className="w-full shrink-0 space-y-5 lg:w-72">
+          <Card title="Timer settings" className="w-full shrink-0 space-y-5 self-center lg:w-72 lg:self-start">
             <MinuteSlider
               label="Focus duration"
               value={settings.focusMinutes}
@@ -629,16 +628,6 @@ export function FocusTimerPage() {
             </div>
           </Card>
         )}
-          </div>
-
-          <Card title="Last 12 hours" className="w-full">
-            <FocusHourlyChart
-              formatHour={formatHourLabel}
-              liveSession={liveFocusSession}
-              useDevDummy={userPrefs.devMode}
-            />
-          </Card>
-        </div>
 
         {showSchedule && userId && (
           <FocusScheduleAgenda

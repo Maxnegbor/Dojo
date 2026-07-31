@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Plus } from 'lucide-react'
 import {
+  createFocusLabel,
   FOCUS_LABELS_CHANGED,
   getFocusLabels,
+  saveFocusLabels,
   type FocusLabel,
 } from '@/lib/focusLabels'
 import { cn } from '@/lib/utils'
@@ -31,7 +34,13 @@ export function FocusLabelPicker({
     }
   }, [])
 
-  if (labels.length === 0) return null
+  const addLabel = () => {
+    if (disabled) return
+    const created = createFocusLabel()
+    const next = saveFocusLabels([...getFocusLabels(), created])
+    setLabels(next)
+    onChange(created.id)
+  }
 
   return (
     <div className={cn('w-full', className)}>
@@ -82,6 +91,19 @@ export function FocusLabelPicker({
             </button>
           )
         })}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={addLabel}
+          aria-label="Add label"
+          title="Add label"
+          className={cn(
+            'inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-zinc-700 text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200',
+            disabled && 'cursor-not-allowed opacity-50',
+          )}
+        >
+          <Plus size={14} strokeWidth={2.25} />
+        </button>
       </div>
     </div>
   )

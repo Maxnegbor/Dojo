@@ -67,7 +67,7 @@ export function ColorDotPicker({
           id={listId}
           role="listbox"
           aria-label={label}
-          className="absolute left-0 top-full z-50 mt-2 grid grid-cols-5 gap-1.5 rounded-xl border border-zinc-700/80 bg-zinc-950 p-2 shadow-xl shadow-black/40"
+          className="absolute left-0 top-full z-50 mt-2 grid w-max grid-cols-5 gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950 p-2 shadow-xl shadow-black/40"
         >
           {swatches.map((hex) => {
             const selected = normalized === hex.toLowerCase()
