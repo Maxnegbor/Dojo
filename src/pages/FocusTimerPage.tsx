@@ -52,8 +52,14 @@ function PauseIcon() {
 }
 
 export function FocusTimerPage() {
-  const { logFocusMinutes, setLiveFocusSeconds, liveFocusSeconds, focusImmersive, setFocusImmersive } =
-    useFocus()
+  const {
+    logFocusMinutes,
+    setLiveFocusSeconds,
+    liveFocusSeconds,
+    setTimerTabSeconds,
+    focusImmersive,
+    setFocusImmersive,
+  } = useFocus()
   const { userId } = useAuth()
   const { settings: userPrefs, formatTime } = useSettings()
   const [settings, setSettings] = useState<FocusTimerSettings>(getFocusSettings)
@@ -259,6 +265,20 @@ export function FocusTimerPage() {
 
     return () => clearInterval(id)
   }, [running, phase, advancePhase])
+
+  useEffect(() => {
+    if (running && phase !== 'done') {
+      setTimerTabSeconds(remaining)
+    } else {
+      setTimerTabSeconds(null)
+    }
+  }, [running, remaining, phase, setTimerTabSeconds])
+
+  useEffect(() => {
+    return () => {
+      setTimerTabSeconds(null)
+    }
+  }, [setTimerTabSeconds])
 
   const endFocus = async () => {
     if (phase !== 'focus') return
