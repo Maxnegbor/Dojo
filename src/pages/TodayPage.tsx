@@ -8,6 +8,7 @@ import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { NotesAndReminders } from '@/components/today/NotesAndReminders'
+import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
 import { DailyLogForm, getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
 import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
@@ -1089,6 +1090,9 @@ export function TodayPage() {
                 onUpdate={updateReminder}
                 onRemove={removeReminder}
               />
+            </div>
+            <div className="min-w-0">
+              <TodoistTasksCard viewDate={viewDate} />
             </div>
           </div>
         </aside>

@@ -22,7 +22,6 @@ import { getFocusSettings, saveFocusSettings } from '@/lib/focusStore'
 import {
   getBreakMinutesAfterFocus,
   isLongBreakAfterFocus,
-  remainingFocusMinutes,
   remainingSessionSeconds,
   totalFocusMinutes,
   totalSessionSeconds,
@@ -155,10 +154,8 @@ export function FocusTimerPage() {
 
   const sessionFocusMinutes = useMemo(() => {
     if (phase === 'done') return 0
-    return sessionStarted
-      ? remainingFocusMinutes(settings, phase, cycle, remaining)
-      : totalFocusMinutes(settings)
-  }, [settings, phase, cycle, remaining, sessionStarted])
+    return totalFocusMinutes(settings)
+  }, [settings, phase])
 
   useEffect(() => {
     if (phase !== 'focus' || !sessionStarted) {

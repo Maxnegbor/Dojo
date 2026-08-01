@@ -64,8 +64,11 @@ export function FocusHourlyChart({
                 title={`${formatHour(bucket.hourStart)}: ${formatDuration(roundedMinutes)}`}
                 aria-label={`${formatHour(bucket.hourStart)}: ${formatDuration(roundedMinutes)}`}
               />
-              <span className="mt-1 w-full truncate text-center text-[9px] tabular-nums text-zinc-600">
-                {formatHour(bucket.hourStart)}
+              <span className="mt-1 w-full text-center text-[9px] tabular-nums text-zinc-600">
+                {(() => {
+                  const hour = bucket.hourStart.getHours() % 12
+                  return hour === 0 ? 12 : hour
+                })()}
               </span>
             </div>
           )

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useLayoutEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Database, LogOut, RotateCcw, Trash2 } from 'lucide-react'
 import { PulseConfigureModal } from '@/components/pulse/PulseConfigureModal'
 import { AccentPicker } from '@/components/settings/AccentPicker'
@@ -19,6 +20,7 @@ import { ScheduleColorsEditor } from '@/components/settings/ScheduleColorsEditor
 import { ScheduleTemplatesEditor } from '@/components/settings/ScheduleTemplatesEditor'
 import { ExerciseWeekPlanEditor } from '@/components/settings/ExerciseWeekPlanEditor'
 import { FocusLabelsEditor } from '@/components/settings/FocusLabelsEditor'
+import { TodoistIntegrationEditor } from '@/components/settings/TodoistIntegrationEditor'
 import { WorkoutSubcategoriesEditor } from '@/components/settings/WorkoutSubcategoriesEditor'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -52,11 +54,13 @@ type SettingsSectionId =
   | 'pulse'
   | 'routines'
   | 'notifications'
+  | 'integrations'
   | 'data'
   | 'developer'
 
 export function SettingsPage() {
   const { email, signOut, userId, deleteAccount } = useAuth()
+  const location = useLocation()
   const { settings, updateSettings, resetSettings } = useSettings()
   const { config: sleepMetricsConfig } = useSleepMetricsConfig()
   const { goalKeys: morningLogGoalKeys, saveGoalKeys: saveMorningLogGoalKeys } = useMorningLogGoalKeys()
@@ -80,12 +84,22 @@ export function SettingsPage() {
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [confirmSampleData, setConfirmSampleData] = useState(false)
   const [sampleSummary, setSampleSummary] = useState<string | null>(null)
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>('account')
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(() => {
+    const fromState = (location.state as { settingsSection?: SettingsSectionId } | null)
+      ?.settingsSection
+    return fromState ?? 'account'
+  })
   const [morningLogPickerOpen, setMorningLogPickerOpen] = useState(false)
   const [shutdownLogPickerOpen, setShutdownLogPickerOpen] = useState(false)
   const [focusTimerSettings, setFocusTimerSettings] = useState(getFocusSettings)
   const settingsLayoutRef = useRef<HTMLDivElement>(null)
   const mainScrollTopRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const fromState = (location.state as { settingsSection?: SettingsSectionId } | null)
+      ?.settingsSection
+    if (fromState) setActiveSection(fromState)
+  }, [location.state])
 
   useLayoutEffect(() => {
     const layout = settingsLayoutRef.current
@@ -126,6 +140,7 @@ export function SettingsPage() {
     items.push(
       { id: 'routines', label: 'Routines' },
       { id: 'notifications', label: 'Notifications' },
+      { id: 'integrations', label: 'Integrations' },
       { id: 'data', label: 'Data' },
     )
     if (settings.devMode) {
@@ -758,6 +773,12 @@ export function SettingsPage() {
     </Card>
   )
 
+  const renderIntegrations = () => (
+    <Card>
+      <TodoistIntegrationEditor onSaved={flashSaved} />
+    </Card>
+  )
+
   const renderData = () => (
     <div className="space-y-4">
       {!isSupabaseConfigured && (
@@ -931,6 +952,8 @@ export function SettingsPage() {
         return renderRoutines()
       case 'notifications':
         return renderNotifications()
+      case 'integrations':
+        return renderIntegrations()
       case 'data':
         return renderData()
       case 'developer':
