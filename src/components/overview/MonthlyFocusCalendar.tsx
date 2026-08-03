@@ -152,7 +152,7 @@ export function MonthlyFocusCalendar({ logs, viewMonth, compact = false }: Month
             </p>
           </div>
           <div className="rounded-lg bg-[var(--accent-950)] px-2 py-2.5 text-center">
-            <p className="text-[10px] text-zinc-500">Total Focus</p>
+            <p className="text-[10px] text-zinc-500">Month total</p>
             <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--accent-300)]">
               {monthStats.totalMinutes > 0 ? formatDuration(monthStats.totalMinutes) : '—'}
             </p>

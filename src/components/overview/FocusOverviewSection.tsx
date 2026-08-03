@@ -9,7 +9,7 @@ import {
 } from '@/lib/focusScores'
 import { getFocusSettings } from '@/lib/focusStore'
 import type { FocusLabelPeriodStat, OverviewPeriod } from '@/lib/overviewPeriods'
-import { cn, formatDuration } from '@/lib/utils'
+import { cn, formatDuration, getWeekDates } from '@/lib/utils'
 import type { DailyLog, Goal, Workout } from '@/types'
 
 interface FocusOverviewSectionProps {
@@ -60,12 +60,11 @@ function FocusLabelBreakdown({
           return (
             <li key={entry.id} className="space-y-1">
               <div className="flex items-center justify-between gap-2 text-[11px]">
-                <span className="inline-flex min-w-0 items-center gap-1.5 text-zinc-200">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: entry.color }}
-                  />
-                  <span className="truncate">{entry.label}</span>
+                <span
+                  className="min-w-0 truncate font-medium"
+                  style={{ color: entry.color }}
+                >
+                  {entry.label}
                 </span>
                 <span className="shrink-0 tabular-nums text-zinc-400">
                   {formatDuration(entry.minutes)}
@@ -99,10 +98,10 @@ export function FocusOverviewSection({
   allLogs,
   asOf,
   isCurrentPeriod,
-  weekStartsOn: _weekStartsOn,
+  weekStartsOn,
   goals: _goals,
   log: _log,
-  weekLogs: _weekLogs,
+  weekLogs,
   weekWorkouts: _weekWorkouts,
   date: _date,
   rangeStart,
@@ -112,9 +111,9 @@ export function FocusOverviewSection({
   activeDays,
   loggingRate,
   activeFocusDays,
-  bestDay,
+  bestDay: _bestDay,
   pctVsPrevious,
-  dailyAveragePctVsPrevious,
+  dailyAveragePctVsPrevious: _dailyAveragePctVsPrevious,
   previousLabel,
   labelStats = [],
   monthlyFocus = [],
@@ -157,6 +156,18 @@ export function FocusOverviewSection({
   const scoreLabel =
     avgFocusScore != null ? `${formatFocusScore(avgFocusScore)}/10` : '—'
 
+  const logsByDate = new Map<string, number>()
+  for (const log of allLogs) {
+    logsByDate.set(log.date, log.focus_minutes ?? 0)
+  }
+  for (const log of weekLogs) {
+    logsByDate.set(log.date, log.focus_minutes ?? 0)
+  }
+  const weekDayBuckets = getWeekDates(asOf, weekStartsOn).map((date) => ({
+    date,
+    minutes: logsByDate.get(date) ?? 0,
+  }))
+
   return (
     <Card className={cn('flex w-full max-w-md flex-col p-3 sm:max-w-lg sm:p-4')}>
       <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
@@ -165,9 +176,9 @@ export function FocusOverviewSection({
       {period === 'week' && (
         <WeeklyFocusOverview
           totalMinutes={totalMinutes}
-          dailyAverage={dailyAverage}
-          dailyAveragePctVsPrevious={dailyAveragePctVsPrevious}
+          pctVsPrevious={pctVsPrevious}
           previousLabel={previousLabel}
+          weekDays={weekDayBuckets}
           avgFocusScoreLabel={showFocusScore ? scoreLabel : undefined}
         />
       )}
@@ -177,10 +188,7 @@ export function FocusOverviewSection({
           asOf={asOf}
           totalMinutes={totalMinutes}
           dailyAverage={dailyAverage}
-          activeDays={activeDays}
-          loggingRate={loggingRate}
           activeFocusDays={activeFocusDays}
-          bestDay={bestDay}
           pctVsPrevious={pctVsPrevious}
           previousLabel={previousLabel}
           avgFocusScoreLabel={showFocusScore ? scoreLabel : undefined}

@@ -224,10 +224,10 @@ input[type="number"] {
 }
 
 .metric-history-cell-expand {
-  flex: 0 0 42%;
-  width: 42%;
-  min-width: 8.75rem;
-  max-width: 48%;
+  flex: 0 0 34%;
+  width: 34%;
+  min-width: 9.5rem;
+  max-width: 40%;
   transform-origin: right center;
   animation: metric-history-cell-open 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -251,10 +251,10 @@ input[type="number"] {
 
 @media (min-width: 640px) {
   .metric-history-cell-expand {
-    flex-basis: 36%;
-    width: 36%;
-    min-width: 10rem;
-    max-width: 42%;
+    flex-basis: 28%;
+    width: 28%;
+    min-width: 11rem;
+    max-width: 34%;
   }
 }
 

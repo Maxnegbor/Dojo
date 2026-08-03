@@ -11,7 +11,6 @@ import { getMorningLogHabitTypes, habitMorningDay, getHabitTypes } from '@/lib/h
 import { getEnabledMetricsSections, getVisibleGoalCategories } from '@/lib/metricsSections'
 import { resolveGoalCategoryId } from '@/lib/goalCategories'
 import {
-  getAllSleepMetricDefinitions,
   getEnabledSleepMetrics,
   getSleepMetricValue,
   isMorningSleepLogComplete,
@@ -197,18 +196,75 @@ export function saveMorningLogSleepFieldIds(ids: string[]) {
   saveStringList(SLEEP_STORAGE_KEY, ids, MORNING_LOG_SLEEP_CHANGED)
 }
 
-export function getMorningLogSleepMetrics(config: SleepMetricsConfig): SleepMetricDefinition[] {
-  const ids = new Set(getMorningLogSleepFieldIds())
-  if (ids.size === 0) return []
+/** Sleep fields assigned to morning log that are still enabled on Metrics. */
+export function getEffectiveMorningLogSleepFieldIds(config: SleepMetricsConfig): string[] {
+  if (!getEnabledMetricsSections().includes('sleep')) return []
+  const enabled = new Set(
+    getEnabledSleepMetrics(config)
+      .map((metric) => metric.id)
+      .filter((id) => id !== 'in_bed'),
+  )
+  return getMorningLogSleepFieldIds().filter((id) => enabled.has(id))
+}
 
-  const byId = new Map(getAllSleepMetricDefinitions(config).map((metric) => [metric.id, metric]))
-  return [...ids]
+export function getMorningLogSleepMetrics(config: SleepMetricsConfig): SleepMetricDefinition[] {
+  const ids = getEffectiveMorningLogSleepFieldIds(config)
+  if (ids.length === 0) return []
+
+  const byId = new Map(getEnabledSleepMetrics(config).map((metric) => [metric.id, metric]))
+  return ids
     .map((id) => byId.get(id))
     .filter((metric): metric is SleepMetricDefinition => metric != null)
 }
 
 export function getMorningLogSleepConfig(config: SleepMetricsConfig): SleepMetricsConfig {
-  return { ...config, enabledIds: getMorningLogSleepFieldIds() }
+  return { ...config, enabledIds: getEffectiveMorningLogSleepFieldIds(config) }
+}
+
+/** Drop morning-log sleep/goal assignments that no longer exist on Metrics. */
+export function pruneMorningLogAssignments(goals: Goal[], sleepConfig: SleepMetricsConfig) {
+  const effectiveSleep = getEffectiveMorningLogSleepFieldIds(sleepConfig)
+  const storedSleep = getMorningLogSleepFieldIds()
+  if (
+    effectiveSleep.length !== storedSleep.length ||
+    effectiveSleep.some((id, index) => id !== storedSleep[index])
+  ) {
+    saveMorningLogSleepFieldIds(effectiveSleep)
+  }
+
+  const validKeys = new Set(
+    getTrackedMorningLogItems(goals, sleepConfig)
+      .map((item) => item.metricKey)
+      .filter((key): key is MetricKey => key != null),
+  )
+  for (const candidate of getMorningLogMetricCandidates(goals)) {
+    validKeys.add(candidate.key)
+  }
+
+  const storedGoals = getMorningLogGoalKeys()
+  const nextGoals = storedGoals.filter((key) => validKeys.has(key))
+  if (
+    nextGoals.length !== storedGoals.length ||
+    nextGoals.some((key, index) => key !== storedGoals[index])
+  ) {
+    saveMorningLogGoalKeys(nextGoals)
+  }
+
+  const storedYesterday = getMorningLogYesterdayKeys()
+  const nextYesterday = storedYesterday.filter((key) => validKeys.has(key))
+  if (
+    nextYesterday.length !== storedYesterday.length ||
+    nextYesterday.some((key, index) => key !== storedYesterday[index])
+  ) {
+    saveMorningLogYesterdayKeys(nextYesterday)
+  }
+}
+
+export function removeSleepFieldFromMorningLog(fieldId: string) {
+  const next = getMorningLogSleepFieldIds().filter((id) => id !== fieldId)
+  if (next.length !== getMorningLogSleepFieldIds().length) {
+    saveMorningLogSleepFieldIds(next)
+  }
 }
 
 export function getTrackedMorningLogItems(
@@ -327,7 +383,7 @@ export function getConfiguredMorningLogItems(
   const configured: MorningLogItem[] = []
   const seen = new Set<string>()
 
-  for (const sleepFieldId of getMorningLogSleepFieldIds()) {
+  for (const sleepFieldId of getEffectiveMorningLogSleepFieldIds(sleepConfig)) {
     const item = trackedById.get(`sleep:${sleepFieldId}`)
     if (item && !seen.has(item.id)) {
       configured.push(item)
@@ -579,8 +635,9 @@ export function getEnabledMorningLogGoalsForYesterday(goals: Goal[]): Goal[] {
 }
 
 export function hasMorningLogFieldsConfigured(goals: Goal[] = []): boolean {
+  const sleepConfig = getSleepMetricsConfigFromStorage()
   return (
-    getMorningLogSleepFieldIds().length > 0 ||
+    getEffectiveMorningLogSleepFieldIds(sleepConfig).length > 0 ||
     getMorningLogGoalKeys().length > 0 ||
     getMorningAskGoals(goals).length > 0 ||
     getMorningLogHabitTypes().length > 0 ||

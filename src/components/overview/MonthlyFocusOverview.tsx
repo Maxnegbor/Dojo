@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { OverviewComparison } from '@/components/overview/OverviewStatCard'
 import { MonthlyFocusCalendar } from '@/components/overview/MonthlyFocusCalendar'
-import { formatPeriodComparison, formatShortDate } from '@/lib/overviewPeriods'
+import { formatPeriodComparison } from '@/lib/overviewPeriods'
 import { cn, formatDuration } from '@/lib/utils'
 import type { DailyLog } from '@/types'
 
@@ -10,10 +10,7 @@ interface MonthlyFocusOverviewProps {
   asOf: Date
   totalMinutes: number
   dailyAverage: number
-  activeDays: number
-  loggingRate: number
   activeFocusDays: number
-  bestDay: { date: string; minutes: number } | null
   pctVsPrevious: number | null
   previousLabel: string
   avgFocusScoreLabel?: string
@@ -51,10 +48,7 @@ export function MonthlyFocusOverview({
   asOf,
   totalMinutes,
   dailyAverage,
-  activeDays,
-  loggingRate,
   activeFocusDays,
-  bestDay,
   pctVsPrevious,
   previousLabel,
   avgFocusScoreLabel,
@@ -67,7 +61,7 @@ export function MonthlyFocusOverview({
 
   const stats = [
     {
-      label: 'Total focus',
+      label: 'Month total',
       value: formatDuration(totalMinutes),
       detail: totalMinutes > 0 ? <OverviewComparison {...focusComparison} /> : 'No focus logged',
       accent: totalMinutes > 0,
@@ -76,11 +70,7 @@ export function MonthlyFocusOverview({
       label: 'Daily average',
       value: formatDuration(Math.round(dailyAverage)),
       detail: `${activeFocusDays} active days`,
-    },
-    {
-      label: 'Best day',
-      value: bestDay ? formatDuration(bestDay.minutes) : '—',
-      detail: bestDay ? formatShortDate(bestDay.date) : 'No best day yet',
+      accent: dailyAverage > 0,
     },
     ...(avgFocusScoreLabel
       ? [
@@ -91,19 +81,18 @@ export function MonthlyFocusOverview({
             accent: avgFocusScoreLabel !== '—',
           },
         ]
-      : [
-          {
-            label: 'Active days',
-            value: String(activeDays),
-            detail: `${Math.round(loggingRate)}% of month logged`,
-          },
-        ]),
+      : []),
   ]
 
   return (
     <div className="space-y-2">
       <div className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/40">
-        <div className="grid grid-cols-2 divide-x divide-y divide-zinc-800/60">
+        <div
+          className={cn(
+            'grid divide-x divide-zinc-800/60',
+            stats.length === 3 ? 'grid-cols-3' : 'grid-cols-2',
+          )}
+        >
           {stats.map((stat) => (
             <StatCell key={stat.label} {...stat} />
           ))}

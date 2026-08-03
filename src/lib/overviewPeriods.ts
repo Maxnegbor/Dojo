@@ -336,10 +336,16 @@ function computeFocusStats(
   let pctVsPrevious: number | null = null
   let dailyAveragePctVsPrevious: number | null = null
   if (prevRange) {
-    const prevInRange = logsInRange(logs, prevRange.start, prevRange.end)
-    const prevTotal = prevInRange.reduce((s, l) => s + (l.focus_minutes ?? 0), 0)
+    // Compare the same number of elapsed days so a partial current week/month
+    // isn't measured against a finished previous period.
+    const elapsedDays = Math.max(1, range.dates.length)
+    const comparablePrevDates = prevRange.dates.slice(0, elapsedDays)
+    const prevDateSet = new Set(comparablePrevDates)
+    const prevTotal = logs
+      .filter((log) => prevDateSet.has(log.date))
+      .reduce((sum, log) => sum + (log.focus_minutes ?? 0), 0)
     pctVsPrevious = pctChange(total, prevTotal)
-    const prevDailyAverage = prevTotal / Math.max(1, prevRange.dates.length)
+    const prevDailyAverage = prevTotal / comparablePrevDates.length
     dailyAveragePctVsPrevious = pctChange(dailyAverage, prevDailyAverage)
   }
 

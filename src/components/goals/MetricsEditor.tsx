@@ -87,9 +87,19 @@ import { formatWeightGoalRange, formatWeightGoalDateRange, getActiveWeightGoal, 
 import {
   getMorningLogGoalKeys,
   getMorningLogYesterdayKeys,
+  pruneMorningLogAssignments,
+  removeSleepFieldFromMorningLog,
   saveMorningLogGoalKeys,
+  saveMorningLogSleepFieldIds,
   saveMorningLogYesterdayKeys,
 } from '@/lib/morningLogConfig'
+import {
+  pruneShutdownLogAssignments,
+  removeSleepFieldFromShutdownLog,
+  getShutdownLogGoalKeys,
+  saveShutdownLogGoalKeys,
+  saveShutdownLogSleepFieldIds,
+} from '@/lib/shutdownLogConfig'
 import { useSettings } from '@/context/SettingsContext'
 import {
   DEFAULT_GOAL_CATEGORY_ID,
@@ -732,6 +742,12 @@ export function MetricsEditor({
 }: MetricsEditorProps) {
   const { settings, updateSettings } = useSettings()
   const { config: sleepMetricsConfig, saveConfig: saveSleepMetricsConfig } = useSleepMetricsConfig()
+
+  useEffect(() => {
+    pruneMorningLogAssignments(goals, sleepMetricsConfig)
+    pruneShutdownLogAssignments(goals, sleepMetricsConfig)
+  }, [goals, sleepMetricsConfig])
+
   const migratedSleepTargetRef = useRef(false)
   const showWorkouts = settings.showWorkoutMetrics
   const today = formatDate(new Date())
@@ -1313,6 +1329,11 @@ export function MetricsEditor({
       deleteFocusGoal(goal)
     } else {
       onDeleteGoal(goal)
+      saveMorningLogGoalKeys(getMorningLogGoalKeys().filter((key) => key !== goal.metric_key))
+      saveMorningLogYesterdayKeys(
+        getMorningLogYesterdayKeys().filter((key) => key !== goal.metric_key),
+      )
+      saveShutdownLogGoalKeys(getShutdownLogGoalKeys().filter((key) => key !== goal.metric_key))
       setPendingDelete(null)
     }
   }
@@ -1347,6 +1368,14 @@ export function MetricsEditor({
         break
       case 'sleep':
         if (activeSleepGoal) deleteGoalInSection(activeSleepGoal)
+        saveSleepMetricsConfig({
+          ...sleepMetricsConfig,
+          enabledIds: [],
+          customMetrics: [],
+          targets: {},
+        })
+        saveMorningLogSleepFieldIds([])
+        saveShutdownLogSleepFieldIds([])
         break
       case 'focus':
         if (activeFocusGoal) deleteFocusGoal(activeFocusGoal)
@@ -2631,6 +2660,8 @@ export function MetricsEditor({
                 } else {
                   saveSleepMetricsConfig(toggleSleepMetric(sleepMetricsConfig, metric.id, false))
                 }
+                removeSleepFieldFromMorningLog(metric.id)
+                removeSleepFieldFromShutdownLog(metric.id)
                 if (metric.id === 'sleep_duration') syncSleepDurationGoal(null)
                 setEditingSleepMetricId(null)
               }}
@@ -2678,6 +2709,8 @@ export function MetricsEditor({
                 } else {
                   saveSleepMetricsConfig(toggleSleepMetric(sleepMetricsConfig, metric.id, false))
                 }
+                removeSleepFieldFromMorningLog(metric.id)
+                removeSleepFieldFromShutdownLog(metric.id)
                 if (metric.id === 'sleep_duration') syncSleepDurationGoal(null)
               }}
               className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400"

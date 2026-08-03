@@ -67,6 +67,15 @@ export function getShutdownLogSleepFieldIds(): string[] {
   return readStringList(SLEEP_STORAGE_KEY)
 }
 
+export function getEffectiveShutdownLogSleepFieldIds(sleepConfig: SleepMetricsConfig): string[] {
+  const tracked = new Set(
+    getTrackedMorningLogItems([], sleepConfig)
+      .filter((item) => item.kind === 'sleep' && item.sleepFieldId)
+      .map((item) => item.sleepFieldId!),
+  )
+  return getShutdownLogSleepFieldIds().filter((id) => tracked.has(id))
+}
+
 export function saveShutdownLogGoalKeys(keys: MetricKey[]) {
   storageSetItem(GOALS_STORAGE_KEY, JSON.stringify(keys))
   window.dispatchEvent(new Event(SHUTDOWN_LOG_GOALS_CHANGED))
@@ -75,6 +84,38 @@ export function saveShutdownLogGoalKeys(keys: MetricKey[]) {
 export function saveShutdownLogSleepFieldIds(ids: string[]) {
   storageSetItem(SLEEP_STORAGE_KEY, JSON.stringify(ids))
   window.dispatchEvent(new Event(SHUTDOWN_LOG_SLEEP_CHANGED))
+}
+
+export function removeSleepFieldFromShutdownLog(fieldId: string) {
+  const next = getShutdownLogSleepFieldIds().filter((id) => id !== fieldId)
+  if (next.length !== getShutdownLogSleepFieldIds().length) {
+    saveShutdownLogSleepFieldIds(next)
+  }
+}
+
+export function pruneShutdownLogAssignments(goals: Goal[], sleepConfig: SleepMetricsConfig) {
+  const effectiveSleep = getEffectiveShutdownLogSleepFieldIds(sleepConfig)
+  const storedSleep = getShutdownLogSleepFieldIds()
+  if (
+    effectiveSleep.length !== storedSleep.length ||
+    effectiveSleep.some((id, index) => id !== storedSleep[index])
+  ) {
+    saveShutdownLogSleepFieldIds(effectiveSleep)
+  }
+
+  const validKeys = new Set(
+    getTrackedMorningLogItems(goals, sleepConfig)
+      .map((item) => item.metricKey)
+      .filter((key): key is MetricKey => key != null),
+  )
+  const storedGoals = getShutdownLogGoalKeys()
+  const nextGoals = storedGoals.filter((key) => validKeys.has(key))
+  if (
+    nextGoals.length !== storedGoals.length ||
+    nextGoals.some((key, index) => key !== storedGoals[index])
+  ) {
+    saveShutdownLogGoalKeys(nextGoals)
+  }
 }
 
 export function getConfiguredShutdownLogItems(
@@ -86,7 +127,7 @@ export function getConfiguredShutdownLogItems(
   const configured: MorningLogItem[] = []
   const seen = new Set<string>()
 
-  for (const sleepFieldId of getShutdownLogSleepFieldIds()) {
+  for (const sleepFieldId of getEffectiveShutdownLogSleepFieldIds(sleepConfig)) {
     const item = trackedById.get(`sleep:${sleepFieldId}`)
     if (item && !seen.has(item.id)) {
       configured.push(item)

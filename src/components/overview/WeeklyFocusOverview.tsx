@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react'
+import { FocusWeekChart, type FocusWeekDayBucket } from '@/components/overview/FocusWeekChart'
 import { OverviewComparison } from '@/components/overview/OverviewStatCard'
 import { formatPeriodComparison } from '@/lib/overviewPeriods'
 import { cn, formatDuration } from '@/lib/utils'
 
 interface WeeklyFocusOverviewProps {
   totalMinutes: number
-  dailyAverage: number
-  dailyAveragePctVsPrevious: number | null
+  pctVsPrevious: number | null
   previousLabel: string
+  weekDays: FocusWeekDayBucket[]
   avgFocusScoreLabel?: string
 }
 
@@ -40,35 +41,30 @@ function StatCell({
 
 export function WeeklyFocusOverview({
   totalMinutes,
-  dailyAverage,
-  dailyAveragePctVsPrevious,
+  pctVsPrevious,
   previousLabel,
+  weekDays,
   avgFocusScoreLabel,
 }: WeeklyFocusOverviewProps) {
-  const avgComparison = formatPeriodComparison(
-    dailyAveragePctVsPrevious,
+  const totalComparison = formatPeriodComparison(
+    pctVsPrevious,
     previousLabel,
-    dailyAverage > 0,
+    totalMinutes > 0,
   )
 
   const stats = [
     {
       label: 'Week total',
       value: formatDuration(totalMinutes),
-      accent: totalMinutes > 0,
-    },
-    {
-      label: 'Daily average',
-      value: formatDuration(Math.round(dailyAverage)),
       detail:
-        dailyAverage > 0 ? (
+        totalMinutes > 0 ? (
           <span className="text-[9px]">
-            <OverviewComparison {...avgComparison} />
+            <OverviewComparison {...totalComparison} />
           </span>
         ) : (
           'No focus logged'
         ),
-      accent: dailyAverage > 0,
+      accent: totalMinutes > 0,
     },
     ...(avgFocusScoreLabel
       ? [
@@ -83,17 +79,20 @@ export function WeeklyFocusOverview({
   ]
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/40">
-      <div
-        className={cn(
-          'grid divide-x divide-zinc-800/60',
-          avgFocusScoreLabel ? 'grid-cols-3' : 'grid-cols-2',
-        )}
-      >
-        {stats.map((stat) => (
-          <StatCell key={stat.label} {...stat} />
-        ))}
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/40">
+        <div
+          className={cn(
+            'grid divide-x divide-zinc-800/60',
+            avgFocusScoreLabel ? 'grid-cols-2' : 'grid-cols-1',
+          )}
+        >
+          {stats.map((stat) => (
+            <StatCell key={stat.label} {...stat} />
+          ))}
+        </div>
       </div>
+      <FocusWeekChart days={weekDays} />
     </div>
   )
 }

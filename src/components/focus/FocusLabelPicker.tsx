@@ -63,22 +63,18 @@ export function FocusLabelPicker({
               disabled={disabled}
               onClick={() => onChange(label.id)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
                 active
                   ? 'border-transparent text-zinc-950'
-                  : 'border-zinc-800 bg-zinc-950/60 text-zinc-300 hover:border-zinc-700',
+                  : 'border-zinc-800 bg-zinc-950/60 hover:border-zinc-700',
                 disabled && 'cursor-not-allowed opacity-50',
               )}
               style={
                 active
                   ? { backgroundColor: label.color, borderColor: label.color }
-                  : undefined
+                  : { color: label.color }
               }
             >
-              <span
-                className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/20"
-                style={{ backgroundColor: label.color }}
-              />
               {label.label}
             </button>
           )

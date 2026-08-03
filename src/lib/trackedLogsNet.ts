@@ -4,11 +4,11 @@
  */
 import {
   getConfiguredMorningLogItems,
-  getMorningLogSleepFieldIds,
+  getEffectiveMorningLogSleepFieldIds,
 } from '@/lib/morningLogConfig'
 import {
   getConfiguredShutdownLogItems,
-  getShutdownLogSleepFieldIds,
+  getEffectiveShutdownLogSleepFieldIds,
 } from '@/lib/shutdownLogConfig'
 import {
   getDailyLogGoals,
@@ -65,8 +65,8 @@ export function getTrackedDailySleepMetrics(
 ): SleepMetricDefinition[] {
   const config = sleepConfigOrDefault(sleepConfig)
   const ids = new Set([
-    ...getMorningLogSleepFieldIds(),
-    ...getShutdownLogSleepFieldIds(),
+    ...getEffectiveMorningLogSleepFieldIds(config),
+    ...getEffectiveShutdownLogSleepFieldIds(config),
   ])
   if (ids.size === 0) return []
 
