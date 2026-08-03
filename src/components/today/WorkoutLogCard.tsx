@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -9,6 +9,7 @@ import { getWeeklyWorkoutTotal } from '@/lib/metrics'
 import {
   DEFAULT_WORKOUT_UNIT,
   getHomeLogWorkoutTypes,
+  WORKOUT_TYPES_CHANGED,
   workoutMetricKey,
 } from '@/lib/workoutTypes'
 import type { Goal, Workout, WorkoutCategory } from '@/types'
@@ -27,32 +28,56 @@ export function WorkoutLogCard({
   date,
   goals,
   weekWorkouts,
+  workouts,
   disabled = false,
   onAddWorkout,
 }: WorkoutLogCardProps) {
   const { settings } = useSettings()
-  const workoutTypes = useMemo(() => getHomeLogWorkoutTypes(), [])
+  const [workoutTypes, setWorkoutTypes] = useState(() => getHomeLogWorkoutTypes())
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [savingCategory, setSavingCategory] = useState<string | null>(null)
+
+  useEffect(() => {
+    const sync = () => setWorkoutTypes(getHomeLogWorkoutTypes())
+    window.addEventListener(WORKOUT_TYPES_CHANGED, sync)
+    window.addEventListener('user-storage-ready', sync)
+    return () => {
+      window.removeEventListener(WORKOUT_TYPES_CHANGED, sync)
+      window.removeEventListener('user-storage-ready', sync)
+    }
+  }, [])
 
   const weekDates = useMemo(
     () => getWeekDates(parseISO(`${date}T12:00:00`), settings.weekStartsOn),
     [date, settings.weekStartsOn],
   )
 
+  /** Union week-scoped + day workouts so progress updates right after logging. */
+  const workoutsForWeek = useMemo(() => {
+    const weekSet = new Set(weekDates)
+    const byId = new Map<string, Workout>()
+    for (const workout of [...weekWorkouts, ...workouts]) {
+      if (!weekSet.has(workout.date)) continue
+      byId.set(workout.id, workout)
+    }
+    return [...byId.values()]
+  }, [weekWorkouts, workouts, weekDates])
+
   const weeklyGoalByType = useMemo(() => {
     const map = new Map<string, { logged: number; target: number; unit: string }>()
     for (const type of workoutTypes) {
       const goal = getActiveGoalByMetricKey(goals, workoutMetricKey(type.id))
       if (!goal || !hasTarget(goal)) continue
+      const target = Math.round(goal.target_value ?? 0)
+      if (target <= 0) continue
       map.set(type.id, {
-        logged: getWeeklyWorkoutTotal(type.id, weekWorkouts, weekDates),
-        target: Math.round(goal.target_value ?? 0),
+        logged: getWeeklyWorkoutTotal(type.id, workoutsForWeek, weekDates),
+        target,
         unit: goal.unit || type.unit || DEFAULT_WORKOUT_UNIT,
       })
     }
     return map
-  }, [workoutTypes, goals, weekWorkouts, weekDates])
+  }, [workoutTypes, goals, workoutsForWeek, weekDates])
 
   if (!settings.showWorkoutMetrics || workoutTypes.length === 0) {
     return null
@@ -92,14 +117,20 @@ export function WorkoutLogCard({
               className={cn(
                 'relative overflow-hidden rounded-lg border px-2.5 py-2',
                 weeklyComplete
-                  ? 'border-[var(--accent-500)]/55 bg-zinc-950/40 ring-1 ring-[var(--accent-ring)]'
-                  : 'border-zinc-800/80 bg-zinc-950/40',
+                  ? 'border-[var(--accent-500)]/60 ring-1 ring-[var(--accent-ring)]'
+                  : 'border-zinc-800/80',
               )}
+              style={{ backgroundColor: 'rgb(9 9 11 / 0.55)' }}
             >
-              {hasWeeklyTarget && progressPct > 0 && (
+              {/* Weekly target progress — accent fills left → right behind content */}
+              {hasWeeklyTarget && (
                 <div
-                  className="pointer-events-none absolute inset-y-0 left-0 bg-[var(--accent-500)]/30 transition-[width] duration-300"
-                  style={{ width: `${progressPct}%` }}
+                  className="pointer-events-none absolute inset-0 origin-left transition-[width] duration-300 ease-out"
+                  style={{
+                    width: `${progressPct}%`,
+                    backgroundColor:
+                      'color-mix(in srgb, var(--accent-500) 42%, transparent)',
+                  }}
                   role="progressbar"
                   aria-valuenow={Math.round(progressPct)}
                   aria-valuemin={0}
@@ -112,14 +143,14 @@ export function WorkoutLogCard({
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent-500)]" />
                   <div className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-zinc-200">
+                    <span className="block truncate text-sm font-medium text-zinc-100">
                       {type.label}
                     </span>
-                    {hasWeeklyTarget && (
-                      <span className="block text-[10px] tabular-nums text-zinc-400">
+                    {hasWeeklyTarget ? (
+                      <span className="block text-[10px] tabular-nums text-zinc-300/90">
                         {weeklyGoal.logged} / {weeklyGoal.target} {weeklyGoal.unit || unit}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -140,7 +171,7 @@ export function WorkoutLogCard({
                         if (e.key === 'Enter') void logWorkout(type.id)
                       }}
                       className={cn(
-                        'w-full rounded-lg border border-zinc-700/60 bg-zinc-900 py-1.5 pl-2 pr-7 text-sm text-zinc-100',
+                        'w-full rounded-lg border border-zinc-700/70 bg-zinc-950/90 py-1.5 pl-2 pr-7 text-sm text-zinc-100',
                         'placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)]',
                         'disabled:cursor-not-allowed disabled:opacity-60',
                         '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
@@ -156,7 +187,7 @@ export function WorkoutLogCard({
                     size="sm"
                     disabled={disabled || isSaving || !inputValue.trim()}
                     onClick={() => void logWorkout(type.id)}
-                    className="h-[34px] shrink-0 bg-zinc-900 px-2.5"
+                    className="h-[34px] shrink-0 border-zinc-700/70 bg-zinc-950/90 px-2.5"
                     aria-label={`Add ${type.label} ${unit}`}
                   >
                     <Plus size={14} />

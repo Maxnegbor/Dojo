@@ -7,12 +7,10 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
-import { OverviewPulseHistoryCard } from '@/components/overview/OverviewPulseHistoryCard'
 import { resolveGoalCategoryId } from '@/lib/goalCategories'
 import { getActiveGoals } from '@/lib/goals'
 import type { OverviewCategory, OverviewCategoryItem } from '@/lib/overviewCategories'
 import type { OverviewPeriod, OverviewPeriodStats } from '@/lib/overviewPeriods'
-import type { OverviewPulseHistory } from '@/lib/overviewPulse'
 import { formatDuration } from '@/lib/utils'
 import type { Goal } from '@/types'
 import { cn } from '@/lib/utils'
@@ -133,8 +131,6 @@ interface OverviewHomeProps {
   categories: OverviewCategoryItem[]
   stats: OverviewPeriodStats
   goals: Goal[]
-  pulseHistory: OverviewPulseHistory
-  today: string
   onOpenCategory: (category: OverviewCategory) => void
 }
 
@@ -143,16 +139,12 @@ export function OverviewHome({
   categories,
   stats,
   goals,
-  pulseHistory,
-  today,
   onOpenCategory,
 }: OverviewHomeProps) {
   const cards = buildAreaCards(categories, stats, goals, period)
 
   return (
     <div className="space-y-5">
-      <OverviewPulseHistoryCard period={period} history={pulseHistory} today={today} />
-
       {cards.length === 0 ? (
         <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">
           Add metrics categories on the Metrics page to see overview cards.

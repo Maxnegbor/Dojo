@@ -6,8 +6,6 @@ import { OverviewPeriodNav } from '@/components/overview/OverviewPeriodNav'
 import { OverviewPeriodTabs } from '@/components/overview/OverviewPeriodTabs'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth, useDailyLog } from '@/hooks/useData'
-import { usePulseConfig } from '@/hooks/usePulseConfig'
-import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { localStore } from '@/lib/localStore'
 import {
   getOverviewCategories,
@@ -19,12 +17,10 @@ import {
   computeOverviewPeriodStats,
   formatOverviewNavLabel,
   getPeriodRange,
-  getPreviousPeriodRange,
   isCurrentOverviewPeriod,
   overviewAsOfDate,
   overviewLoadRange,
 } from '@/lib/overviewPeriods'
-import { buildOverviewPulseHistory } from '@/lib/overviewPulse'
 import { seedDemoData } from '@/lib/seedDemoData'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { formatDate, getWeekDates } from '@/lib/utils'
@@ -47,8 +43,6 @@ export function OverviewPage() {
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const { userId } = useAuth()
   const { settings } = useSettings()
-  const { config: pulseConfig } = usePulseConfig()
-  const { config: sleepMetricsConfig } = useSleepMetricsConfig()
 
   useEffect(() => {
     const refresh = () => setSectionsRevision((n) => n + 1)
@@ -74,11 +68,6 @@ export function OverviewPage() {
 
   const range = useMemo(
     () => getPeriodRange(period, settings.weekStartsOn, asOf),
-    [period, settings.weekStartsOn, asOf],
-  )
-
-  const previousRange = useMemo(
-    () => getPreviousPeriodRange(period, settings.weekStartsOn, asOf),
     [period, settings.weekStartsOn, asOf],
   )
 
@@ -170,34 +159,6 @@ export function OverviewPage() {
     [period, logs, workouts, settings.weekStartsOn, asOf],
   )
 
-  const pulseHistory = useMemo(
-    () =>
-      buildOverviewPulseHistory(
-        period,
-        range,
-        previousRange,
-        logs,
-        goals,
-        workouts,
-        today,
-        log,
-        pulseConfig,
-        sleepMetricsConfig,
-      ),
-    [
-      period,
-      range,
-      previousRange,
-      logs,
-      goals,
-      workouts,
-      today,
-      log,
-      pulseConfig,
-      sleepMetricsConfig,
-    ],
-  )
-
   const detailLabel =
     overviewCategories.find((entry) => entry.id === detailCategory)?.label ?? 'Detail'
 
@@ -264,8 +225,6 @@ export function OverviewPage() {
           categories={overviewCategories}
           stats={stats}
           goals={goals}
-          pulseHistory={pulseHistory}
-          today={today}
           onOpenCategory={setDetailCategory}
         />
       )}
