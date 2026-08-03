@@ -209,7 +209,7 @@ export interface AppSettings {
   showFocusPage: boolean
   /** Show a clean read-only agenda of today’s schedule beside the Focus timer. */
   showFocusSchedule: boolean
-  /** Show Pulse in the sidebar and allow /pulse. */
+  /** @deprecated Pulse page removed from nav; kept for stored settings compatibility. */
   showPulsePage: boolean
   /** Checklist sections shown during weekly shutdown. */
   weeklyShutdownChecklist: WeeklyShutdownCheckGroup[]

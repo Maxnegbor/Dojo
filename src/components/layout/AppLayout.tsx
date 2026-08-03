@@ -1,6 +1,6 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Brain, FlaskConical, LayoutDashboard, Activity, Settings, Sparkles, Target } from 'lucide-react'
+import { Brain, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
 import { DojoLogo } from '@/components/ui/DojoLogo'
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
@@ -15,7 +15,6 @@ const NAV = [
   { to: '/focus', label: 'Focus', icon: Brain, setting: 'showFocusPage' as const },
   { to: '/goals', label: 'Metrics', icon: Target },
   { to: '/overview', label: 'Overview', icon: LayoutDashboard },
-  { to: '/pulse', label: 'Pulse', icon: Activity, setting: 'showPulsePage' as const },
 ]
 
 const SIDEBAR_ICON_SLOT = 'flex w-14 shrink-0 items-center justify-center'
@@ -216,14 +215,10 @@ export function AppLayout() {
 
   const navItems = NAV.filter((item) => {
     if (item.setting === 'showFocusPage') return settings.showFocusPage
-    if (item.setting === 'showPulsePage') return settings.showPulsePage
     return true
   })
 
   if (pathname === '/focus' && !settings.showFocusPage) {
-    return <Navigate to="/" replace />
-  }
-  if (pathname === '/pulse' && !settings.showPulsePage) {
     return <Navigate to="/" replace />
   }
 
@@ -240,16 +235,23 @@ export function AppLayout() {
           onPointerEnter={handleSidebarPointerEnter}
           onPointerLeave={handleSidebarPointerLeave}
         >
-        <div className="flex shrink-0 items-center border-b border-zinc-800/80 py-4">
+        <NavLink
+          to="/"
+          end
+          title="Home"
+          onClick={() => requestScheduleScrollToNow()}
+          className="flex shrink-0 items-center border-b border-zinc-800/80 py-4 transition-opacity hover:opacity-90"
+          aria-label="Go to Home"
+        >
           <div className={SIDEBAR_ICON_SLOT}>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-600)] text-white">
               <DojoLogo size={20} />
             </div>
           </div>
           <div className={sidebarHeaderLabelClass(sidebarExpanded)}>
-            <h1 className="text-sm font-bold tracking-tight">Dojo</h1>
+            <h1 className="text-sm font-bold tracking-tight text-zinc-100">Dojo</h1>
           </div>
-        </div>
+        </NavLink>
 
         <SidebarMainNav
           items={navItems}

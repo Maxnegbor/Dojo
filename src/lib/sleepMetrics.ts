@@ -649,7 +649,8 @@ export function formatSleepMetricDisplay(
 }
 
 /**
- * Average completion across enabled pulse sleep metrics.
+ * Equal-weight average across enabled pulse sleep metrics.
+ * Missing / unscorable metrics count as 0% so one full metric can’t fill the whole sleep slot.
  * @param legacySleepGoalTargetHours — fallback for sleep_duration / in_bed when config has no target
  */
 export function computeSleepPulseRate(
@@ -660,7 +661,7 @@ export function computeSleepPulseRate(
   const pulseMetrics = getPulseSleepMetrics(config)
   if (pulseMetrics.length === 0) return 0
 
-  const rates: number[] = []
+  let sum = 0
   for (const metric of pulseMetrics) {
     const value = getSleepMetricValue(log, metric)
     if (value == null) continue
@@ -676,9 +677,8 @@ export function computeSleepPulseRate(
     }
 
     const rate = metricRateForPulse(metric, value, target)
-    if (rate != null) rates.push(rate)
+    if (rate != null) sum += rate
   }
 
-  if (rates.length === 0) return 0
-  return Math.round(rates.reduce((s, r) => s + r, 0) / rates.length)
+  return Math.round((sum / pulseMetrics.length) * 10) / 10
 }

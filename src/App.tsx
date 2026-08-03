@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { LoginPage } from '@/components/auth/LoginPage'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -9,7 +9,6 @@ import { TodayPage } from '@/pages/TodayPage'
 import { FocusTimerPage } from '@/pages/FocusTimerPage'
 import { GoalsPage } from '@/pages/GoalsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
-import { PulsePage } from '@/pages/PulsePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 
@@ -28,7 +27,7 @@ export default function App() {
                   <Route path="focus" element={<FocusTimerPage />} />
                   <Route path="goals" element={<GoalsPage />} />
                   <Route path="overview" element={<OverviewPage />} />
-                  <Route path="pulse" element={<PulsePage />} />
+                  <Route path="pulse" element={<Navigate to="/overview" replace />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>
               </Route>

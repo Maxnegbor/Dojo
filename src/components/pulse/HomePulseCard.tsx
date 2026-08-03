@@ -202,8 +202,8 @@ export function HomePulseCard({
       </div>
 
       <NavLink
-        to="/pulse"
-        aria-label="Open Pulse"
+        to="/overview"
+        aria-label="Open Overview pulse history"
         className="absolute inset-0 z-10 rounded-full"
       />
 

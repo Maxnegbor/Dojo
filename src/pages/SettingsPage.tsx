@@ -355,15 +355,6 @@ export function SettingsPage() {
               </div>
             </>
           )}
-          <ToggleRow
-            label="Show Pulse page"
-            description="Pulse page in the sidebar"
-            checked={settings.showPulsePage}
-            onChange={(showPulsePage) => {
-              updateSettings({ showPulsePage })
-              flashSaved()
-            }}
-          />
         </SettingsSection>
       </Card>
     </div>
