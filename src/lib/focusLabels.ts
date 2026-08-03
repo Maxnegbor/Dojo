@@ -2,6 +2,8 @@ import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { generateId } from '@/lib/utils'
 
 const STORAGE_KEY = 'personal-os-focus-labels'
+/** Kept after delete so Overview can still name historical sessions. */
+const ARCHIVE_KEY = 'personal-os-focus-labels-archive'
 const LAST_LABEL_KEY = 'personal-os-focus-last-label'
 export const FOCUS_LABELS_CHANGED = 'personal-os-focus-labels-changed'
 
@@ -88,8 +90,68 @@ export function getFocusLabels(): FocusLabel[] {
   }
 }
 
+export function getArchivedFocusLabels(): FocusLabel[] {
+  try {
+    const raw = storageGetItem(ARCHIVE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as FocusLabel[]
+    if (!Array.isArray(parsed)) return []
+    return normalizeFocusLabels(parsed)
+  } catch {
+    return []
+  }
+}
+
+function saveArchivedFocusLabels(labels: FocusLabel[]) {
+  storageSetItem(ARCHIVE_KEY, JSON.stringify(normalizeFocusLabels(labels)))
+}
+
+/** Humanize a slug id when we have no archived name (e.g. deep_work → Deep work). */
+export function humanizeFocusLabelId(id: string): string {
+  const cleaned = id.replace(/_[a-z0-9]{6}$/i, '').replace(/_/g, ' ').trim()
+  if (!cleaned) return id
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+}
+
+function fallbackColorForId(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return FOCUS_LABEL_SWATCHES[hash % FOCUS_LABEL_SWATCHES.length] ?? FOCUS_LABEL_SWATCHES[0]
+}
+
+/** Active label, then archive, then a stable fallback from the id. */
+export function resolveFocusLabelMeta(id: string): FocusLabel {
+  const active = getFocusLabels().find((entry) => entry.id === id)
+  if (active) return active
+  const archived = getArchivedFocusLabels().find((entry) => entry.id === id)
+  if (archived) return archived
+  return {
+    id,
+    label: humanizeFocusLabelId(id),
+    color: fallbackColorForId(id),
+  }
+}
+
 export function saveFocusLabels(labels: FocusLabel[]): FocusLabel[] {
+  const previous = getFocusLabels()
   const next = normalizeFocusLabels(labels)
+  const nextIds = new Set(next.map((entry) => entry.id))
+
+  const removed = previous.filter((entry) => !nextIds.has(entry.id))
+  const archiveById = new Map(getArchivedFocusLabels().map((entry) => [entry.id, entry]))
+  let archiveChanged = false
+
+  for (const entry of removed) {
+    archiveById.set(entry.id, entry)
+    archiveChanged = true
+  }
+  for (const id of nextIds) {
+    if (archiveById.delete(id)) archiveChanged = true
+  }
+  if (archiveChanged) {
+    saveArchivedFocusLabels([...archiveById.values()])
+  }
+
   storageSetItem(STORAGE_KEY, JSON.stringify(next))
   window.dispatchEvent(new Event(FOCUS_LABELS_CHANGED))
   return next

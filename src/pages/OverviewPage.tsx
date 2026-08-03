@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { OverviewCategoryNav } from '@/components/overview/OverviewCategoryNav'
-import { MonthlyOverviewPanel } from '@/components/overview/MonthlyOverviewPanel'
+import { ArrowLeft } from 'lucide-react'
+import { OverviewCategoryPanel } from '@/components/overview/OverviewCategoryPanel'
+import { OverviewHome } from '@/components/overview/OverviewHome'
 import { OverviewPeriodNav } from '@/components/overview/OverviewPeriodNav'
 import { OverviewPeriodTabs } from '@/components/overview/OverviewPeriodTabs'
-import { WeeklyOverviewPanel } from '@/components/overview/WeeklyOverviewPanel'
-import { YearlyOverviewPanel } from '@/components/overview/YearlyOverviewPanel'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth, useDailyLog } from '@/hooks/useData'
+import { usePulseConfig } from '@/hooks/usePulseConfig'
+import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { localStore } from '@/lib/localStore'
 import {
   getOverviewCategories,
@@ -15,12 +16,15 @@ import {
 import { METRICS_SECTIONS_CHANGED } from '@/lib/metricsSections'
 import type { OverviewPeriod } from '@/lib/overviewPeriods'
 import {
+  computeOverviewPeriodStats,
   formatOverviewNavLabel,
   getPeriodRange,
+  getPreviousPeriodRange,
   isCurrentOverviewPeriod,
   overviewAsOfDate,
   overviewLoadRange,
 } from '@/lib/overviewPeriods'
+import { buildOverviewPulseHistory } from '@/lib/overviewPulse'
 import { seedDemoData } from '@/lib/seedDemoData'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { formatDate, getWeekDates } from '@/lib/utils'
@@ -32,19 +36,19 @@ export function OverviewPage() {
   const { log } = useDailyLog(today)
   const [period, setPeriod] = useState<OverviewPeriod>('week')
   const [periodOffset, setPeriodOffset] = useState(0)
+  const [detailCategory, setDetailCategory] = useState<OverviewCategory | null>(null)
   const [sectionsRevision, setSectionsRevision] = useState(0)
   const overviewCategories = useMemo(
     () => getOverviewCategories(),
     [sectionsRevision],
-  )
-  const [category, setCategory] = useState<OverviewCategory>(
-    () => getOverviewCategories()[0]?.id ?? 'fitness',
   )
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const { userId } = useAuth()
   const { settings } = useSettings()
+  const { config: pulseConfig } = usePulseConfig()
+  const { config: sleepMetricsConfig } = useSleepMetricsConfig()
 
   useEffect(() => {
     const refresh = () => setSectionsRevision((n) => n + 1)
@@ -53,11 +57,11 @@ export function OverviewPage() {
   }, [])
 
   useEffect(() => {
-    if (overviewCategories.length === 0) return
-    if (!overviewCategories.some((entry) => entry.id === category)) {
-      setCategory(overviewCategories[0].id)
+    if (detailCategory == null) return
+    if (!overviewCategories.some((entry) => entry.id === detailCategory)) {
+      setDetailCategory(null)
     }
-  }, [overviewCategories, category])
+  }, [overviewCategories, detailCategory])
 
   useEffect(() => {
     setPeriodOffset(0)
@@ -70,6 +74,11 @@ export function OverviewPage() {
 
   const range = useMemo(
     () => getPeriodRange(period, settings.weekStartsOn, asOf),
+    [period, settings.weekStartsOn, asOf],
+  )
+
+  const previousRange = useMemo(
+    () => getPreviousPeriodRange(period, settings.weekStartsOn, asOf),
     [period, settings.weekStartsOn, asOf],
   )
 
@@ -132,27 +141,69 @@ export function OverviewPage() {
         window.history.replaceState({}, '', next)
       }
     }
-    load()
+    void load()
   }, [userId, load])
 
   const weekLogs = useMemo(() => {
-    if (period !== 'week') return logs
     const weekDates = getWeekDates(asOf, settings.weekStartsOn)
     const prevWeekDates = getPreviousWeekDates(weekDates, settings.weekStartsOn)
     const dates = new Set([...prevWeekDates, ...weekDates])
     return logs.filter((l) => dates.has(l.date))
-  }, [period, logs, asOf, settings.weekStartsOn])
+  }, [logs, asOf, settings.weekStartsOn])
 
   const weekWorkouts = useMemo(() => {
-    if (period !== 'week') return workouts
     const weekDates = getWeekDates(asOf, settings.weekStartsOn)
     const prevWeekDates = getPreviousWeekDates(weekDates, settings.weekStartsOn)
     const dates = new Set([...prevWeekDates, ...weekDates])
     return workouts.filter((w) => dates.has(w.date))
-  }, [period, workouts, asOf, settings.weekStartsOn])
+  }, [workouts, asOf, settings.weekStartsOn])
+
+  const { stats } = useMemo(
+    () =>
+      computeOverviewPeriodStats(
+        period,
+        logs,
+        workouts,
+        settings.weekStartsOn,
+        asOf,
+      ),
+    [period, logs, workouts, settings.weekStartsOn, asOf],
+  )
+
+  const pulseHistory = useMemo(
+    () =>
+      buildOverviewPulseHistory(
+        period,
+        range,
+        previousRange,
+        logs,
+        goals,
+        workouts,
+        today,
+        log,
+        pulseConfig,
+        sleepMetricsConfig,
+      ),
+    [
+      period,
+      range,
+      previousRange,
+      logs,
+      goals,
+      workouts,
+      today,
+      log,
+      pulseConfig,
+      sleepMetricsConfig,
+    ],
+  )
+
+  const detailLabel =
+    overviewCategories.find((entry) => entry.id === detailCategory)?.label ?? 'Detail'
 
   const panelProps = {
-    category,
+    period,
+    category: detailCategory ?? 'fitness',
     logs: periodLogs,
     allLogs: logs,
     workouts,
@@ -170,7 +221,29 @@ export function OverviewPage() {
   return (
     <div className="w-full space-y-5 sm:space-y-6">
       <header className="space-y-3">
-        <h2 className="text-xl font-bold text-zinc-100 sm:text-2xl">Overview</h2>
+        {detailCategory ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDetailCategory(null)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 text-zinc-400 transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100"
+              aria-label="Back to overview"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Overview
+              </p>
+              <h2 className="truncate text-xl font-bold text-zinc-100 sm:text-2xl">
+                {detailLabel}
+              </h2>
+            </div>
+          </div>
+        ) : (
+          <h2 className="text-xl font-bold text-zinc-100 sm:text-2xl">Overview</h2>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
           <OverviewPeriodTabs value={period} onChange={setPeriod} />
           <OverviewPeriodNav
@@ -183,18 +256,19 @@ export function OverviewPage() {
         </div>
       </header>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-10 xl:gap-12">
-        <OverviewCategoryNav
-          value={category}
-          onChange={setCategory}
+      {detailCategory ? (
+        <OverviewCategoryPanel {...panelProps} category={detailCategory} />
+      ) : (
+        <OverviewHome
+          period={period}
           categories={overviewCategories}
+          stats={stats}
+          goals={goals}
+          pulseHistory={pulseHistory}
+          today={today}
+          onOpenCategory={setDetailCategory}
         />
-        <div className="min-w-0 flex-1 lg:max-w-none">
-          {period === 'week' && <WeeklyOverviewPanel {...panelProps} />}
-          {period === 'month' && <MonthlyOverviewPanel {...panelProps} />}
-          {period === 'year' && <YearlyOverviewPanel {...panelProps} />}
-        </div>
-      </div>
+      )}
     </div>
   )
 }

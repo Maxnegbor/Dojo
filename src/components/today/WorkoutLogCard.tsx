@@ -80,24 +80,47 @@ export function WorkoutLogCard({
           const isSaving = savingCategory === type.id
           const weeklyGoal = weeklyGoalByType.get(type.id)
           const unit = type.unit || DEFAULT_WORKOUT_UNIT
-
-          const weeklyComplete =
-            weeklyGoal != null && weeklyGoal.target > 0 && weeklyGoal.logged >= weeklyGoal.target
+          const hasWeeklyTarget = weeklyGoal != null && weeklyGoal.target > 0
+          const progressPct = hasWeeklyTarget
+            ? Math.min(100, (weeklyGoal.logged / weeklyGoal.target) * 100)
+            : 0
+          const weeklyComplete = hasWeeklyTarget && weeklyGoal.logged >= weeklyGoal.target
 
           return (
             <li
               key={type.id}
               className={cn(
-                'rounded-lg border px-2.5 py-2',
+                'relative overflow-hidden rounded-lg border px-2.5 py-2',
                 weeklyComplete
-                  ? 'border-[var(--accent-500)]/55 bg-[var(--accent-950)]/40 ring-1 ring-[var(--accent-ring)]'
+                  ? 'border-[var(--accent-500)]/55 bg-zinc-950/40 ring-1 ring-[var(--accent-ring)]'
                   : 'border-zinc-800/80 bg-zinc-950/40',
               )}
             >
-              <div className="flex items-center gap-2">
+              {hasWeeklyTarget && progressPct > 0 && (
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-0 bg-[var(--accent-500)]/30 transition-[width] duration-300"
+                  style={{ width: `${progressPct}%` }}
+                  role="progressbar"
+                  aria-valuenow={Math.round(progressPct)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`${type.label} weekly progress`}
+                />
+              )}
+
+              <div className="relative z-[1] flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent-500)]" />
-                  <span className="truncate text-sm font-medium text-zinc-200">{type.label}</span>
+                  <div className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-zinc-200">
+                      {type.label}
+                    </span>
+                    {hasWeeklyTarget && (
+                      <span className="block text-[10px] tabular-nums text-zinc-400">
+                        {weeklyGoal.logged} / {weeklyGoal.target} {weeklyGoal.unit || unit}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -117,7 +140,7 @@ export function WorkoutLogCard({
                         if (e.key === 'Enter') void logWorkout(type.id)
                       }}
                       className={cn(
-                        'w-full rounded-lg border border-zinc-700/60 bg-zinc-900/80 py-1.5 pl-2 pr-7 text-sm text-zinc-100',
+                        'w-full rounded-lg border border-zinc-700/60 bg-zinc-900 py-1.5 pl-2 pr-7 text-sm text-zinc-100',
                         'placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)]',
                         'disabled:cursor-not-allowed disabled:opacity-60',
                         '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
@@ -133,39 +156,13 @@ export function WorkoutLogCard({
                     size="sm"
                     disabled={disabled || isSaving || !inputValue.trim()}
                     onClick={() => void logWorkout(type.id)}
-                    className="h-[34px] shrink-0 px-2.5"
+                    className="h-[34px] shrink-0 bg-zinc-900 px-2.5"
                     aria-label={`Add ${type.label} ${unit}`}
                   >
                     <Plus size={14} />
                   </Button>
                 </div>
               </div>
-
-              {weeklyGoal && weeklyGoal.target > 0 && (
-                <div className="mt-1.5 flex items-center gap-2">
-                  <div
-                    className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800"
-                    role="progressbar"
-                    aria-valuenow={Math.min(
-                      100,
-                      Math.round((weeklyGoal.logged / weeklyGoal.target) * 100),
-                    )}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label={`${type.label} weekly progress`}
-                  >
-                    <div
-                      className="h-full rounded-full bg-[var(--accent-500)] transition-[width] duration-300"
-                      style={{
-                        width: `${Math.min(100, (weeklyGoal.logged / weeklyGoal.target) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="min-w-0 text-[10px] tabular-nums text-zinc-500">
-                    {weeklyGoal.logged} / {weeklyGoal.target} {weeklyGoal.unit || unit} this week
-                  </p>
-                </div>
-              )}
             </li>
           )
         })}

@@ -125,6 +125,8 @@ import {
   sleepMetricTargetFromInputValue,
   sleepMetricTargetInputUnit,
   sleepMetricTargetToInputValue,
+  isClockSleepMetric,
+  formatSleepMetricDisplay,
   getEnabledSleepMetrics,
   getSleepMetricTarget,
   removeCustomSleepMetric,
@@ -2613,32 +2615,60 @@ export function MetricsEditor({
           </div>
           {supportsTarget && (
             <div className="mt-3">
-              <MetricInput
-                compact
-                label="Target"
-                unit={targetUnit}
-                step={metric.unit === 'score10' || metric.id === 'sleep_duration' || metric.id === 'in_bed' ? '0.5' : '1'}
-                value={targetInput}
-                onChange={(e) => {
-                  const nextTarget = sleepMetricTargetFromInputValue(metric, e.target.value)
-                  saveSleepMetricsConfig(
-                    setSleepMetricTarget(sleepMetricsConfig, metric.id, nextTarget),
-                  )
-                  if (metric.id === 'sleep_duration') syncSleepDurationGoal(nextTarget)
-                }}
-                placeholder={
-                  metric.id === 'sleep_duration' || metric.id === 'in_bed'
-                    ? '8'
-                    : metric.unit === 'percent'
-                      ? '85'
-                      : metric.unit === 'score10'
-                        ? '7'
-                        : ''
-                }
-              />
-              <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
-                Optional — used for Pulse when this metric is weighted.
-              </p>
+              {isClockSleepMetric(metric) ? (
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-medium text-zinc-400">Target</span>
+                  <input
+                    type="time"
+                    value={targetInput}
+                    onChange={(e) => {
+                      const nextTarget = sleepMetricTargetFromInputValue(metric, e.target.value)
+                      saveSleepMetricsConfig(
+                        setSleepMetricTarget(sleepMetricsConfig, metric.id, nextTarget),
+                      )
+                    }}
+                    className="w-full rounded-lg border border-zinc-700/80 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                  />
+                  <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+                    Optional target time for this metric.
+                  </p>
+                </label>
+              ) : (
+                <>
+                  <MetricInput
+                    compact
+                    label="Target"
+                    unit={targetUnit}
+                    step={
+                      metric.unit === 'score10' ||
+                      metric.id === 'sleep_duration' ||
+                      metric.id === 'in_bed'
+                        ? '0.5'
+                        : '1'
+                    }
+                    value={targetInput}
+                    onChange={(e) => {
+                      const nextTarget = sleepMetricTargetFromInputValue(metric, e.target.value)
+                      saveSleepMetricsConfig(
+                        setSleepMetricTarget(sleepMetricsConfig, metric.id, nextTarget),
+                      )
+                      if (metric.id === 'sleep_duration') syncSleepDurationGoal(nextTarget)
+                    }}
+                    placeholder={
+                      metric.id === 'sleep_duration' || metric.id === 'in_bed'
+                        ? '8'
+                        : metric.unit === 'percent'
+                          ? '85'
+                          : metric.unit === 'score10'
+                            ? '7'
+                            : ''
+                    }
+                  />
+                  <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+                    Optional — used for Pulse when this metric is weighted.
+                  </p>
+                </>
+              )}
             </div>
           )}
           <div className="mt-3 flex gap-2 border-t border-zinc-800/80 pt-3">
@@ -2675,7 +2705,9 @@ export function MetricsEditor({
 
     const targetSummary =
       supportsTarget && target != null
-        ? `Target ${sleepMetricTargetToInputValue(metric, target)} ${targetUnit}`
+        ? isClockSleepMetric(metric)
+          ? `Target ${formatSleepMetricDisplay(metric, target)}`
+          : `Target ${sleepMetricTargetToInputValue(metric, target)}${targetUnit ? ` ${targetUnit}` : ''}`
         : 'Tap to view history'
 
     return (

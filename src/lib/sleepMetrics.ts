@@ -210,14 +210,22 @@ export function removeCustomSleepMetric(config: SleepMetricsConfig, id: string):
   }
 }
 
-/** Clock times are logged but not pulse-scored. */
-export function sleepMetricSupportsTarget(metric: SleepMetricDefinition): boolean {
-  return metric.id !== 'bedtime' && metric.id !== 'wake_time'
+/** All sleep metrics can carry an optional target (including bedtime / wake time). */
+export function sleepMetricSupportsTarget(_metric: SleepMetricDefinition): boolean {
+  return true
+}
+
+export function isClockSleepMetric(metric: Pick<SleepMetricDefinition, 'id'>): boolean {
+  return metric.id === 'bedtime' || metric.id === 'wake_time'
 }
 
 export function getSleepMetricTarget(config: SleepMetricsConfig, id: string): number | null {
   const value = config.targets?.[id]
-  return typeof value === 'number' && value > 0 ? value : null
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  if (id === 'bedtime' || id === 'wake_time') {
+    return value >= 0 && value < 24 * 60 ? value : null
+  }
+  return value > 0 ? value : null
 }
 
 export function setSleepMetricTarget(
@@ -226,14 +234,23 @@ export function setSleepMetricTarget(
   target: number | null,
 ): SleepMetricsConfig {
   const targets = { ...config.targets }
-  if (target == null || !Number.isFinite(target) || target <= 0) delete targets[id]
-  else targets[id] = target
+  if (target == null || !Number.isFinite(target)) {
+    delete targets[id]
+  } else if (id === 'bedtime' || id === 'wake_time') {
+    if (target < 0 || target >= 24 * 60) delete targets[id]
+    else targets[id] = Math.round(target)
+  } else if (target <= 0) {
+    delete targets[id]
+  } else {
+    targets[id] = target
+  }
   return { ...config, targets }
 }
 
 /** UI unit for target fields (duration metrics edited in hours). */
 export function sleepMetricTargetInputUnit(metric: SleepMetricDefinition): string {
   if (metric.id === 'sleep_duration' || metric.id === 'in_bed') return 'hrs'
+  if (isClockSleepMetric(metric)) return ''
   return formatSleepMetricUnit(metric.unit)
 }
 
@@ -242,7 +259,14 @@ export function sleepMetricTargetToInputValue(
   metric: SleepMetricDefinition,
   target: number | null,
 ): string {
-  if (target == null || target <= 0) return ''
+  if (target == null || !Number.isFinite(target)) return ''
+  if (isClockSleepMetric(metric)) {
+    if (target < 0 || target >= 24 * 60) return ''
+    const h = Math.floor(target / 60)
+    const m = Math.round(target % 60)
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+  if (target <= 0) return ''
   if (metric.id === 'sleep_duration' || metric.id === 'in_bed') {
     const hours = target / 60
     return Number.isInteger(hours) ? String(hours) : String(Math.round(hours * 100) / 100)
@@ -260,6 +284,16 @@ export function sleepMetricTargetFromInputValue(
 ): number | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
+  if (isClockSleepMetric(metric)) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
+    if (!match) return null
+    const h = Number(match[1])
+    const m = Number(match[2])
+    if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+      return null
+    }
+    return h * 60 + m
+  }
   const n = parseFloat(trimmed)
   if (!Number.isFinite(n) || n <= 0) return null
   if (metric.id === 'sleep_duration' || metric.id === 'in_bed') return n * 60

@@ -16,7 +16,7 @@ import {
 import type { DailyLog, Workout } from '@/types'
 import { getHabitCompletionRate, getHabitStreak } from '@/lib/habitStreaks'
 import { getDailyLogHabitTypes } from '@/lib/habitTypes'
-import { getFocusLabels } from '@/lib/focusLabels'
+import { resolveFocusLabelMeta } from '@/lib/focusLabels'
 import { getFocusSessionsInRange } from '@/lib/focusSessions'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { formatDate, getWeekDates } from '@/lib/utils'
@@ -287,29 +287,32 @@ function computeFocusLabelStats(
   const current = getFocusSessionsInRange(range.start, range.end)
   const previous =
     prevRange != null ? getFocusSessionsInRange(prevRange.start, prevRange.end) : []
-  const labels = getFocusLabels()
-  const labelIds = new Set(labels.map((entry) => entry.id))
 
   const currentById = new Map<string, number>()
   for (const session of current) {
-    if (!session.label_id || !labelIds.has(session.label_id)) continue
+    if (!session.label_id) continue
     currentById.set(session.label_id, (currentById.get(session.label_id) ?? 0) + session.minutes)
   }
 
   const previousById = new Map<string, number>()
   for (const session of previous) {
-    if (!session.label_id || !labelIds.has(session.label_id)) continue
+    if (!session.label_id) continue
     previousById.set(session.label_id, (previousById.get(session.label_id) ?? 0) + session.minutes)
   }
 
-  return labels
-    .map((entry) => ({
-      id: entry.id,
-      label: entry.label,
-      color: entry.color,
-      minutes: currentById.get(entry.id) ?? 0,
-      previousMinutes: previousById.get(entry.id) ?? 0,
-    }))
+  // Include deleted labels that still have sessions in this period.
+  const ids = new Set([...currentById.keys()])
+  return [...ids]
+    .map((id) => {
+      const meta = resolveFocusLabelMeta(id)
+      return {
+        id,
+        label: meta.label,
+        color: meta.color,
+        minutes: currentById.get(id) ?? 0,
+        previousMinutes: previousById.get(id) ?? 0,
+      }
+    })
     .filter((entry) => entry.minutes > 0)
     .sort((a, b) => b.minutes - a.minutes)
 }
