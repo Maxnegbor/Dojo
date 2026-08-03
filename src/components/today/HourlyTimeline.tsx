@@ -5,9 +5,11 @@ import { createScheduleBlock, isGreyBlock, setScheduleBlockColor } from '@/lib/s
 import {
   getScheduleColorPresets,
   getWorkoutSchedulePreset,
+  isWorkoutScheduleColor,
   SCHEDULE_COLORS_CHANGED,
   type ScheduleColorPreset,
 } from '@/lib/scheduleColors'
+import { EXERCISE_PLAN_CHANGED, getPlannedWorkouts } from '@/lib/exercisePlan'
 import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
@@ -103,6 +105,65 @@ function isDefaultGreyTitle(title: string) {
   return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
 }
 
+function blockNeedsWorkoutType(block: ScheduleBlock): boolean {
+  if (!isWorkoutScheduleColor(block.activity_type)) return false
+  return !getPlannedWorkouts().some((item) => item.schedule_block_id === block.id)
+}
+
+function ScheduleBlockWorkoutTypePicker({
+  block,
+  onAssignExercise,
+  onCancel,
+  compact = false,
+}: {
+  block: ScheduleBlock
+  onAssignExercise: (block: ScheduleBlock, category: WorkoutCategory) => void
+  onCancel?: () => void
+  compact?: boolean
+}) {
+  const workoutTypes = useMemo(() => getWorkoutTypes(), [])
+  if (workoutTypes.length === 0) return null
+
+  return (
+    <div
+      className={cn('flex flex-wrap items-center gap-1', compact ? 'mt-1' : 'mt-1.5')}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <span className="w-full text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+        Choose workout
+      </span>
+      {workoutTypes.map((type) => (
+        <button
+          key={type.id}
+          type="button"
+          title={type.label}
+          className="max-w-[5.5rem] truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-black shadow-sm transition-transform hover:scale-105"
+          style={{ backgroundColor: 'var(--accent-500)' }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onAssignExercise(block, type.id)
+          }}
+        >
+          {type.label}
+        </button>
+      ))}
+      {onCancel ? (
+        <button
+          type="button"
+          aria-label="Cancel workout pick"
+          className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+          onClick={(e) => {
+            e.stopPropagation()
+            onCancel()
+          }}
+        >
+          <X size={11} />
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 function ScheduleBlockColorPicker({
   block,
   onUpdate,
@@ -128,38 +189,15 @@ function ScheduleBlockColorPicker({
 
   if (pickingExercise) {
     return (
-      <div
-        className={cn('flex flex-wrap items-center gap-1', compact ? 'mt-1' : 'mt-1.5')}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        {workoutTypes.map((type) => (
-          <button
-            key={type.id}
-            type="button"
-            title={type.label}
-            className="max-w-[5.5rem] truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-black shadow-sm transition-transform hover:scale-105"
-            style={{ backgroundColor: 'var(--accent-500)' }}
-            onClick={(e) => {
-              e.stopPropagation()
-              onAssignExercise?.(block, type.id)
-              setPickingExercise(false)
-            }}
-          >
-            {type.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          aria-label="Cancel workout pick"
-          className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-          onClick={(e) => {
-            e.stopPropagation()
-            setPickingExercise(false)
-          }}
-        >
-          <X size={11} />
-        </button>
-      </div>
+      <ScheduleBlockWorkoutTypePicker
+        block={block}
+        compact={compact}
+        onCancel={() => setPickingExercise(false)}
+        onAssignExercise={(nextBlock, category) => {
+          onAssignExercise?.(nextBlock, category)
+          setPickingExercise(false)
+        }}
+      />
     )
   }
 
@@ -261,6 +299,7 @@ export function HourlyTimeline({
 }: HourlyTimelineProps) {
   const { formatTime } = useSettings()
   const [colorPresets, setColorPresets] = useState(() => getScheduleColorPresets())
+  const [planRevision, setPlanRevision] = useState(0)
 
   useEffect(() => {
     const refresh = () => setColorPresets(getScheduleColorPresets())
@@ -268,6 +307,16 @@ export function HourlyTimeline({
     window.addEventListener('user-storage-ready', refresh)
     return () => {
       window.removeEventListener(SCHEDULE_COLORS_CHANGED, refresh)
+      window.removeEventListener('user-storage-ready', refresh)
+    }
+  }, [])
+
+  useEffect(() => {
+    const refresh = () => setPlanRevision((n) => n + 1)
+    window.addEventListener(EXERCISE_PLAN_CHANGED, refresh)
+    window.addEventListener('user-storage-ready', refresh)
+    return () => {
+      window.removeEventListener(EXERCISE_PLAN_CHANGED, refresh)
       window.removeEventListener('user-storage-ready', refresh)
     }
   }, [])
@@ -1079,6 +1128,16 @@ export function HourlyTimeline({
                       presets={colorPresets}
                     />
                   )}
+                  {onAssignExercise &&
+                    blockNeedsWorkoutType(block) &&
+                    !isDefaultGreyTitle(blockTitleValue(block)) && (
+                      <ScheduleBlockWorkoutTypePicker
+                        key={`${block.id}-${planRevision}`}
+                        block={block}
+                        compact={isCompact}
+                        onAssignExercise={onAssignExercise}
+                      />
+                    )}
                 </div>
                 <button
                   type="button"

@@ -37,7 +37,7 @@ import {
   typedReminderMatches,
 } from '@/lib/typedReminder'
 import { normalizeHabits } from '@/types'
-import type { DailyLog, DailyShutdownStepId, Goal, Reminder, ScheduleBlock, Workout } from '@/types'
+import type { DailyLog, DailyShutdownStepId, Goal, Reminder, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import type { ScheduleTemplate } from '@/lib/scheduleTemplates'
 import { cn } from '@/lib/utils'
 
@@ -57,6 +57,7 @@ interface ShutdownModalProps {
   onUpdateTomorrowBlock: (block: ScheduleBlock) => void | Promise<void>
   onDeleteTomorrowBlock: (id: string) => void | Promise<void>
   onCreateTomorrowBlock: (block: ScheduleBlock) => void | Promise<void>
+  onAssignTomorrowExercise?: (block: ScheduleBlock, category: WorkoutCategory) => void | Promise<void>
   onPasteTodaySchedule: () => void | Promise<void>
   onApplyScheduleTemplate?: (template: ScheduleTemplate) => void | Promise<void>
   onClose: () => void
@@ -92,6 +93,7 @@ export function ShutdownModal({
   onUpdateTomorrowBlock,
   onDeleteTomorrowBlock,
   onCreateTomorrowBlock,
+  onAssignTomorrowExercise,
   onPasteTodaySchedule,
   onApplyScheduleTemplate,
   onClose,
@@ -498,6 +500,7 @@ export function ShutdownModal({
                     onUpdate={onUpdateTomorrowBlock}
                     onDelete={onDeleteTomorrowBlock}
                     onCreate={onCreateTomorrowBlock}
+                    onAssignExercise={onAssignTomorrowExercise}
                   />
                 </div>
 

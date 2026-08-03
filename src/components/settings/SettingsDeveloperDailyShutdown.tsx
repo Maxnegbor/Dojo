@@ -33,8 +33,14 @@ import {
   persistScheduleBlock,
   removeScheduleBlock,
 } from '@/lib/scheduleBlock'
+import {
+  attachScheduleBlockToExercisePlan,
+  removePlannedWorkoutByScheduleBlockId,
+  syncPlannedWorkoutFromScheduleBlock,
+} from '@/lib/exercisePlan'
+import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
-import type { DailyLog, Goal, Reminder, ScheduleBlock } from '@/types'
+import type { DailyLog, Goal, Reminder, ScheduleBlock, WorkoutCategory } from '@/types'
 import { normalizeHabits } from '@/types'
 import { addDaysToDateString, cn, formatDate } from '@/lib/utils'
 
@@ -436,6 +442,7 @@ export function SettingsDeveloperDailyShutdown() {
           todayBlocks={previewTodayBlocks}
           tomorrowBlocks={previewTomorrowBlocks}
           onUpdateTomorrowBlock={async (block) => {
+            const previous = previewTomorrowBlocks.find((b) => b.id === block.id)
             const normalized = await persistScheduleBlock({ ...block, date: tomorrow })
             setPreviewTomorrowBlocks((prev) => {
               const idx = prev.findIndex((b) => b.id === normalized.id)
@@ -446,14 +453,39 @@ export function SettingsDeveloperDailyShutdown() {
               }
               return [...prev, normalized]
             })
+            if (
+              previous &&
+              isWorkoutScheduleColor(previous.activity_type) &&
+              !isWorkoutScheduleColor(normalized.activity_type)
+            ) {
+              removePlannedWorkoutByScheduleBlockId(normalized.id)
+            } else if (isWorkoutScheduleColor(normalized.activity_type)) {
+              syncPlannedWorkoutFromScheduleBlock(normalized)
+            }
           }}
           onDeleteTomorrowBlock={async (id) => {
             await removeScheduleBlock(id)
+            removePlannedWorkoutByScheduleBlockId(id)
             setPreviewTomorrowBlocks((prev) => prev.filter((b) => b.id !== id))
           }}
           onCreateTomorrowBlock={async (block) => {
             const normalized = await persistScheduleBlock({ ...block, date: tomorrow })
             setPreviewTomorrowBlocks((prev) => [...prev, normalized])
+          }}
+          onAssignTomorrowExercise={async (block, category: WorkoutCategory) => {
+            const saved = await attachScheduleBlockToExercisePlan({
+              block: { ...block, date: tomorrow },
+              category,
+            })
+            setPreviewTomorrowBlocks((prev) => {
+              const idx = prev.findIndex((b) => b.id === saved.id)
+              if (idx >= 0) {
+                const next = [...prev]
+                next[idx] = saved
+                return next
+              }
+              return [...prev, saved]
+            })
           }}
           onPasteTodaySchedule={async () => {
             if (previewTodayBlocks.length === 0) return

@@ -88,7 +88,7 @@ import {
 import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import type { DailyLog, Goal, Reminder, ScheduleBlock, Workout } from '@/types'
+import type { DailyLog, Goal, Reminder, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import {
   buildWeeklyShutdownSummaries,
   buildWeeklyUntargetedStats,
@@ -599,6 +599,7 @@ export function TodayPage() {
   }, [userId, viewDate])
 
   const saveTomorrowBlock = async (block: ScheduleBlock) => {
+    const previous = tomorrowBlocks.find((b) => b.id === block.id)
     const normalized = await persistScheduleBlock({ ...block, date: tomorrowDate })
     setTomorrowBlocks((prev) => {
       const idx = prev.findIndex((b) => b.id === normalized.id)
@@ -609,10 +610,37 @@ export function TodayPage() {
       }
       return [...prev, normalized]
     })
+
+    if (
+      previous &&
+      isWorkoutScheduleColor(previous.activity_type) &&
+      !isWorkoutScheduleColor(normalized.activity_type)
+    ) {
+      removePlannedWorkoutByScheduleBlockId(normalized.id)
+    } else if (isWorkoutScheduleColor(normalized.activity_type)) {
+      syncPlannedWorkoutFromScheduleBlock(normalized)
+    }
+  }
+
+  const assignTomorrowExerciseBlock = async (block: ScheduleBlock, category: WorkoutCategory) => {
+    const saved = await attachScheduleBlockToExercisePlan({
+      block: { ...block, date: tomorrowDate },
+      category,
+    })
+    setTomorrowBlocks((prev) => {
+      const idx = prev.findIndex((b) => b.id === saved.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = saved
+        return next
+      }
+      return [...prev, saved]
+    })
   }
 
   const removeTomorrowBlock = async (id: string) => {
     await removeScheduleBlock(id)
+    removePlannedWorkoutByScheduleBlockId(id)
     setTomorrowBlocks((prev) => prev.filter((b) => b.id !== id))
   }
 
@@ -1168,6 +1196,7 @@ export function TodayPage() {
           onUpdateTomorrowBlock={saveTomorrowBlock}
           onDeleteTomorrowBlock={removeTomorrowBlock}
           onCreateTomorrowBlock={saveTomorrowBlock}
+          onAssignTomorrowExercise={assignTomorrowExerciseBlock}
           onPasteTodaySchedule={pasteTodayScheduleToTomorrow}
           onApplyScheduleTemplate={applyTemplateToTomorrow}
           onClose={() => {

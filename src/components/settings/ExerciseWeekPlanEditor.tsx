@@ -3,6 +3,7 @@ import { ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ToggleRow } from '@/components/settings/SettingsControls'
 import { useSettings } from '@/context/SettingsContext'
+import { useAuth } from '@/hooks/useData'
 import {
   createExerciseWeekSlot,
   exerciseWeekTotalsByCategory,
@@ -15,37 +16,35 @@ import {
   type ExerciseWeekTemplate,
   type WeekdayIndex,
 } from '@/lib/exerciseWeekTemplate'
+import { getActiveGoalByMetricKey, hasTarget } from '@/lib/goals'
+import { localStore } from '@/lib/localStore'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import {
   formatWorkoutPlanLabel,
   getWorkoutTypes,
   isTimedWorkoutUnit,
+  workoutMetricKey,
   WORKOUT_TYPES_CHANGED,
 } from '@/lib/workoutTypes'
 import { cn, formatDuration } from '@/lib/utils'
+import type { Goal } from '@/types'
 
 interface ExerciseWeekPlanEditorProps {
   onSaved?: () => void
 }
 
-type DraftSelection = {
-  categoryId: string
-  /** Empty string = type with no subtypes (or “whole type”). */
-  subtype: string
-}
-
-function selectionKey(selection: DraftSelection): string {
-  return `${selection.categoryId}::${selection.subtype}`
-}
-
 export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps) {
   const { settings } = useSettings()
+  const { userId } = useAuth()
   const includeTime = settings.exerciseWeekPlanIncludeTime
   const [template, setTemplate] = useState(() => getExerciseWeekTemplate())
   const [workoutTypes, setWorkoutTypes] = useState(() => getWorkoutTypes())
+  const [goals, setGoals] = useState<Goal[]>(() => localStore.getGoals())
   const [openDay, setOpenDay] = useState<WeekdayIndex | null>(null)
-  const [selected, setSelected] = useState<DraftSelection[]>([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [selectedSubtype, setSelectedSubtype] = useState<string | null>(null)
   const [draftTime, setDraftTime] = useState('07:00')
-  const [draftDuration, setDraftDuration] = useState('45')
+  const [draftDuration, setDraftDuration] = useState('')
   const [draftAmount, setDraftAmount] = useState('3')
 
   useEffect(() => {
@@ -59,14 +58,26 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    const loadGoals = async () => {
+      if (isSupabaseConfigured && userId) {
+        const { fetchGoals } = await import('@/lib/supabase')
+        const next = await fetchGoals(userId)
+        if (!cancelled) setGoals(next)
+      } else {
+        setGoals(localStore.getGoals())
+      }
+    }
+    void loadGoals()
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
   const weekdays = useMemo(
     () => orderedWeekdays(settings.weekStartsOn),
     [settings.weekStartsOn],
-  )
-
-  const totals = useMemo(
-    () => exerciseWeekTotalsByCategory(template.slots),
-    [template.slots],
   )
 
   const typeById = useMemo(
@@ -74,82 +85,110 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
     [workoutTypes],
   )
 
+  const weeklyTargetByCategory = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const type of workoutTypes) {
+      const goal = getActiveGoalByMetricKey(goals, workoutMetricKey(type.id))
+      if (!goal || !hasTarget(goal)) continue
+      const target = Math.round(goal.target_value ?? 0)
+      if (target > 0) map.set(type.id, target)
+    }
+    return map
+  }, [goals, workoutTypes])
+
+  const totals = useMemo(() => {
+    const planned = exerciseWeekTotalsByCategory(template.slots)
+    const plannedByCategory = new Map(planned.map((row) => [row.category, row]))
+    const categories = new Set([
+      ...plannedByCategory.keys(),
+      ...weeklyTargetByCategory.keys(),
+    ])
+
+    return [...categories]
+      .map((category) => {
+        const plannedRow = plannedByCategory.get(category)
+        const minutes = plannedRow?.minutes ?? 0
+        const count = plannedRow?.count ?? 0
+        const target = weeklyTargetByCategory.get(category) ?? null
+        const label =
+          plannedRow?.label ?? typeById.get(category)?.label ?? category
+        const percent =
+          target != null && target > 0 ? Math.min(100, (minutes / target) * 100) : null
+        return { category, label, minutes, count, target, percent }
+      })
+      .filter((row) => row.minutes > 0 || (row.target != null && row.target > 0))
+      .sort(
+        (a, b) =>
+          b.minutes - a.minutes ||
+          (b.target ?? 0) - (a.target ?? 0) ||
+          a.label.localeCompare(b.label),
+      )
+  }, [template.slots, weeklyTargetByCategory, typeById])
+
   const commit = (next: ExerciseWeekTemplate) => {
     const saved = saveExerciseWeekTemplate(next)
     setTemplate(saved)
     onSaved?.()
   }
 
-  const selectedKeys = useMemo(() => new Set(selected.map(selectionKey)), [selected])
-
-  const toggleCategory = (categoryId: string) => {
-    const type = typeById.get(categoryId)
-    const subtypes = type?.subtypes ?? []
-
-    setSelected((prev) => {
-      const without = prev.filter((entry) => entry.categoryId !== categoryId)
-      const hadAny = without.length !== prev.length
-      if (hadAny) return without
-
-      if (subtypes.length > 0) {
-        // Selecting a typed category waits for subcategory picks — seed empty until chosen.
-        return prev
-      }
-      return [...prev, { categoryId, subtype: '' }]
-    })
+  const clearDraftSelection = () => {
+    setSelectedCategoryId(null)
+    setSelectedSubtype(null)
   }
 
-  const isCategorySelected = (categoryId: string) =>
-    selected.some((entry) => entry.categoryId === categoryId)
+  const selectedType = selectedCategoryId ? typeById.get(selectedCategoryId) : undefined
+  const selectedSubtypes = selectedType?.subtypes ?? []
+  const needsSubtype = selectedSubtypes.length > 0
+  const draftDurationMinutes = Math.max(0, parseInt(draftDuration, 10) || 0)
 
-  const toggleSubtype = (categoryId: string, subtype: string) => {
-    const key = selectionKey({ categoryId, subtype })
-    setSelected((prev) => {
-      if (prev.some((entry) => selectionKey(entry) === key)) {
-        return prev.filter((entry) => selectionKey(entry) !== key)
-      }
-      // Drop bare category entry if present, then add subtype.
-      return [
-        ...prev.filter((entry) => entry.categoryId !== categoryId || entry.subtype !== ''),
-        { categoryId, subtype },
-      ]
-    })
+  const selectCategory = (categoryId: string) => {
+    if (selectedCategoryId === categoryId) {
+      clearDraftSelection()
+      return
+    }
+    setSelectedCategoryId(categoryId)
+    setSelectedSubtype(null)
+  }
+
+  const selectSubtype = (subtype: string) => {
+    setSelectedSubtype((prev) => (prev === subtype ? null : subtype))
   }
 
   const openDayEditor = (day: WeekdayIndex) => {
     setOpenDay((current) => (current === day ? null : day))
-    setSelected([])
-    setDraftDuration('45')
+    clearDraftSelection()
+    setDraftDuration('')
     setDraftAmount('3')
     setDraftTime('07:00')
   }
 
   const addSelectedToDay = (day: WeekdayIndex) => {
-    if (selected.length === 0) return
-    const duration = Math.max(0, parseInt(draftDuration, 10) || 0)
+    if (!selectedCategoryId || !selectedType) return
+    if (needsSubtype && !selectedSubtype) return
+    if (draftDurationMinutes <= 0) return
+
     const amount = Math.max(0, Number(draftAmount) || 0)
     const start_time = includeTime ? draftTime || null : null
+    const timed = isTimedWorkoutUnit(selectedType.unit)
 
-    const nextSlots = [...template.slots]
-    for (const entry of selected) {
-      const type = typeById.get(entry.categoryId)
-      if (!type) continue
-      const subtypes = type.subtypes ?? []
-      if (subtypes.length > 0 && !entry.subtype) continue
-      const timed = isTimedWorkoutUnit(type.unit)
-      nextSlots.push(
+    commit({
+      ...template,
+      slots: [
+        ...template.slots,
         createExerciseWeekSlot({
           weekday: day,
-          category: entry.categoryId,
-          subtype: entry.subtype || null,
+          category: selectedCategoryId,
+          subtype: selectedSubtype,
           start_time,
-          duration_minutes: duration > 0 ? duration : 45,
-          amount: timed ? (duration > 0 ? duration : null) : amount > 0 ? amount : null,
+          duration_minutes: draftDurationMinutes,
+          amount: timed ? draftDurationMinutes : amount > 0 ? amount : null,
         }),
-      )
-    }
-    commit({ ...template, slots: nextSlots })
-    setSelected([])
+      ],
+    })
+    // Keep the day open so you can add another session.
+    setOpenDay(day)
+    clearDraftSelection()
+    setDraftDuration('')
   }
 
   const removeSlot = (id: string) => {
@@ -180,50 +219,10 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
     return map
   }, [template.slots, weekdays])
 
-  const categoriesNeedingSubtype = useMemo(() => {
-    const ids = new Set<string>()
-    for (const type of workoutTypes) {
-      if ((type.subtypes?.length ?? 0) > 0 && isCategorySelected(type.id)) {
-        ids.add(type.id)
-      }
-    }
-    // Also show subtype pickers when user tapped a category with subtypes (even before selection)
-    // Track "pending" category focus separately — use selected OR last tapped.
-    return ids
-  }, [workoutTypes, selected])
-
-  const [pendingSubtypeCategory, setPendingSubtypeCategory] = useState<string | null>(null)
-
-  const handleCategoryClick = (categoryId: string) => {
-    const type = typeById.get(categoryId)
-    const subtypes = type?.subtypes ?? []
-    if (subtypes.length > 0) {
-      if (isCategorySelected(categoryId) && pendingSubtypeCategory === categoryId) {
-        // Second click on open category clears it
-        setSelected((prev) => prev.filter((entry) => entry.categoryId !== categoryId))
-        setPendingSubtypeCategory(null)
-        return
-      }
-      setPendingSubtypeCategory(categoryId)
-      return
-    }
-    setPendingSubtypeCategory(null)
-    toggleCategory(categoryId)
-  }
-
-  const visibleSubtypeCategoryIds = useMemo(() => {
-    const ids = new Set(categoriesNeedingSubtype)
-    if (pendingSubtypeCategory) ids.add(pendingSubtypeCategory)
-    return [...ids]
-  }, [categoriesNeedingSubtype, pendingSubtypeCategory])
-
   const canAdd =
-    selected.length > 0 &&
-    selected.every((entry) => {
-      const type = typeById.get(entry.categoryId)
-      const subtypes = type?.subtypes ?? []
-      return subtypes.length === 0 || Boolean(entry.subtype)
-    })
+    Boolean(selectedCategoryId) &&
+    (!needsSubtype || Boolean(selectedSubtype)) &&
+    draftDurationMinutes > 0
 
   return (
     <div className="space-y-4">
@@ -244,29 +243,72 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
           <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
             Planned minutes / week
           </p>
-          <ul className="space-y-1.5">
-            {totals.map((row) => (
-              <li
-                key={row.category}
-                className="flex items-center justify-between gap-3 text-sm"
-              >
-                <span className="min-w-0 truncate text-zinc-200">
-                  {row.label}
-                  <span className="ml-1.5 text-[11px] text-zinc-500">
-                    · {row.count} session{row.count === 1 ? '' : 's'}
-                  </span>
-                </span>
-                <span className="shrink-0 font-semibold tabular-nums text-zinc-100">
-                  {formatDuration(row.minutes)}
-                </span>
-              </li>
-            ))}
+          <ul className="space-y-2">
+            {totals.map((row) => {
+              const hasTargetRow = row.target != null && row.target > 0
+              const complete = hasTargetRow && row.minutes >= row.target!
+              return (
+                <li key={row.category} className="space-y-1">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate text-zinc-200">
+                      {row.label}
+                      {row.count > 0 ? (
+                        <span className="ml-1.5 text-[11px] text-zinc-500">
+                          · {row.count} session{row.count === 1 ? '' : 's'}
+                        </span>
+                      ) : hasTargetRow ? (
+                        <span className="ml-1.5 text-[11px] text-zinc-600">· not planned</span>
+                      ) : null}
+                    </span>
+                    <span
+                      className={cn(
+                        'shrink-0 font-semibold tabular-nums',
+                        complete ? 'text-[var(--accent-300)]' : 'text-zinc-100',
+                      )}
+                    >
+                      {hasTargetRow ? (
+                        <>
+                          {formatDuration(row.minutes)}
+                          <span className="font-medium text-zinc-500">
+                            {' '}
+                            / {formatDuration(row.target!)}
+                          </span>
+                        </>
+                      ) : (
+                        formatDuration(row.minutes)
+                      )}
+                    </span>
+                  </div>
+                  {hasTargetRow && (
+                    <div className="h-1 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-[width] duration-300',
+                          complete ? 'bg-[var(--accent-400)]' : 'bg-[var(--accent-500)]/70',
+                        )}
+                        style={{ width: `${row.percent ?? 0}%` }}
+                      />
+                    </div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
           <p className="mt-2 border-t border-zinc-800/80 pt-2 text-right text-xs text-zinc-400">
             Total{' '}
             <span className="font-semibold text-zinc-200">
               {formatDuration(totals.reduce((sum, row) => sum + row.minutes, 0))}
             </span>
+            {totals.some((row) => row.target != null && row.target > 0) ? (
+              <span className="text-zinc-600">
+                {' '}
+                /{' '}
+                {formatDuration(
+                  totals.reduce((sum, row) => sum + (row.target ?? 0), 0),
+                )}{' '}
+                target
+              </span>
+            ) : null}
           </p>
         </div>
       )}
@@ -411,18 +453,16 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
                     <>
                       <div className="space-y-1.5">
                         <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                          Workouts
+                          Workout
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                           {workoutTypes.map((type) => {
-                            const active =
-                              isCategorySelected(type.id) ||
-                              pendingSubtypeCategory === type.id
+                            const active = selectedCategoryId === type.id
                             return (
                               <button
                                 key={type.id}
                                 type="button"
-                                onClick={() => handleCategoryClick(type.id)}
+                                onClick={() => selectCategory(type.id)}
                                 className={cn(
                                   'rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors',
                                   active
@@ -437,39 +477,33 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
                         </div>
                       </div>
 
-                      {visibleSubtypeCategoryIds.map((categoryId) => {
-                        const type = typeById.get(categoryId)
-                        if (!type?.subtypes?.length) return null
-                        return (
-                          <div key={categoryId} className="space-y-1.5">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                              {type.label} subcategory
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {type.subtypes.map((subtype) => {
-                                const active = selectedKeys.has(
-                                  selectionKey({ categoryId, subtype }),
-                                )
-                                return (
-                                  <button
-                                    key={subtype}
-                                    type="button"
-                                    onClick={() => toggleSubtype(categoryId, subtype)}
-                                    className={cn(
-                                      'rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors',
-                                      active
-                                        ? 'bg-[var(--accent-600)] text-white shadow-[0_0_12px_var(--accent-glow)]'
-                                        : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200',
-                                    )}
-                                  >
-                                    {subtype}
-                                  </button>
-                                )
-                              })}
-                            </div>
+                      {needsSubtype && selectedCategoryId && selectedType ? (
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                            {selectedType.label} subcategory
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedSubtypes.map((subtype) => {
+                              const active = selectedSubtype === subtype
+                              return (
+                                <button
+                                  key={subtype}
+                                  type="button"
+                                  onClick={() => selectSubtype(subtype)}
+                                  className={cn(
+                                    'rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors',
+                                    active
+                                      ? 'bg-[var(--accent-600)] text-white shadow-[0_0_12px_var(--accent-glow)]'
+                                      : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200',
+                                  )}
+                                >
+                                  {subtype}
+                                </button>
+                              )
+                            })}
                           </div>
-                        )
-                      })}
+                        </div>
+                      ) : null}
 
                       <div className="flex flex-wrap items-end gap-2">
                         {includeTime && (
@@ -493,10 +527,7 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
                             className="w-24 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100"
                           />
                         </label>
-                        {selected.some((entry) => {
-                          const type = typeById.get(entry.categoryId)
-                          return type ? !isTimedWorkoutUnit(type.unit) : false
-                        }) && (
+                        {selectedType && !isTimedWorkoutUnit(selectedType.unit) && (
                           <label className="space-y-1">
                             <span className="block text-[10px] text-zinc-500">Amount</span>
                             <input
@@ -509,21 +540,25 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
                           </label>
                         )}
                         <Button
+                          type="button"
                           size="sm"
                           disabled={!canAdd}
-                          onClick={() => addSelectedToDay(day)}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            addSelectedToDay(day)
+                          }}
                         >
                           <Plus size={14} />
-                          Add{selected.length > 1 ? ` ${selected.length}` : ''}
+                          Add
                         </Button>
                       </div>
 
-                      {selected.length === 0 && pendingSubtypeCategory && (
+                      {selectedCategoryId && needsSubtype && !selectedSubtype ? (
                         <p className="text-[10px] text-zinc-500">
-                          Pick one or more subcategories for{' '}
-                          {typeById.get(pendingSubtypeCategory)?.label}.
+                          Pick a subcategory for {selectedType?.label}.
                         </p>
-                      )}
+                      ) : null}
                     </>
                   )}
                 </div>
