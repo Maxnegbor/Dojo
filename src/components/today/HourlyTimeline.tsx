@@ -829,21 +829,30 @@ export function HourlyTimeline({
     <div
       className={cn(
         isFullscreen
-          ? 'fixed inset-0 z-50 flex flex-col bg-[#0a0a0f]/95 p-4 backdrop-blur-md sm:p-6'
+          ? 'fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6'
           : 'flex h-full max-h-full min-h-0 flex-col pl-4',
       )}
     >
+      {isFullscreen && (
+        <button
+          type="button"
+          aria-label="Exit schedule fullscreen"
+          className="absolute inset-0 z-0 bg-black/55 backdrop-blur-md"
+          onClick={() => setIsFullscreen(false)}
+        />
+      )}
       <div
         ref={panelRef}
         className={cn(
-          'relative isolate flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900',
-          !isFullscreen && '-ml-4',
-          isFullscreen && 'flex-1',
+          'relative isolate flex max-h-full min-h-0 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900',
+          !isFullscreen && 'h-full w-full -ml-4',
+          isFullscreen &&
+            'z-10 h-[min(100%,52rem)] w-full max-w-md shadow-2xl shadow-black/50 sm:max-w-lg',
         )}
       >
         <div
           ref={headerRef}
-          className="flex shrink-0 items-start justify-between gap-3 overflow-hidden rounded-t-xl border-b border-zinc-800/80 px-3 py-2"
+          className="flex shrink-0 items-start justify-between gap-3 rounded-t-xl border-b border-zinc-800/80 px-3 py-2"
         >
           <div className="min-w-0">
             {isActiveDay ? (

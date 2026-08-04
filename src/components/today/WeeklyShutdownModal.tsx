@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import { WeightStepper } from '@/components/ui/WeightStepper'
 import { HabitLogRow } from '@/components/today/HabitLogRow'
+import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
 import { useSettings } from '@/context/SettingsContext'
 import { useHabitCompleteAnimation } from '@/hooks/useHabitCompleteAnimation'
 import { getWeeklyShutdownLogGoals } from '@/lib/trackedLogsNet'
@@ -14,6 +15,7 @@ import {
   type HabitTypeDefinition,
 } from '@/lib/habitTypes'
 import { playHabitCheckSound } from '@/lib/timerSound'
+import { isTodoistConnected } from '@/lib/todoistStore'
 import {
   activeWeeklyShutdownChecklist,
   allWeeklyShutdownItemIds,
@@ -24,7 +26,7 @@ import { resolvePriorWeeklyWeight } from '@/lib/weightAutofill'
 import { getActiveWeightGoal, isWeightGoal } from '@/lib/weightGoal'
 import { getWeeklyLog, setWeeklyLog } from '@/lib/weeklyLogStore'
 import type { Goal } from '@/types'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { parseHrsMinToMinutes, usesTimedMetricInput } from '@/lib/timedMetrics'
 
 interface WeeklyShutdownModalProps {
@@ -46,6 +48,8 @@ export function WeeklyShutdownModal({
     () => activeWeeklyShutdownChecklist(settings.weeklyShutdownChecklist),
     [settings.weeklyShutdownChecklist],
   )
+  const showTodoist = isTodoistConnected()
+  const todoistDate = formatDate(new Date())
   const itemIds = useMemo(() => allWeeklyShutdownItemIds(checklist), [checklist])
   const weeklyLogGoals = useMemo(() => getWeeklyShutdownLogGoals(goals), [goals])
   const weightGoal = useMemo(() => getActiveWeightGoal(weeklyLogGoals), [weeklyLogGoals])
@@ -192,8 +196,19 @@ export function WeeklyShutdownModal({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <p className="text-sm text-zinc-400">
-            Log your weekly metrics, run through your checklist, then review how the week went.
+            Log your weekly metrics, clear Todoist if needed, run through your checklist, then
+            review how the week went.
           </p>
+
+          {showTodoist && (
+            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
+              <h3 className="mb-1 text-sm font-semibold text-[var(--accent-300)]">Todoist</h3>
+              <p className="mb-3 text-xs text-zinc-500">
+                Tick off leftover tasks or add anything for today.
+              </p>
+              <TodoistTasksPanel viewDate={todoistDate} hideHeader compact />
+            </section>
+          )}
 
           {weeklyLogHabits.length > 0 && (
             <section>
@@ -245,6 +260,16 @@ export function WeeklyShutdownModal({
                   />
                 ))}
               </div>
+            </section>
+          )}
+
+          {showTodoist && (
+            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
+              <h3 className="mb-1 text-sm font-semibold text-[var(--accent-300)]">Todoist</h3>
+              <p className="mb-3 text-xs text-zinc-500">
+                Clear today’s tasks or add anything left for the week.
+              </p>
+              <TodoistTasksPanel viewDate={todoistDate} compact hideHeader />
             </section>
           )}
 

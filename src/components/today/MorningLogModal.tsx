@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { format } from 'date-fns'
-import { Check, PenLine, Sun, X } from 'lucide-react'
+import { Check, ListTodo, PenLine, Sun, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { MetricInput } from '@/components/ui/MetricInput'
 import {
@@ -9,6 +9,7 @@ import {
   type DurationMetricInputHandle,
 } from '@/components/ui/DurationMetricInput'
 import { TypedReminderConfirm } from '@/components/today/TypedReminderConfirm'
+import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
 import { useSettings } from '@/context/SettingsContext'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { computeMorningLogFields, formatMorningMinutes } from '@/lib/morningLog'
@@ -36,11 +37,12 @@ import {
   isTypedReminderRequired,
   typedReminderMatches,
 } from '@/lib/typedReminder'
+import { isTodoistConnected } from '@/lib/todoistStore'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import type { DailyCheckGroup, DailyLog, Goal, MorningLog, Workout } from '@/types'
 import { cn, formatUnknownError, parseLocalDate } from '@/lib/utils'
 
-type MorningLogStep = 'log' | 'checklist' | 'reminder'
+type MorningLogStep = 'log' | 'todoist' | 'checklist' | 'reminder'
 
 export interface MorningLogSavePayload {
   morningLog?: MorningLog | null
@@ -189,6 +191,15 @@ export function MorningLogModal({
     [morningChecklist],
   )
   const hasChecklist = checklistGroups.length > 0
+  const showTodoist = isTodoistConnected()
+
+  const flowSteps = useMemo((): MorningLogStep[] => {
+    const steps: MorningLogStep[] = ['log']
+    if (showTodoist) steps.push('todoist')
+    if (hasChecklist) steps.push('checklist')
+    if (requireTypedReminder) steps.push('reminder')
+    return steps
+  }, [hasChecklist, requireTypedReminder, showTodoist])
 
   const [step, setStep] = useState<MorningLogStep>('log')
   const [bedtime, setBedtime] = useState(initial?.bedtime ?? '23:00')
@@ -269,10 +280,14 @@ export function MorningLogModal({
       })
     : null
 
-  const stepIndex = step === 'log' ? 1 : step === 'checklist' ? 2 : hasChecklist ? 3 : 2
-  const stepCount = 1 + (hasChecklist ? 1 : 0) + (requireTypedReminder ? 1 : 0)
+  const stepIndex = Math.max(1, flowSteps.indexOf(step) + 1)
+  const stepCount = flowSteps.length
   const typedReminderReady =
     !requireTypedReminder || typedReminderMatches(typedReminderText, typedReminderValue)
+
+  const hasMoreAfterLog = showTodoist || hasChecklist || requireTypedReminder
+  const hasMoreAfterTodoist = hasChecklist || requireTypedReminder
+  const hasMoreAfterChecklist = requireTypedReminder
 
   const toggleCheck = (id: string) => {
     setChecked((prev) => {
@@ -379,6 +394,13 @@ export function MorningLogModal({
 
   const goNextFromLog = () => {
     commitLogStepInputs()
+    if (showTodoist) setStep('todoist')
+    else if (hasChecklist) setStep('checklist')
+    else if (requireTypedReminder) setStep('reminder')
+    else void handleFinish()
+  }
+
+  const goNextFromTodoist = () => {
     if (hasChecklist) setStep('checklist')
     else if (requireTypedReminder) setStep('reminder')
     else void handleFinish()
@@ -390,13 +412,21 @@ export function MorningLogModal({
   }
 
   const stepTitle =
-    step === 'log' ? 'Morning log' : step === 'checklist' ? 'Morning checklist' : 'Reminder'
+    step === 'log'
+      ? 'Morning log'
+      : step === 'todoist'
+        ? 'Todoist'
+        : step === 'checklist'
+          ? 'Morning checklist'
+          : 'Reminder'
   const stepSubtitle =
     step === 'log'
       ? format(parseLocalDate(date), 'EEEE MMMM do')
-      : step === 'checklist'
-        ? 'Optional — tap what you’ve done'
-        : 'Type your reminder to finish'
+      : step === 'todoist'
+        ? 'Tick off tasks or add anything for today'
+        : step === 'checklist'
+          ? 'Optional — tap what you’ve done'
+          : 'Type your reminder to finish'
 
   const setMetricValue = (id: string, value: string) => {
     setMetricValues((prev) => ({ ...prev, [id]: value }))
@@ -419,6 +449,8 @@ export function MorningLogModal({
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-950">
               {step === 'reminder' ? (
                 <PenLine size={20} className="text-amber-400" />
+              ) : step === 'todoist' ? (
+                <ListTodo size={20} className="text-amber-400" />
               ) : (
                 <Sun size={20} className="text-amber-400" />
               )}
@@ -540,6 +572,12 @@ export function MorningLogModal({
             </div>
           )}
 
+          {step === 'todoist' && (
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+              <TodoistTasksPanel viewDate={date} compact />
+            </div>
+          )}
+
           {step === 'checklist' && (
             <div className="space-y-4">
               {checklistGroups.map((group) => (
@@ -607,20 +645,17 @@ export function MorningLogModal({
                 (loggableMetrics.length === 0 && enabledMorningMetrics.length === 0)
               }
             >
-              {saving
-                ? 'Saving…'
-                : hasChecklist || requireTypedReminder
-                  ? 'Continue'
-                  : 'Finish morning log'}
+              {saving ? 'Saving…' : hasMoreAfterLog ? 'Continue' : 'Finish morning log'}
+            </Button>
+          )}
+          {step === 'todoist' && (
+            <Button onClick={goNextFromTodoist} className="w-full" disabled={saving}>
+              {saving ? 'Saving…' : hasMoreAfterTodoist ? 'Continue' : 'Finish morning log'}
             </Button>
           )}
           {step === 'checklist' && (
             <Button onClick={goNextFromChecklist} className="w-full" disabled={saving}>
-              {saving
-                ? 'Saving…'
-                : requireTypedReminder
-                  ? 'Continue'
-                  : 'Finish morning log'}
+              {saving ? 'Saving…' : hasMoreAfterChecklist ? 'Continue' : 'Finish morning log'}
             </Button>
           )}
           {step === 'reminder' && (

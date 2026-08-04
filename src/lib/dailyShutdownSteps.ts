@@ -18,6 +18,11 @@ export const DAILY_SHUTDOWN_STEP_PRESETS: DailyShutdownStepPreset[] = [
     description: 'Finish incomplete habits (skipped automatically if none are pending)',
   },
   {
+    id: 'todoist',
+    label: 'Todoist',
+    description: 'Tick off and add Todoist tasks (skipped if Todoist is not connected)',
+  },
+  {
     id: 'schedule',
     label: 'Plan tomorrow',
     description: 'Schedule, workouts, and reminders for tomorrow',
@@ -32,6 +37,7 @@ export const DAILY_SHUTDOWN_STEP_PRESETS: DailyShutdownStepPreset[] = [
 export const DEFAULT_DAILY_SHUTDOWN_STEPS: DailyShutdownStepId[] = [
   'wrap-up',
   'habits',
+  'todoist',
   'schedule',
 ]
 

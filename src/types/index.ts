@@ -176,7 +176,7 @@ export type DailyCheckItem = WeeklyShutdownCheckItem
 export type DailyCheckGroup = WeeklyShutdownCheckGroup
 
 /** Built-in steps available for the daily shutdown flow. */
-export type DailyShutdownStepId = 'wrap-up' | 'habits' | 'schedule' | 'checklist'
+export type DailyShutdownStepId = 'wrap-up' | 'habits' | 'todoist' | 'schedule' | 'checklist'
 
 export interface AppSettings {
   weekStartsOn: WeekStartDay
@@ -338,7 +338,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   morningLogChecklist: [],
   requireMorningLog: false,
   dailyShutdownChecklist: [],
-  dailyShutdownSteps: ['wrap-up', 'habits', 'schedule'],
+  dailyShutdownSteps: ['wrap-up', 'habits', 'todoist', 'schedule'],
   requireShutdown: false,
   shutdownRequireAt: 'schedule_end',
   shutdownCustomTime: '21:00',

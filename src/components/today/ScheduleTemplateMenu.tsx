@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, LayoutTemplate } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import {
@@ -29,7 +30,9 @@ export function ScheduleTemplateMenu({
 }: ScheduleTemplateMenuProps) {
   const [open, setOpen] = useState(false)
   const [templates, setTemplates] = useState(() => getScheduleTemplates())
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const sync = () => setTemplates(getScheduleTemplates())
@@ -37,10 +40,35 @@ export function ScheduleTemplateMenu({
     return () => window.removeEventListener(SCHEDULE_TEMPLATES_CHANGED, sync)
   }, [])
 
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) {
+      setMenuPos(null)
+      return
+    }
+    const update = () => {
+      const rect = rootRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setMenuPos({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      })
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open])
+
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (rootRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      setOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false)
@@ -56,6 +84,37 @@ export function ScheduleTemplateMenu({
   if (templates.length === 0) return null
 
   const ariaLabel = applying ? 'Applying template…' : label
+
+  const menu =
+    open && menuPos
+      ? createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            style={{ top: menuPos.top, right: menuPos.right }}
+            className="fixed z-[200] min-w-[12rem] overflow-hidden rounded-xl border border-zinc-700/80 bg-[#12121a] py-1 shadow-2xl shadow-black/50"
+          >
+            {templates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                role="menuitem"
+                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition-colors hover:bg-zinc-800/80"
+                onClick={() => {
+                  setOpen(false)
+                  void onApply(template)
+                }}
+              >
+                <span className="text-sm text-zinc-100">{template.name}</span>
+                <span className="text-[10px] text-zinc-500">
+                  {template.blocks.length} block{template.blocks.length === 1 ? '' : 's'}
+                </span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null
 
   return (
     <div ref={rootRef} className={cn('relative', className)}>
@@ -91,31 +150,7 @@ export function ScheduleTemplateMenu({
           <ChevronDown size={12} className={cn('opacity-70 transition-transform', open && 'rotate-180')} />
         </Button>
       )}
-
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-40 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-zinc-700/80 bg-[#12121a] py-1 shadow-xl"
-        >
-          {templates.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              role="menuitem"
-              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition-colors hover:bg-zinc-800/80"
-              onClick={() => {
-                setOpen(false)
-                void onApply(template)
-              }}
-            >
-              <span className="text-sm text-zinc-100">{template.name}</span>
-              <span className="text-[10px] text-zinc-500">
-                {template.blocks.length} block{template.blocks.length === 1 ? '' : 's'}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {menu}
     </div>
   )
 }

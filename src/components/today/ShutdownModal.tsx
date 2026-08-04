@@ -6,6 +6,7 @@ import {
   Check,
   ClipboardCopy,
   ListChecks,
+  ListTodo,
   Moon,
   PenLine,
   Repeat,
@@ -20,6 +21,7 @@ import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { NotesAndReminders } from '@/components/today/NotesAndReminders'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { TypedReminderConfirm } from '@/components/today/TypedReminderConfirm'
+import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
 import { useSettings } from '@/context/SettingsContext'
 import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { useReminderDismissAnimation } from '@/hooks/useReminderDismissAnimation'
@@ -36,6 +38,7 @@ import {
   isTypedReminderRequired,
   typedReminderMatches,
 } from '@/lib/typedReminder'
+import { isTodoistConnected } from '@/lib/todoistStore'
 import { normalizeHabits } from '@/types'
 import type { DailyLog, DailyShutdownStepId, Goal, Reminder, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import type { ScheduleTemplate } from '@/lib/scheduleTemplates'
@@ -130,6 +133,7 @@ export function ShutdownModal({
     const next: ShutdownFlowStep[] = configuredSteps.filter((id) => {
       if (id === 'habits') return countPendingHomeHabits(log, workouts) > 0
       if (id === 'checklist') return checklistGroups.length > 0
+      if (id === 'todoist') return isTodoistConnected()
       return true
     })
     const base = next.length > 0 ? next : (['wrap-up'] as ShutdownFlowStep[])
@@ -279,6 +283,8 @@ export function ShutdownModal({
                 <CalendarDays size={20} className="text-violet-400" />
               ) : step === 'habits' ? (
                 <Repeat size={20} className="text-violet-400" />
+              ) : step === 'todoist' ? (
+                <ListTodo size={20} className="text-violet-400" />
               ) : step === 'checklist' ? (
                 <ListChecks size={20} className="text-violet-400" />
               ) : step === 'typed-reminder' ? (
@@ -296,7 +302,9 @@ export function ShutdownModal({
                   ? `Sketch ${tomorrowLabel} — schedule, workouts, and reminders`
                   : step === 'habits'
                     ? 'Complete what’s left, or leave habits unfinished and continue.'
-                    : step === 'checklist'
+                    : step === 'todoist'
+                      ? 'Tick off tasks or add anything you still need to do.'
+                      : step === 'checklist'
                       ? 'Tick anything you still want to close out tonight.'
                       : step === 'typed-reminder'
                         ? 'Type your reminder to finish'
@@ -453,6 +461,12 @@ export function ShutdownModal({
                 embedded
                 onSaved={onHabitsSaved}
               />
+            </section>
+          )}
+
+          {step === 'todoist' && (
+            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4">
+              <TodoistTasksPanel viewDate={viewDate} compact />
             </section>
           )}
 
