@@ -77,6 +77,24 @@ export function totalFocusMinutes(settings: FocusTimerSettings): number {
   return settings.focusMinutes * settings.iterations
 }
 
+/**
+ * Minutes to credit for a focus block.
+ * A finished countdown always logs the planned length so timer drift
+ * cannot round a 5-minute session up to 6.
+ * An early stop uses time actually counted down, capped at the plan.
+ */
+export function loggedFocusMinutes(
+  plannedMinutes: number,
+  remainingSeconds: number,
+  completedNaturally: boolean,
+): number {
+  const planned = Math.max(1, Math.round(plannedMinutes))
+  if (completedNaturally) return planned
+  const elapsedSeconds = Math.max(0, planned * 60 - Math.max(0, remainingSeconds))
+  const minutes = Math.round(elapsedSeconds / 60)
+  return Math.max(1, Math.min(planned, minutes))
+}
+
 export function remainingFocusMinutes(
   settings: FocusTimerSettings,
   phase: TimerPhase,

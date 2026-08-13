@@ -1,6 +1,6 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Brain, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
+import { Brain, Flag, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
 import { DojoLogo } from '@/components/ui/DojoLogo'
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
@@ -13,7 +13,8 @@ import { useSettings } from '@/context/SettingsContext'
 const NAV = [
   { to: '/', label: 'Home', icon: Sparkles },
   { to: '/focus', label: 'Focus', icon: Brain, setting: 'showFocusPage' as const },
-  { to: '/goals', label: 'Metrics', icon: Target },
+  { to: '/goals', label: 'Goals', icon: Flag },
+  { to: '/metrics', label: 'Metrics', icon: Target },
   { to: '/overview', label: 'Overview', icon: LayoutDashboard },
 ]
 
@@ -315,7 +316,12 @@ export function AppLayout() {
             focusImmersive && 'px-4 sm:px-6 lg:px-8',
           )}
         >
-          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col">
+          <div
+            className={cn(
+              'mx-auto flex min-h-0 w-full flex-1 flex-col',
+              pathname === '/' ? 'max-w-[96rem]' : 'max-w-6xl',
+            )}
+          >
             <MorningLogGate />
             <ShutdownGate>
               <Outlet />

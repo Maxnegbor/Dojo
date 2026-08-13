@@ -38,6 +38,8 @@ export interface HabitTypeDefinition {
   duration_unit?: string
   /** Optional automatically increasing target */
   ramp?: HabitRampConfig
+  /** Optional Metrics library grouping. */
+  category_id?: string | null
 }
 
 const STORAGE_KEY = 'personal-os-habit-types'
@@ -82,6 +84,7 @@ export function getHabitTypes(): HabitTypeDefinition[] {
             duration_value: t.duration_value,
             duration_unit: t.duration_unit,
             ramp: t.ramp,
+            category_id: t.category_id,
           }),
         )
       }
@@ -197,6 +200,7 @@ function normalizeHabitType(type: HabitTypeDefinition): HabitTypeDefinition {
         }
       : {}),
     ...(ramp ? { ramp } : {}),
+    ...(type.category_id && type.category_id !== 'default' ? { category_id: type.category_id } : {}),
   }
 }
 

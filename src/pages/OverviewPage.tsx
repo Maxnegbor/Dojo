@@ -21,6 +21,12 @@ import {
   overviewAsOfDate,
   overviewLoadRange,
 } from '@/lib/overviewPeriods'
+import {
+  computeOutcomeGoalProgress,
+  getActiveOutcomeGoals,
+  OUTCOME_GOALS_CHANGED,
+  runOutcomeGoalsMigration,
+} from '@/lib/outcomeGoals'
 import { seedDemoData } from '@/lib/seedDemoData'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { formatDate, getWeekDates } from '@/lib/utils'
@@ -34,6 +40,7 @@ export function OverviewPage() {
   const [periodOffset, setPeriodOffset] = useState(0)
   const [detailCategory, setDetailCategory] = useState<OverviewCategory | null>(null)
   const [sectionsRevision, setSectionsRevision] = useState(0)
+  const [outcomeRevision, setOutcomeRevision] = useState(0)
   const overviewCategories = useMemo(
     () => getOverviewCategories(),
     [sectionsRevision],
@@ -49,6 +56,21 @@ export function OverviewPage() {
     window.addEventListener(METRICS_SECTIONS_CHANGED, refresh)
     return () => window.removeEventListener(METRICS_SECTIONS_CHANGED, refresh)
   }, [])
+
+  useEffect(() => {
+    const refresh = () => setOutcomeRevision((n) => n + 1)
+    window.addEventListener(OUTCOME_GOALS_CHANGED, refresh)
+    window.addEventListener('user-storage-ready', refresh)
+    return () => {
+      window.removeEventListener(OUTCOME_GOALS_CHANGED, refresh)
+      window.removeEventListener('user-storage-ready', refresh)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!userId) return
+    void runOutcomeGoalsMigration(userId).then(() => setOutcomeRevision((n) => n + 1))
+  }, [userId])
 
   useEffect(() => {
     if (detailCategory == null) return
@@ -159,6 +181,20 @@ export function OverviewPage() {
     [period, logs, workouts, settings.weekStartsOn, asOf],
   )
 
+  const outcomeProgress = useMemo(() => {
+    void outcomeRevision
+    return getActiveOutcomeGoals().map((goal) =>
+      computeOutcomeGoalProgress(
+        goal,
+        logs,
+        workouts,
+        goals,
+        asOf,
+        settings.weekStartsOn,
+      ),
+    )
+  }, [outcomeRevision, logs, workouts, goals, asOf, settings.weekStartsOn])
+
   const detailLabel =
     overviewCategories.find((entry) => entry.id === detailCategory)?.label ?? 'Detail'
 
@@ -225,6 +261,7 @@ export function OverviewPage() {
           categories={overviewCategories}
           stats={stats}
           goals={goals}
+          outcomeProgress={outcomeProgress}
           onOpenCategory={setDetailCategory}
         />
       )}

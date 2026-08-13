@@ -22,12 +22,13 @@ import { getFocusSettings, saveFocusSettings } from '@/lib/focusStore'
 import {
   getBreakMinutesAfterFocus,
   isLongBreakAfterFocus,
+  loggedFocusMinutes,
   remainingSessionSeconds,
   totalFocusMinutes,
   totalSessionSeconds,
   type TimerPhase,
 } from '@/lib/focusTimerLogic'
-import { playTimerChime } from '@/lib/timerSound'
+import { playFocusTimerFinishSound, playTimerChime, unlockAudio } from '@/lib/timerSound'
 import { DEFAULT_FOCUS_SETTINGS, type FocusTimerSettings } from '@/types'
 import { cn, formatDate, formatDuration } from '@/lib/utils'
 
@@ -205,25 +206,26 @@ export function FocusTimerPage() {
     const p = phaseRef.current
     const c = cycleRef.current
 
-    if (userPrefs.timerSoundEnabled) playTimerChime()
-
     if (p === 'focus') {
       const sessionStart = phaseStartRef.current
-      const elapsed = Math.max(1, Math.round((Date.now() - sessionStart) / 60000))
+      const elapsed = loggedFocusMinutes(s.focusMinutes, 0, true)
       await logFocusMinutes(elapsed, undefined, sessionStart, selectedLabelIdRef.current)
       maybePromptFocusScore(sessionStart, elapsed)
 
       if (s.skipBreaks) {
         if (c >= s.iterations) {
+          playFocusTimerFinishSound({ sessionComplete: true })
           setPhase('done')
           setRunning(false)
           setSessionStarted(false)
           return
         }
+        playFocusTimerFinishSound()
         setCycle(c + 1)
         setPhase('focus')
         setRemaining(s.focusMinutes * 60)
       } else {
+        playFocusTimerFinishSound()
         const breakMinutes = getBreakMinutesAfterFocus(s, c)
         setActiveBreakMinutes(breakMinutes)
         setPhase('break')
@@ -231,11 +233,13 @@ export function FocusTimerPage() {
       }
     } else {
       if (c >= s.iterations) {
+        playFocusTimerFinishSound({ sessionComplete: true })
         setPhase('done')
         setRunning(false)
         setSessionStarted(false)
         return
       }
+      if (userPrefs.timerSoundEnabled) playTimerChime()
       setCycle(c + 1)
       setPhase('focus')
       setRemaining(s.focusMinutes * 60)
@@ -281,7 +285,7 @@ export function FocusTimerPage() {
     if (phase !== 'focus') return
 
     const sessionStart = phaseStartRef.current
-    const elapsed = Math.max(1, Math.round((Date.now() - sessionStart) / 60000))
+    const elapsed = loggedFocusMinutes(settings.focusMinutes, remaining, remaining <= 1)
     await logFocusMinutes(elapsed, undefined, sessionStart, selectedLabelIdRef.current)
     maybePromptFocusScore(sessionStart, elapsed)
 
@@ -326,6 +330,7 @@ export function FocusTimerPage() {
   }
 
   const start = () => {
+    unlockAudio()
     phaseStartRef.current = Date.now()
     setSessionStarted(true)
     setRunning(true)

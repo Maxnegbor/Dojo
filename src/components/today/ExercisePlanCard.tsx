@@ -55,12 +55,6 @@ function formatPlanTime(time: string, use24h: boolean): string {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`
 }
 
-function planGlanceLabel(item: PlannedWorkout, categoryLabel: string): string {
-  const sub = item.subtype?.trim()
-  if (sub) return sub
-  return categoryLabel
-}
-
 export function ExercisePlanCard({
   viewDate,
   userId,
@@ -250,181 +244,164 @@ export function ExercisePlanCard({
     onScheduleChange?.()
   }
 
-  return (
-    <Card title="Exercise plan" className={className}>
-      <div className="overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950">
-        {!singleDate && (
-        <div className="flex h-[4.75rem] items-stretch gap-1 border-b border-zinc-800/80 p-1.5">
-          {weekDates.map((date) => {
-            const selected = date === selectedDate
-            const today = isToday(parseISO(`${date}T12:00:00`))
-            const dayItems = byDate.get(date) ?? []
+  const addButton = (
+    <button
+      type="button"
+      onClick={() => {
+        setPickerOpen((open) => !open)
+        if (pickerOpen) resetDraft()
+      }}
+      disabled={workoutTypes.length === 0}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold transition-colors',
+        pickerOpen
+          ? 'bg-zinc-800 text-zinc-200'
+          : 'bg-[var(--accent-500)] text-black hover:bg-[var(--accent-400)]',
+        workoutTypes.length === 0 && 'cursor-not-allowed opacity-40',
+      )}
+    >
+      {pickerOpen ? <X size={11} /> : <Plus size={11} />}
+      {pickerOpen ? 'Close' : 'Add'}
+    </button>
+  )
 
-            return (
-              <button
-                key={date}
-                type="button"
-                onClick={() => selectDay(date)}
-                className={cn(
-                  'group relative flex h-full min-w-0 flex-1 flex-col items-center justify-center overflow-hidden rounded-lg px-0.5 py-1 text-center transition-[flex-grow,background-color,box-shadow,color] duration-200',
-                  selected
-                    ? 'z-[1] flex-[2.35] bg-[var(--accent-950)]/85 px-1 shadow-md shadow-[var(--accent-500)]/15 ring-1 ring-[var(--accent-ring)]'
-                    : today
-                      ? 'bg-[var(--accent-950)]/35 ring-1 ring-[var(--accent-500)]/40'
-                      : 'hover:bg-zinc-900/70',
-                )}
-              >
-                <span
+  return (
+    <Card className={className}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold text-zinc-200">Exercise plan</h3>
+        {addButton}
+      </div>
+      <div className="space-y-2">
+        {!singleDate && (
+          <div className="flex items-stretch gap-0.5">
+            {weekDates.map((date) => {
+              const selected = date === selectedDate
+              const today = isToday(parseISO(`${date}T12:00:00`))
+              const dayItems = byDate.get(date) ?? []
+
+              return (
+                <button
+                  key={date}
+                  type="button"
+                  onClick={() => selectDay(date)}
+                  title={
+                    dayItems.length > 0
+                      ? dayItems
+                          .map((item) =>
+                            formatWorkoutPlanLabel(item.category, item.subtype),
+                          )
+                          .join(', ')
+                      : undefined
+                  }
                   className={cn(
-                    'text-[9px] font-semibold uppercase leading-none',
-                    selected ? 'text-[var(--accent-300)]' : today ? 'text-[var(--accent-400)]' : 'text-zinc-500',
+                    'flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-md px-0.5 py-1 transition-colors',
+                    selected
+                      ? 'bg-[var(--accent-950)]/85 ring-1 ring-[var(--accent-ring)]'
+                      : today
+                        ? 'bg-[var(--accent-950)]/30'
+                        : 'hover:bg-zinc-800/60',
                   )}
                 >
-                  {weekdayLetter(date)}
-                </span>
-                <span
-                  className={cn(
-                    'mt-1 h-5 text-sm tabular-nums font-bold leading-none',
-                    selected ? 'text-zinc-50' : 'text-zinc-300',
-                    today && !selected && 'text-[var(--accent-200)]',
-                    today && selected && 'text-[var(--accent-100)]',
-                  )}
-                >
-                  {dayNumber(date)}
-                </span>
-                <div className="mt-0.5 flex min-h-[14px] w-full flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5">
-                  {dayItems.length === 0 ? (
-                    today ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-500)]" />
-                    ) : null
-                  ) : selected ? (
-                    dayItems.slice(0, 2).map((item) => {
-                      const type = typeById.get(item.category)
-                      const label = planGlanceLabel(item, type?.label ?? item.category)
-                      return (
-                        <span
-                          key={item.id}
-                          className="flex max-w-full items-center gap-0.5 truncate text-[8px] font-semibold leading-none text-zinc-200"
-                          title={formatWorkoutPlanLabel(item.category, item.subtype)}
-                        >
-                          <span
-                            className="h-1.5 w-1.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: type?.color || 'var(--accent-500)' }}
-                          />
-                          <span className="truncate">{label}</span>
-                        </span>
+                  <span
+                    className={cn(
+                      'text-[8px] font-semibold uppercase leading-none',
+                      selected
+                        ? 'text-[var(--accent-300)]'
+                        : today
+                          ? 'text-[var(--accent-400)]'
+                          : 'text-zinc-500',
+                    )}
+                  >
+                    {weekdayLetter(date)}
+                  </span>
+                  <span
+                    className={cn(
+                      'text-[11px] tabular-nums font-semibold leading-none',
+                      selected ? 'text-zinc-50' : 'text-zinc-300',
+                      today && !selected && 'text-[var(--accent-200)]',
+                    )}
+                  >
+                    {dayNumber(date)}
+                  </span>
+                  <span className="flex h-1.5 items-center justify-center gap-0.5">
+                    {dayItems.length === 0 ? (
+                      today && !selected ? (
+                        <span className="h-1 w-1 rounded-full bg-[var(--accent-500)]" />
+                      ) : (
+                        <span className="h-1 w-1" />
                       )
-                    })
-                  ) : (
-                    <span className="flex items-center justify-center gap-0.5">
-                      {dayItems.slice(0, 3).map((item) => {
+                    ) : (
+                      dayItems.slice(0, 3).map((item) => {
                         const type = typeById.get(item.category)
                         return (
                           <span
                             key={item.id}
-                            className="h-1.5 w-1.5 rounded-full"
-                            style={{ backgroundColor: type?.color || 'var(--accent-500)' }}
-                            title={formatWorkoutPlanLabel(item.category, item.subtype)}
+                            className="h-1 w-1 rounded-full"
+                            style={{
+                              backgroundColor: type?.color || 'var(--accent-500)',
+                            }}
                           />
                         )
-                      })}
-                    </span>
-                  )}
-                </div>
-              </button>
-            )
-          })}
-        </div>
+                      })
+                    )}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         )}
-
-        <div className="p-2.5">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-[10px] text-zinc-500">
-            {selectedItems.length === 0
-              ? 'Nothing planned'
-              : `${selectedItems.length} planned`}
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setPickerOpen((open) => !open)
-              if (pickerOpen) resetDraft()
-            }}
-            disabled={workoutTypes.length === 0}
-            className={cn(
-              'inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors',
-              pickerOpen
-                ? 'bg-zinc-800 text-zinc-200'
-                : 'bg-[var(--accent-500)] text-black hover:bg-[var(--accent-400)]',
-              workoutTypes.length === 0 && 'cursor-not-allowed opacity-40',
-            )}
-          >
-            {pickerOpen ? <X size={12} /> : <Plus size={12} />}
-            {pickerOpen ? 'Close' : 'Add'}
-          </button>
-        </div>
 
         {workoutTypes.length === 0 ? (
           <p className="text-[10px] text-zinc-500">Add workout types in Metrics first.</p>
         ) : pickerOpen ? (
-          <div className="space-y-2.5">
-            <div>
-              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                Workout
-              </p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1">
+              {workoutTypes.map((type) => (
+                <button
+                  key={type.id}
+                  type="button"
+                  onClick={() => selectCategory(type.id)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+                    draftCategory === type.id
+                      ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
+                      : 'border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800',
+                  )}
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: type.color || 'var(--accent-500)' }}
+                  />
+                  {type.label}
+                </button>
+              ))}
+            </div>
+
+            {needsSubtype && (
               <div className="flex flex-wrap gap-1">
-                {workoutTypes.map((type) => (
+                {draftSubtypes.map((subtype) => (
                   <button
-                    key={type.id}
+                    key={subtype}
                     type="button"
-                    onClick={() => selectCategory(type.id)}
+                    onClick={() => setDraftSubtype(subtype)}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
-                      draftCategory === type.id
+                      'rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+                      draftSubtype === subtype
                         ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
                         : 'border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800',
                     )}
                   >
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: type.color || 'var(--accent-500)' }}
-                    />
-                    {type.label}
+                    {subtype}
                   </button>
                 ))}
-              </div>
-            </div>
-
-            {needsSubtype && (
-              <div>
-                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                  {draftType?.label ?? 'Workout'} subcategory
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {draftSubtypes.map((subtype) => (
-                    <button
-                      key={subtype}
-                      type="button"
-                      onClick={() => setDraftSubtype(subtype)}
-                      className={cn(
-                        'rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
-                        draftSubtype === subtype
-                          ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
-                          : 'border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800',
-                      )}
-                    >
-                      {subtype}
-                    </button>
-                  ))}
-                </div>
               </div>
             )}
 
             {draftCategory && (!needsSubtype || draftSubtype) && (
               <>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <label className="min-w-0">
-                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
                       Time
                     </span>
                     <input
@@ -432,48 +409,38 @@ export function ExercisePlanCard({
                       step={1800}
                       value={draftTime}
                       onChange={(e) => setDraftTime(e.target.value)}
-                      className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 text-xs tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                      className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
                     />
                   </label>
                   {draftTimed ? (
                     <label className="min-w-0">
-                      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                        Duration
+                      <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                        Min
                       </span>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          min={MIN_PLAN_SCHEDULE_MINUTES}
-                          step={5}
-                          inputMode="numeric"
-                          value={draftDuration}
-                          onChange={(e) => setDraftDuration(e.target.value)}
-                          className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 pr-8 text-xs tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
-                        />
-                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">
-                          min
-                        </span>
-                      </div>
+                      <input
+                        type="number"
+                        min={MIN_PLAN_SCHEDULE_MINUTES}
+                        step={5}
+                        inputMode="numeric"
+                        value={draftDuration}
+                        onChange={(e) => setDraftDuration(e.target.value)}
+                        className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                      />
                     </label>
                   ) : (
                     <label className="min-w-0">
-                      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                        Amount
+                      <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                        {draftType?.unit ?? 'sets'}
                       </span>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          min={0}
-                          step="any"
-                          inputMode="decimal"
-                          value={draftAmount}
-                          onChange={(e) => setDraftAmount(e.target.value)}
-                          className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 pr-10 text-xs tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
-                        />
-                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">
-                          {draftType?.unit ?? 'sets'}
-                        </span>
-                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        inputMode="decimal"
+                        value={draftAmount}
+                        onChange={(e) => setDraftAmount(e.target.value)}
+                        className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                      />
                     </label>
                   )}
                 </div>
@@ -482,23 +449,17 @@ export function ExercisePlanCard({
                   type="text"
                   value={draftNotes}
                   onChange={(e) => setDraftNotes(e.target.value)}
-                  placeholder="Optional note"
+                  placeholder="Note"
                   maxLength={60}
-                  className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[var(--accent-500)]"
+                  className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[10px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[var(--accent-500)]"
                 />
-
-                <p className="text-[10px] leading-relaxed text-zinc-600">
-                  {draftTimed
-                    ? `Time + duration (${MIN_PLAN_SCHEDULE_MINUTES}m+) adds this workout to your schedule.`
-                    : 'Enter sets (or other amount) for the plan. Time places a 45m block on your schedule.'}
-                </p>
 
                 <button
                   type="button"
                   disabled={!canSubmit}
                   onClick={() => void submitPlan()}
                   className={cn(
-                    'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors',
+                    'flex w-full items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors',
                     canSubmit
                       ? 'bg-[var(--accent-500)] text-black hover:bg-[var(--accent-400)]'
                       : 'cursor-not-allowed bg-zinc-800 text-zinc-500',
@@ -508,7 +469,7 @@ export function ExercisePlanCard({
                     ? 'Saving…'
                     : draftType
                       ? `Plan ${formatWorkoutPlanLabel(draftType.id, draftSubtype)}`
-                      : 'Pick a workout type'}
+                      : 'Pick a type'}
                 </button>
               </>
             )}
@@ -521,11 +482,9 @@ export function ExercisePlanCard({
             )}
           </div>
         ) : selectedItems.length === 0 ? (
-          <p className="text-[10px] text-zinc-600">
-            Tap Add to plan a workout with time and duration or sets.
-          </p>
+          <p className="text-[10px] text-zinc-600">Nothing planned</p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-0.5">
             {selectedItems.map((item) => {
               const type = typeById.get(item.category)
               const unit = type?.unit ?? 'min'
@@ -535,73 +494,59 @@ export function ExercisePlanCard({
               const amountLabel =
                 logAmount != null ? formatWorkoutAmount(logAmount, unit) : null
               const title = formatWorkoutPlanLabel(item.category, item.subtype)
+              const meta = [
+                item.start_time ? formatPlanTime(item.start_time, use24h) : null,
+                timed && item.duration_minutes != null && item.duration_minutes > 0
+                  ? formatDuration(item.duration_minutes)
+                  : !timed && amountLabel
+                    ? amountLabel
+                    : null,
+                synced ? 'sched' : null,
+                item.completed ? 'logged' : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')
 
               return (
                 <li
                   key={item.id}
                   className={cn(
-                    'flex items-start gap-1.5 rounded-md border px-2 py-1.5',
+                    'flex items-center gap-1.5 rounded-md px-1.5 py-1',
                     item.completed
-                      ? 'border-[var(--accent-500)]/40 bg-[var(--accent-950)]/35'
-                      : 'border-zinc-800/80 bg-zinc-900/50',
+                      ? 'bg-[var(--accent-950)]/35'
+                      : 'bg-zinc-900/40',
                   )}
                 >
                   <span
-                    className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
                     style={{ backgroundColor: type?.color || 'var(--accent-500)' }}
                   />
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className={cn(
-                        'truncate text-xs font-medium',
-                        item.completed ? 'text-[var(--accent-200)]' : 'text-zinc-200',
-                      )}
-                    >
-                      {item.subtype?.trim() ? (
-                        <>
-                          <span className="text-zinc-100">{item.subtype.trim()}</span>
-                          <span className="font-normal text-zinc-500">
-                            {' '}
-                            · {type?.label ?? item.category}
-                          </span>
-                        </>
-                      ) : (
-                        title
-                      )}
-                      {item.notes.trim() ? (
-                        <span className="font-normal text-zinc-500">
-                          {' '}
-                          · {item.notes.trim()}
-                        </span>
-                      ) : null}
-                    </p>
-                    <p className="mt-0.5 text-[10px] tabular-nums text-zinc-500">
-                      {item.start_time
-                        ? formatPlanTime(item.start_time, use24h)
-                        : 'No time'}
-                      {timed && item.duration_minutes != null && item.duration_minutes > 0
-                        ? ` · ${formatDuration(item.duration_minutes)}`
-                        : !timed && amountLabel
-                          ? ` · ${amountLabel}`
-                          : ''}
-                      {synced ? ' · on schedule' : ''}
-                      {item.completed ? ' · logged' : ''}
-                    </p>
-                  </div>
+                  <p
+                    className={cn(
+                      'min-w-0 flex-1 truncate text-[11px]',
+                      item.completed ? 'text-[var(--accent-200)]' : 'text-zinc-200',
+                    )}
+                  >
+                    <span className="font-medium">
+                      {item.subtype?.trim() || type?.label || item.category}
+                    </span>
+                    {meta ? (
+                      <span className="font-normal text-zinc-500"> · {meta}</span>
+                    ) : null}
+                  </p>
                   <button
                     type="button"
                     aria-label={`Remove ${title}`}
-                    className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
+                    className="rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
                     onClick={() => void handleRemove(item.id)}
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={11} />
                   </button>
                 </li>
               )
             })}
           </ul>
         )}
-        </div>
       </div>
     </Card>
   )

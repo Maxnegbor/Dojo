@@ -369,7 +369,7 @@ export function PulseConfigureModal({
                     <p className="mt-2 text-[11px] text-zinc-500">
                       Add a workout goal in{' '}
                       <Link
-                        to="/goals"
+                        to="/metrics"
                         className="text-[var(--accent-400)] underline-offset-2 hover:underline"
                         onClick={onClose}
                       >

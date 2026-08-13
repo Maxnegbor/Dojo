@@ -1,41 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Trash2, Check, X, ChevronDown, History, Brain, Moon, Repeat, Scale, Dumbbell, Shapes } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Pencil, Trash2, Check, X, ChevronDown, History, Brain, Moon, Repeat, Scale, Dumbbell, Shapes, Plus, Flame } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { SlidingNavList } from '@/components/ui/SlidingNavList'
 import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl'
 import { Card } from '@/components/ui/Card'
 import { MetricInput } from '@/components/ui/MetricInput'
-import { DurationMetricInput } from '@/components/ui/DurationMetricInput'
-import { HabitMetricsReorderList } from '@/components/goals/HabitMetricsReorderList'
 import { AddGhostCard } from '@/components/goals/AddGhostCard'
 import { EditLogsModal } from '@/components/goals/EditLogsModal'
 import { MetricHistoryModal } from '@/components/goals/MetricHistoryModal'
 import type { MetricHistoryTarget } from '@/lib/metricHistory'
 import { SleepMetricTemplatePicker } from '@/components/goals/SleepMetricTemplatePicker'
-import { ToggleRow } from '@/components/settings/SettingsControls'
 import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
-import { DatePickerField } from '@/components/ui/DatePickerField'
-import type { Goal, GoalPeriod, GoalTargetPeriod, MetricKey } from '@/types'
+import type { Goal, GoalPeriod, MetricKey } from '@/types'
 import {
   defaultUnitForMetric,
   getActiveGoalByMetricKey,
   goalLogPeriod,
   goalLogWhen,
   goalMorningDay,
-  hasTarget,
   normalizeGoal,
   type GoalLogWhen,
   type GoalMorningDay,
 } from '@/lib/goals'
-import {
-  addDays,
-  buildGoalPeriodFields,
-  formValuesFromPeriodDays,
-  formatGoalScheduleLabel,
-  goalTargetPeriod,
-  periodDaysFromForm,
-  targetPeriodLabel,
-} from '@/lib/goalPeriod'
+import { formatGoalScheduleLabel } from '@/lib/goalPeriod'
 import {
   habitLogPeriod,
   habitLogWhen,
@@ -44,24 +31,13 @@ import {
   slugifyHabitId,
   useHabitTypes,
   type HabitTypeDefinition,
-  type HabitRampConfig,
   type HabitLogWhen,
   type HabitMorningDay,
 } from '@/lib/habitTypes'
+import { formatHabitCardSubtitle } from '@/lib/habitRamp'
+import { clearFocusGoalInSettings } from '@/lib/focusGoalSync'
 import {
-  formatHabitRampTarget,
-  normalizeHabitRamp,
-} from '@/lib/habitRamp'
-import {
-  clearFocusGoalInSettings,
-  formatFocusGoalTarget,
-  goalToFocusGoalFormValues,
-  saveFocusGoal,
-} from '@/lib/focusGoalSync'
-import {
-  formatGoalTargetLabel,
   METRIC_UNIT_OPTIONS,
-  usesTimedMetricInput,
 } from '@/lib/timedMetrics'
 import { getFocusSettings, saveFocusSettings } from '@/lib/focusStore'
 import {
@@ -72,7 +48,6 @@ import {
   normalizeWorkoutUnit,
   saveWorkoutTypes,
   slugifyWorkoutId,
-  workoutGoalUnitLabel,
   workoutLogWhen,
   workoutLogPeriod,
   workoutMetricKey,
@@ -82,15 +57,13 @@ import {
   type WorkoutMorningDay,
 } from '@/lib/workoutTypes'
 import { cn, generateId, formatDate } from '@/lib/utils'
-import { displayToKg, kgToDisplay } from '@/lib/settingsStore'
-import { formatWeightGoalRange, formatWeightGoalDateRange, getActiveWeightGoal, getDuplicateActiveWeightGoals, isWeightGoal, weightGoalMode, weightGoalModeLabel, type WeightGoalMode } from '@/lib/weightGoal'
+import { getActiveWeightGoal, getDuplicateActiveWeightGoals, isWeightGoal } from '@/lib/weightGoal'
 import {
   getMorningLogGoalKeys,
   getMorningLogYesterdayKeys,
   pruneMorningLogAssignments,
   removeSleepFieldFromMorningLog,
   saveMorningLogGoalKeys,
-  saveMorningLogSleepFieldIds,
   saveMorningLogYesterdayKeys,
 } from '@/lib/morningLogConfig'
 import {
@@ -98,46 +71,35 @@ import {
   removeSleepFieldFromShutdownLog,
   getShutdownLogGoalKeys,
   saveShutdownLogGoalKeys,
-  saveShutdownLogSleepFieldIds,
 } from '@/lib/shutdownLogConfig'
 import { useSettings } from '@/context/SettingsContext'
 import {
   DEFAULT_GOAL_CATEGORY_ID,
-  DEFAULT_GOAL_CATEGORY_LABEL,
   getCustomGoalCategories,
-  isDefaultGoalCategory,
   resolveGoalCategoryId,
   saveCustomGoalCategories,
   type GoalCategoryDefinition,
 } from '@/lib/goalCategories'
+import { enableMetricsSection } from '@/lib/metricsSections'
 import {
-  BUILTIN_METRICS_SECTIONS,
-  METRICS_SECTIONS_CHANGED,
-  disableMetricsSection,
-  enableMetricsSection,
-  getAvailableMetricTemplates,
-  getEnabledMetricsSections,
-  getVisibleGoalCategories,
-} from '@/lib/metricsSections'
+  createMetricCategory,
+  getMetricLibraryCategories,
+  migrateMetricLibraryCategories,
+  storedLibraryCategoryId,
+  UNGROUPED_CATEGORY_ID,
+  UNGROUPED_CATEGORY_LABEL,
+  ungroupMetricsInCategory,
+} from '@/lib/metricLibrary'
 import {
   sleepMetricDisplayUnit,
-  sleepMetricSupportsTarget,
-  sleepMetricTargetFromInputValue,
-  sleepMetricTargetInputUnit,
-  sleepMetricTargetToInputValue,
-  isClockSleepMetric,
-  formatSleepMetricDisplay,
   getEnabledSleepMetrics,
-  getSleepMetricTarget,
   removeCustomSleepMetric,
-  setSleepMetricTarget,
+  setSleepMetricCategory,
   toggleSleepMetric,
   type SleepMetricDefinition,
 } from '@/lib/sleepMetrics'
 
 type MetricKind = 'habit' | 'goal' | 'workout' | 'weight' | 'focus' | 'sleep'
-type MetricsSection = 'habits' | 'sleep' | 'focus' | 'weight' | 'workouts' | string
-type CustomPeriodMode = 'duration' | 'date'
 
 interface MetricsEditorProps {
   goals: Goal[]
@@ -195,32 +157,7 @@ interface MetricFormState {
   workoutMorningDay: WorkoutMorningDay
   /** Comma-separated plan subtitles (e.g. Push, Pull, Legs). */
   workoutSubtypes: string
-  targetPeriod: GoalTargetPeriod
-  customPeriodMode: CustomPeriodMode
-  periodAmount: string
-  periodUnit: 'days' | 'weeks'
-  periodEndDate: string
-  periodRecurring: boolean
-  setTarget: boolean
-  targetValue: string
   unit: string
-  color: string
-  weightMode: WeightGoalMode
-  weightStart: string
-  weightTarget: string
-  weightStartDate: string
-  weightTargetDate: string
-  rampEnabled: boolean
-  rampStartValue: string
-  rampTargetValue: string
-  rampStepValue: string
-  rampIntervalStreakDays: string
-  rampUnit: string
-  rampLevel: number
-  habitDurationEnabled: boolean
-  habitDurationValue: string
-  habitDurationUnit: string
-  focusUnit: 'hours' | 'minutes'
 }
 
 function goalKeyFromName(name: string): MetricKey {
@@ -275,220 +212,6 @@ function PeriodPicker({
   )
 }
 
-function applyCustomPeriodMode(
-  form: MetricFormState,
-  customPeriodMode: CustomPeriodMode,
-): MetricFormState {
-  const today = formatDate(new Date())
-  return {
-    ...form,
-    customPeriodMode,
-    targetPeriod: customPeriodMode === 'date' ? 'custom_date' : 'custom_duration',
-    periodEndDate:
-      customPeriodMode === 'date' && !form.periodEndDate
-        ? addDays(today, 13)
-        : form.periodEndDate,
-  }
-}
-
-function applyTargetPeriod(form: MetricFormState, targetPeriod: GoalTargetPeriod): MetricFormState {
-  if (targetPeriod === 'custom_date') return applyCustomPeriodMode(form, 'date')
-  if (targetPeriod === 'custom_duration') return applyCustomPeriodMode(form, 'duration')
-  return { ...form, targetPeriod }
-}
-
-function TargetPeriodPicker({
-  value,
-  onChange,
-  customMode,
-  onCustomModeChange,
-  periodAmount,
-  onPeriodAmountChange,
-  periodUnit,
-  onPeriodUnitChange,
-  periodEndDate,
-  onPeriodEndDateChange,
-}: {
-  value: GoalTargetPeriod
-  onChange: (period: GoalTargetPeriod) => void
-  customMode: CustomPeriodMode
-  onCustomModeChange: (mode: CustomPeriodMode) => void
-  periodAmount: string
-  onPeriodAmountChange: (amount: string) => void
-  periodUnit: 'days' | 'weeks'
-  onPeriodUnitChange: (unit: 'days' | 'weeks') => void
-  periodEndDate: string
-  onPeriodEndDateChange: (date: string) => void
-}) {
-  const isCustom = value === 'custom_duration' || value === 'custom_date'
-  const showDatePicker = value === 'custom_date'
-  const customModeValue = showDatePicker ? 'date' : 'duration'
-
-  const selectCustomMode = (mode: CustomPeriodMode) => {
-    onCustomModeChange(mode)
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="w-14 shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-          Target
-        </span>
-        <SlidingSegmentedControl
-          className="min-w-0 flex-1"
-          value={isCustom ? 'custom' : value}
-          options={[
-            { value: 'daily', label: 'daily' },
-            { value: 'weekly', label: 'weekly' },
-            { value: 'custom', label: 'custom' },
-          ]}
-          onChange={(next) => {
-            if (next === 'custom') {
-              onChange(customMode === 'date' ? 'custom_date' : 'custom_duration')
-              return
-            }
-            onChange(next)
-          }}
-        />
-      </div>
-
-      {isCustom && (
-        <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
-          <SlidingSegmentedControl
-            value={customModeValue}
-            options={[
-              { value: 'duration', label: 'Duration' },
-              { value: 'date', label: 'By date' },
-            ]}
-            onChange={(mode) => selectCustomMode(mode)}
-          />
-
-          {showDatePicker ? (
-            <DatePickerField
-              value={periodEndDate}
-              onChange={onPeriodEndDateChange}
-              minDate={formatDate(new Date())}
-              placeholder="Pick end date"
-            />
-          ) : (
-            <div className="grid grid-cols-[1fr_auto] gap-1.5">
-              <input
-                type="number"
-                min={1}
-                value={periodAmount}
-                onChange={(e) => onPeriodAmountChange(e.target.value)}
-                placeholder="2"
-                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none"
-              />
-              <SlidingSegmentedControl
-                value={periodUnit}
-                options={[
-                  { value: 'days', label: 'days' },
-                  { value: 'weeks', label: 'weeks' },
-                ]}
-                onChange={onPeriodUnitChange}
-                className="gap-0 rounded-md border border-zinc-700 bg-zinc-900 p-0"
-                buttonClassName="px-2 py-1.5 text-[10px] flex-none"
-                equalWidth={false}
-              />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function targetLabelForForm(form: MetricFormState): string {
-  if (form.targetPeriod === 'custom_duration') {
-    const amount = parseFloat(form.periodAmount)
-    if (!Number.isNaN(amount) && amount > 0) {
-      return targetPeriodLabel('custom_duration', {
-        periodDays: periodDaysFromForm(amount, form.periodUnit),
-      })
-    }
-    return 'custom'
-  }
-  if (form.targetPeriod === 'custom_date' && form.periodEndDate) {
-    return targetPeriodLabel('custom_date', { periodEndDate: form.periodEndDate })
-  }
-  return form.targetPeriod
-}
-
-function periodFieldsFromForm(
-  form: MetricFormState,
-  existing?: Goal,
-): Pick<Goal, 'log_period' | 'target_period' | 'period_days' | 'period_start_date' | 'period_end_date' | 'period_recurring'> {
-  if (!form.setTarget) {
-    return buildGoalPeriodFields({ targetPeriod: 'daily', logPeriod: 'daily' })
-  }
-
-  const logPeriod = form.logPeriod
-  const periodRecurring = form.periodRecurring
-
-  if (form.targetPeriod === 'custom_duration') {
-    const amount = parseFloat(form.periodAmount)
-    return buildGoalPeriodFields({
-      targetPeriod: 'custom_duration',
-      logPeriod,
-      periodRecurring,
-      periodDays: periodDaysFromForm(amount, form.periodUnit),
-      periodStartDate: existing?.period_start_date,
-      createdAt: existing?.created_at,
-    })
-  }
-
-  if (form.targetPeriod === 'custom_date') {
-    return buildGoalPeriodFields({
-      targetPeriod: 'custom_date',
-      logPeriod,
-      periodRecurring,
-      periodStartDate: existing?.period_start_date,
-      periodEndDate: form.periodEndDate,
-      createdAt: existing?.created_at,
-    })
-  }
-
-  return buildGoalPeriodFields({ targetPeriod: form.targetPeriod, logPeriod })
-}
-
-function goalToFormPeriod(goal: Goal): Pick<
-  MetricFormState,
-  'targetPeriod' | 'customPeriodMode' | 'periodAmount' | 'periodUnit' | 'periodEndDate' | 'periodRecurring'
-> {
-  const targetPeriod = goalTargetPeriod(goal)
-  const periodRecurring = goal.period_recurring ?? false
-  if (targetPeriod === 'custom_date') {
-    return {
-      targetPeriod,
-      customPeriodMode: 'date',
-      periodAmount: '2',
-      periodUnit: 'weeks',
-      periodEndDate: goal.period_end_date ?? '',
-      periodRecurring,
-    }
-  }
-  if (targetPeriod === 'custom_duration' && goal.period_days) {
-    const { amount, unit } = formValuesFromPeriodDays(goal.period_days)
-    return {
-      targetPeriod,
-      customPeriodMode: 'duration',
-      periodAmount: amount,
-      periodUnit: unit,
-      periodEndDate: '',
-      periodRecurring,
-    }
-  }
-  return {
-    targetPeriod: targetPeriod === 'weekly' ? 'weekly' : 'daily',
-    customPeriodMode: 'duration',
-    periodAmount: '2',
-    periodUnit: 'weeks',
-    periodEndDate: '',
-    periodRecurring: false,
-  }
-}
-
 function GoalCategoryPicker({
   value,
   categories,
@@ -519,7 +242,7 @@ function GoalCategoryPicker({
         aria-expanded={open}
       >
         <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">Category</span>
-        <span>{selected?.label ?? 'Custom'}</span>
+        <span>{selected?.label ?? UNGROUPED_CATEGORY_LABEL}</span>
         <ChevronDown size={12} className={cn('transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
@@ -548,47 +271,11 @@ function GoalCategoryPicker({
   )
 }
 
-function WeightModePicker({
-  value,
-  onChange,
-}: {
-  value: WeightGoalMode
-  onChange: (mode: WeightGoalMode) => void
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-14 shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-        Goal
-      </span>
-      <SlidingSegmentedControl
-        className="min-w-0 flex-1"
-        value={value}
-        options={[
-          { value: 'bulk', label: 'Bulk' },
-          { value: 'cut', label: 'Cut' },
-          { value: 'maintain', label: 'Maintain' },
-        ]}
-        onChange={onChange}
-      />
-    </div>
-  )
-}
-
-const METRIC_TEMPLATE_ICONS = {
-  habits: Repeat,
-  sleep: Moon,
-  focus: Brain,
-  weight: Scale,
-  workouts: Dumbbell,
-  default: Shapes,
-} as const
-
 function emptyForm(
   kind: MetricKind = 'goal',
   mode: 'add' | 'edit' = 'add',
   categoryId: string = DEFAULT_GOAL_CATEGORY_ID,
 ): MetricFormState {
-  const today = formatDate(new Date())
   return {
     mode,
     kind,
@@ -602,86 +289,14 @@ function emptyForm(
     workoutLogWhen: 'home',
     workoutMorningDay: 'today',
     workoutSubtypes: '',
-    targetPeriod: kind === 'workout' ? 'weekly' : 'daily',
-    customPeriodMode: 'duration',
-    periodAmount: '2',
-    periodUnit: 'weeks',
-    periodEndDate: '',
-    periodRecurring: false,
-    setTarget: kind !== 'habit',
-    targetValue: kind === 'focus' ? '1' : kind === 'sleep' ? '8' : '',
     unit: kind === 'workout' ? 'min' : kind === 'weight' ? 'kg' : kind === 'sleep' ? 'hrs' : '',
-    color: WORKOUT_COLOR_PRESETS[0],
-    weightMode: 'bulk',
-    weightStart: '',
-    weightTarget: '',
-    weightStartDate: kind === 'weight' ? today : '',
-    weightTargetDate: kind === 'weight' ? addDays(today, 84) : '',
-    rampEnabled: false,
-    rampStartValue: '5',
-    rampTargetValue: '30',
-    rampStepValue: '5',
-    rampIntervalStreakDays: '7',
-    rampUnit: 'min',
-    rampLevel: 0,
-    habitDurationEnabled: false,
-    habitDurationValue: '',
-    habitDurationUnit: 'min',
-    focusUnit: 'hours',
   }
-}
-
-function habitDurationFromForm(form: MetricFormState): Pick<HabitTypeDefinition, 'duration_value' | 'duration_unit'> | undefined {
-  if (!form.habitDurationEnabled) return undefined
-  const value = parseFloat(form.habitDurationValue)
-  if (Number.isNaN(value) || value <= 0) return undefined
-  return {
-    duration_value: value,
-    duration_unit: form.habitDurationUnit.trim() || 'min',
-  }
-}
-
-function isValidHabitDurationForm(form: MetricFormState): boolean {
-  if (!form.habitDurationEnabled) return true
-  return habitDurationFromForm(form) != null
-}
-
-function habitRampFromForm(form: MetricFormState): HabitRampConfig | undefined {
-  if (!form.rampEnabled) return undefined
-
-  return normalizeHabitRamp({
-    enabled: true,
-    start_value: parseFloat(form.rampStartValue),
-    target_value: parseFloat(form.rampTargetValue),
-    step_value: parseFloat(form.rampStepValue),
-    interval_streak_days: parseFloat(form.rampIntervalStreakDays),
-    level: form.rampLevel,
-    unit: form.rampUnit.trim() || 'min',
-  })
-}
-
-function isValidHabitRampForm(form: MetricFormState): boolean {
-  if (!form.rampEnabled) return true
-  return habitRampFromForm(form) != null
-}
-
-function applyHabitDurationFields(habit: HabitTypeDefinition, form: MetricFormState): HabitTypeDefinition {
-  const duration = habitDurationFromForm(form)
-  if (duration) {
-    habit.duration_value = duration.duration_value
-    habit.duration_unit = duration.duration_unit
-  } else {
-    delete habit.duration_value
-    delete habit.duration_unit
-  }
-  return habit
 }
 
 function goalAskFieldsFromForm(
   form: MetricFormState,
 ): Pick<Goal, 'log_when' | 'morning_day'> | { log_when?: undefined; morning_day?: undefined } {
-  const logPeriod = form.setTarget ? form.logPeriod : 'daily'
-  if (logPeriod !== 'daily') {
+  if (form.logPeriod !== 'daily') {
     return { log_when: undefined, morning_day: undefined }
   }
   return {
@@ -691,31 +306,31 @@ function goalAskFieldsFromForm(
 }
 
 function buildHabitFields(form: MetricFormState): HabitTypeDefinition {
-  const ramp = habitRampFromForm(form)
   const habit: HabitTypeDefinition = {
     id: form.habitId ?? '',
     label: form.name.trim(),
     log_period: form.logPeriod,
   }
+  const categoryId = storedLibraryCategoryId(form.categoryId)
+  if (categoryId) habit.category_id = categoryId
   if (form.logPeriod === 'daily') {
     habit.log_when = form.habitLogWhen
     if (form.habitLogWhen === 'morning') {
       habit.morning_day = form.habitMorningDay
     }
   }
-  if (ramp) habit.ramp = ramp
-  return applyHabitDurationFields(habit, form)
+  return habit
 }
 
 function applyHabitFormFields(
   existing: HabitTypeDefinition,
   form: MetricFormState,
 ): HabitTypeDefinition {
-  const ramp = habitRampFromForm(form)
   const next: HabitTypeDefinition = {
     ...existing,
     label: form.name.trim(),
     log_period: form.logPeriod,
+    category_id: storedLibraryCategoryId(form.categoryId),
   }
   if (form.logPeriod === 'daily') {
     next.log_when = form.habitLogWhen
@@ -728,12 +343,7 @@ function applyHabitFormFields(
     delete next.log_when
     delete next.morning_day
   }
-  if (ramp) {
-    next.ramp = ramp
-  } else {
-    delete next.ramp
-  }
-  return applyHabitDurationFields(next, form)
+  return next
 }
 
 export function MetricsEditor({
@@ -746,33 +356,32 @@ export function MetricsEditor({
   const { config: sleepMetricsConfig, saveConfig: saveSleepMetricsConfig } = useSleepMetricsConfig()
 
   useEffect(() => {
+    migrateMetricLibraryCategories()
+    setGoalCategories(getMetricLibraryCategories())
+    setWorkoutTypes(getWorkoutTypes())
     pruneMorningLogAssignments(goals, sleepMetricsConfig)
     pruneShutdownLogAssignments(goals, sleepMetricsConfig)
   }, [goals, sleepMetricsConfig])
 
-  const migratedSleepTargetRef = useRef(false)
-  const showWorkouts = settings.showWorkoutMetrics
   const today = formatDate(new Date())
   const habits = useHabitTypes()
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutTypeDefinition[]>(() => getWorkoutTypes())
   const [goalCategories, setGoalCategories] = useState<GoalCategoryDefinition[]>(() =>
-    getVisibleGoalCategories(),
-  )
-  const [enabledSections, setEnabledSections] = useState<string[]>(() =>
-    getEnabledMetricsSections(),
+    getMetricLibraryCategories(),
   )
   const [form, setForm] = useState<MetricFormState | null>(null)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false)
+  const [kindPickerOpen, setKindPickerOpen] = useState(false)
+  const [kindPickerCategoryId, setKindPickerCategoryId] = useState(UNGROUPED_CATEGORY_ID)
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
-  const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState<MetricsSection | null>(null)
+  const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingMetricDelete | null>(null)
   const [editLogsOpen, setEditLogsOpen] = useState(false)
   const [historyTarget, setHistoryTarget] = useState<MetricHistoryTarget | null>(null)
   const [editingSleepMetricId, setEditingSleepMetricId] = useState<string | null>(null)
   const [addingSleepMetric, setAddingSleepMetric] = useState(false)
-  const [activeSection, setActiveSection] = useState<MetricsSection>('habits')
+  const [newCategoryName, setNewCategoryName] = useState<string | null>(null)
 
   const customGoals = goals.filter(
     (g) =>
@@ -786,42 +395,7 @@ export function MetricsEditor({
   const activeFocusGoal = getActiveGoalByMetricKey(goals, 'focus')
 
   const refreshWorkouts = useCallback(() => setWorkoutTypes(getWorkoutTypes()), [])
-  const refreshCategories = useCallback(() => setGoalCategories(getVisibleGoalCategories()), [])
-  const refreshEnabledSections = useCallback(
-    () => setEnabledSections(getEnabledMetricsSections()),
-    [],
-  )
-
-  useEffect(() => {
-    const refresh = () => {
-      refreshEnabledSections()
-      refreshCategories()
-    }
-    window.addEventListener(METRICS_SECTIONS_CHANGED, refresh)
-    return () => window.removeEventListener(METRICS_SECTIONS_CHANGED, refresh)
-  }, [refreshCategories, refreshEnabledSections])
-
-  useEffect(() => {
-    if (migratedSleepTargetRef.current) return
-    const goal = activeSleepGoal
-    if (!goal || !hasTarget(goal) || goal.target_value == null) {
-      migratedSleepTargetRef.current = true
-      return
-    }
-    if (getSleepMetricTarget(sleepMetricsConfig, 'sleep_duration') != null) {
-      migratedSleepTargetRef.current = true
-      return
-    }
-    migratedSleepTargetRef.current = true
-    let next = sleepMetricsConfig
-    if (!next.enabledIds.includes('sleep_duration')) {
-      next = toggleSleepMetric(next, 'sleep_duration', true)
-    }
-    saveSleepMetricsConfig(setSleepMetricTarget(next, 'sleep_duration', goal.target_value * 60))
-  }, [activeSleepGoal, sleepMetricsConfig, saveSleepMetricsConfig])
-
-  const goalsForCategory = (categoryId: string) =>
-    customGoals.filter((g) => resolveGoalCategoryId(g.category_id) === categoryId)
+  const refreshCategories = useCallback(() => setGoalCategories(getMetricLibraryCategories()), [])
 
   const persistCategories = (custom: GoalCategoryDefinition[]) => {
     saveCustomGoalCategories(custom)
@@ -830,7 +404,7 @@ export function MetricsEditor({
 
   const renameCategory = (categoryId: string, label: string) => {
     const trimmed = label.trim()
-    if (!trimmed || isDefaultGoalCategory(categoryId)) return
+    if (!trimmed || categoryId === UNGROUPED_CATEGORY_ID) return
     persistCategories(
       getCustomGoalCategories().map((c) =>
         c.id === categoryId ? { ...c, label: trimmed } : c,
@@ -844,6 +418,8 @@ export function MetricsEditor({
   const closeForm = () => {
     setForm(null)
     setCategoryPickerOpen(false)
+    setKindPickerOpen(false)
+    setAddingSleepMetric(false)
   }
 
   const isPendingDelete = (kind: PendingMetricDelete['kind'], id: string) =>
@@ -854,25 +430,42 @@ export function MetricsEditor({
     setPendingDelete(entry)
   }
 
-  const openAddHabit = () => {
-    setForm(emptyForm('habit', 'add'))
+  const openKindPicker = (categoryId: string = UNGROUPED_CATEGORY_ID) => {
+    closeForm()
+    setKindPickerCategoryId(categoryId)
+    setKindPickerOpen(true)
   }
 
-  const openAddWeight = () => {
-    setForm(emptyForm('weight', 'add'))
+  const openAddHabit = (categoryId: string = kindPickerCategoryId) => {
+    setKindPickerOpen(false)
+    setForm(emptyForm('habit', 'add', categoryId))
   }
 
-  const openAddFocus = () => {
-    setForm(emptyForm('focus', 'add'))
+  const openAddWeight = (categoryId: string = kindPickerCategoryId) => {
+    setKindPickerOpen(false)
+    setForm(emptyForm('weight', 'add', categoryId))
   }
 
-  const openAdd = (categoryId: string = DEFAULT_GOAL_CATEGORY_ID) => {
+  const openAddFocus = (categoryId: string = kindPickerCategoryId) => {
+    setKindPickerOpen(false)
+    setForm(emptyForm('focus', 'add', categoryId))
+  }
+
+  const openAdd = (categoryId: string = kindPickerCategoryId) => {
+    setKindPickerOpen(false)
     setForm(emptyForm('goal', 'add', categoryId))
     setCategoryPickerOpen(false)
   }
 
-  const openAddWorkout = () => {
-    setForm(emptyForm('workout', 'add'))
+  const openAddWorkout = (categoryId: string = kindPickerCategoryId) => {
+    setKindPickerOpen(false)
+    setForm(emptyForm('workout', 'add', categoryId))
+  }
+
+  const openAddSleep = (categoryId: string = kindPickerCategoryId) => {
+    setKindPickerOpen(false)
+    setKindPickerCategoryId(categoryId)
+    setAddingSleepMetric(true)
   }
 
   const openMetricHistory = (target: MetricHistoryTarget) => {
@@ -882,67 +475,34 @@ export function MetricsEditor({
 
   const openEditHabit = (habit: HabitTypeDefinition) => {
     setForm({
-      ...emptyForm('habit', 'edit'),
+      ...emptyForm('habit', 'edit', resolveGoalCategoryId(habit.category_id)),
       habitId: habit.id,
       name: habit.label,
       logPeriod: habitLogPeriod(habit),
       habitLogWhen: habitLogWhen(habit),
       habitMorningDay: habitMorningDay(habit),
-      setTarget: false,
-      rampEnabled: habit.ramp?.enabled ?? false,
-      rampStartValue: habit.ramp ? String(habit.ramp.start_value) : '5',
-      rampTargetValue: habit.ramp ? String(habit.ramp.target_value) : '30',
-      rampStepValue: habit.ramp ? String(habit.ramp.step_value) : '5',
-      rampIntervalStreakDays: habit.ramp
-        ? String(habit.ramp.interval_streak_days ?? habit.ramp.interval_days ?? 7)
-        : '7',
-      rampUnit: habit.ramp?.unit ?? 'min',
-      rampLevel: habit.ramp?.level ?? 0,
-      habitDurationEnabled: habit.duration_value != null && habit.duration_value > 0,
-      habitDurationValue:
-        habit.duration_value != null && habit.duration_value > 0
-          ? String(habit.duration_value)
-          : '',
-      habitDurationUnit: habit.duration_unit ?? 'min',
     })
   }
 
   const openEditWeight = (goal: Goal) => {
-    const unit = settings.weightUnit
     setForm({
-      ...emptyForm('weight', 'edit'),
+      ...emptyForm('weight', 'edit', resolveGoalCategoryId(goal.category_id)),
       goalId: goal.id,
-      unit,
+      unit: settings.weightUnit,
       logPeriod: goalLogPeriod(goal),
       goalLogWhen: goalLogWhen(goal),
       goalMorningDay: goalMorningDay(goal),
-      weightMode: weightGoalMode(goal),
-      weightStart:
-        goal.goal_weight_start != null
-          ? String(kgToDisplay(goal.goal_weight_start, unit))
-          : '',
-      weightTarget:
-        goal.goal_weight_target != null
-          ? String(kgToDisplay(goal.goal_weight_target, unit))
-          : '',
-      weightStartDate: goal.period_start_date ?? formatDate(new Date()),
-      weightTargetDate:
-        goal.period_end_date ?? addDays(formatDate(new Date()), 84),
     })
   }
 
   const openEditGoal = (goal: Goal) => {
     if (goal.metric_key === 'focus') {
-      const values = goalToFocusGoalFormValues(goal)
       setCategoryPickerOpen(false)
       setForm({
-        ...emptyForm('focus', 'edit'),
+        ...emptyForm('focus', 'edit', resolveGoalCategoryId(goal.category_id)),
         goalId: goal.id,
         name: 'Focus',
-        logPeriod: values.period,
-        targetValue: String(values.amount),
-        focusUnit: values.unit,
-        setTarget: true,
+        logPeriod: goalLogPeriod(goal),
       })
       return
     }
@@ -950,13 +510,10 @@ export function MetricsEditor({
     if (goal.metric_key === 'sleep') {
       setCategoryPickerOpen(false)
       setForm({
-        ...emptyForm('sleep', 'edit'),
+        ...emptyForm('sleep', 'edit', resolveGoalCategoryId(goal.category_id)),
         goalId: goal.id,
         name: 'Sleep',
         logPeriod: goalLogPeriod(goal),
-        ...goalToFormPeriod(goal),
-        setTarget: hasTarget(goal),
-        targetValue: goal.target_value != null ? String(goal.target_value) : '8',
         unit: goal.unit || 'hrs',
         goalLogWhen: goalLogWhen(goal),
         goalMorningDay: goalMorningDay(goal),
@@ -972,27 +529,18 @@ export function MetricsEditor({
       logPeriod: goalLogPeriod(goal),
       goalLogWhen: goalLogWhen(goal),
       goalMorningDay: goalMorningDay(goal),
-      ...goalToFormPeriod(goal),
-      setTarget: hasTarget(goal),
-      targetValue: goal.target_value != null ? String(goal.target_value) : '',
       unit: goal.unit,
     })
   }
 
   const openEditWorkout = (type: WorkoutTypeDefinition) => {
-    const goal = workoutGoal(type.id)
-    const logPeriod =
-      goal && hasTarget(goal) ? goalLogPeriod(goal) : workoutLogPeriod(type)
+    const logPeriod = workoutLogPeriod(type)
     setForm({
-      ...emptyForm('workout', 'edit'),
+      ...emptyForm('workout', 'edit', resolveGoalCategoryId(type.category_id)),
       workoutId: type.id,
       name: type.label,
       logPeriod,
-      ...(goal ? goalToFormPeriod(goal) : { targetPeriod: 'weekly' as GoalTargetPeriod }),
-      setTarget: goal ? hasTarget(goal) : false,
-      targetValue: goal?.target_value != null ? String(goal.target_value) : '',
-      unit: normalizeWorkoutUnit(goal?.unit || type.unit),
-      color: type.color,
+      unit: normalizeWorkoutUnit(type.unit),
       workoutLogWhen: logPeriod === 'weekly' ? 'home' : workoutLogWhen(type),
       workoutMorningDay: workoutMorningDay(type),
       workoutSubtypes: (type.subtypes ?? []).join(', '),
@@ -1011,33 +559,24 @@ export function MetricsEditor({
   const saveWorkoutGoal = (
     typeId: string,
     label: string,
-    setTarget: boolean,
-    targetRaw: string,
     formState: MetricFormState,
     existingGoal?: Goal,
   ) => {
     const existing = existingGoal ?? workoutGoal(typeId)
-    const value = parseFloat(targetRaw)
     const unit = normalizeWorkoutUnit(formState.unit || DEFAULT_WORKOUT_UNIT)
-
-    if (!setTarget || !targetRaw.trim() || Number.isNaN(value) || value <= 0) {
-      if (existing) onDeleteGoal(existing)
-      return
-    }
+    if (!existing) return
 
     onSaveGoal(
       normalizeGoal({
-        id: existing?.id ?? generateId(),
-        user_id: userId,
-        metric_key: workoutMetricKey(typeId),
+        ...existing,
         name: label,
-        target_value: value,
-        ...periodFieldsFromForm(formState, existing),
-        goal_weight_start: null,
-        goal_weight_target: null,
         unit,
-        is_active: true,
-        created_at: existing?.created_at ?? new Date().toISOString(),
+        log_period: formState.logPeriod,
+        log_when: formState.logPeriod === 'daily' ? formState.workoutLogWhen : existing.log_when,
+        morning_day:
+          formState.logPeriod === 'daily' && formState.workoutLogWhen === 'morning'
+            ? formState.workoutMorningDay
+            : existing.morning_day,
       }),
     )
   }
@@ -1048,25 +587,32 @@ export function MetricsEditor({
     if (!name && form.kind !== 'weight' && form.kind !== 'focus' && form.kind !== 'sleep') return
 
     if (form.kind === 'focus') {
-      const parsed = parseFloat(form.targetValue)
-      if (Number.isNaN(parsed) || parsed <= 0) return
-      const amount =
-        form.focusUnit === 'hours'
-          ? Math.min(12, Math.max(1, Math.round(parsed)))
-          : Math.min(480, Math.max(1, Math.round(parsed)))
-      await handleSaveFocusGoal({
-        period: form.logPeriod,
-        amount,
-        unit: form.focusUnit,
+      const existing = goals.find((g) => g.metric_key === 'focus' && g.is_active)
+      const nextFocus: Goal = {
+        id: existing?.id ?? generateId(),
+        user_id: userId,
+        metric_key: 'focus',
+        name: 'Focus',
+        target_value: existing?.target_value ?? null,
+        log_period: form.logPeriod,
+        goal_weight_start: existing?.goal_weight_start ?? null,
+        goal_weight_target: existing?.goal_weight_target ?? null,
+        unit: existing?.unit ?? 'min',
+        is_active: true,
+        created_at: existing?.created_at ?? new Date().toISOString(),
+        category_id: storedLibraryCategoryId(form.categoryId),
+      }
+      onSaveGoal(normalizeGoal(nextFocus))
+      enableMetricsSection('focus')
+      saveFocusSettings({
+        ...getFocusSettings(),
+        focusGoalPeriod: form.logPeriod,
       })
       closeForm()
       return
     }
 
     if (form.kind === 'habit') {
-      if (!isValidHabitRampForm(form)) return
-      if (!isValidHabitDurationForm(form)) return
-
       if (form.mode === 'edit' && form.habitId) {
         persistHabit(
           habits.map((h) =>
@@ -1084,15 +630,13 @@ export function MetricsEditor({
         }
         const created = buildHabitFields(form)
         persistHabit([...habits, { ...created, id }])
+        enableMetricsSection('habits')
       }
       closeForm()
       return
     }
 
     if (form.kind === 'sleep') {
-      const value = form.setTarget ? parseFloat(form.targetValue) : null
-      if (form.setTarget && (value == null || Number.isNaN(value) || value <= 0)) return
-
       const existing =
         form.mode === 'edit' && form.goalId
           ? goals.find((g) => g.id === form.goalId)
@@ -1103,13 +647,19 @@ export function MetricsEditor({
         user_id: userId,
         metric_key: 'sleep',
         name: 'Sleep',
-        target_value: form.setTarget ? value : null,
-        ...periodFieldsFromForm(form, existing),
+        target_value: existing?.target_value ?? null,
+        log_period: form.logPeriod,
+        target_period: existing?.target_period,
+        period_days: existing?.period_days,
+        period_start_date: existing?.period_start_date,
+        period_end_date: existing?.period_end_date,
+        period_recurring: existing?.period_recurring,
         goal_weight_start: null,
         goal_weight_target: null,
         unit: 'hrs',
         is_active: true,
         created_at: existing?.created_at ?? new Date().toISOString(),
+        category_id: storedLibraryCategoryId(form.categoryId),
       }
       delete nextSleep.log_when
       delete nextSleep.morning_day
@@ -1124,9 +674,6 @@ export function MetricsEditor({
     }
 
     if (form.kind === 'goal') {
-      const value = form.setTarget ? parseFloat(form.targetValue) : null
-      if (form.setTarget && (value == null || Number.isNaN(value))) return
-
       const askFields = goalAskFieldsFromForm(form)
 
       if (form.mode === 'edit' && form.goalId) {
@@ -1135,11 +682,9 @@ export function MetricsEditor({
         const nextGoal: Goal = {
           ...existing,
           name,
-          ...periodFieldsFromForm(form, existing),
-          target_value: form.setTarget ? value : null,
+          log_period: form.logPeriod,
           unit: form.unit.trim() || existing.unit,
-          category_id:
-            form.categoryId === DEFAULT_GOAL_CATEGORY_ID ? null : form.categoryId,
+          category_id: storedLibraryCategoryId(form.categoryId),
         }
         delete nextGoal.log_when
         delete nextGoal.morning_day
@@ -1155,13 +700,12 @@ export function MetricsEditor({
           user_id: userId,
           metric_key: resolvedKey,
           name,
-          target_value: form.setTarget ? value : null,
-          ...periodFieldsFromForm(form),
+          target_value: null,
+          log_period: form.logPeriod,
           goal_weight_start: null,
           goal_weight_target: null,
           unit: form.unit.trim() || defaultUnitForMetric(resolvedKey),
-          category_id:
-            form.categoryId === DEFAULT_GOAL_CATEGORY_ID ? null : form.categoryId,
+          category_id: storedLibraryCategoryId(form.categoryId),
           is_active: true,
           created_at: new Date().toISOString(),
         }
@@ -1177,29 +721,6 @@ export function MetricsEditor({
 
     if (form.kind === 'weight') {
       const unit = settings.weightUnit
-      const startDisplay = parseFloat(form.weightStart)
-      const targetDisplay = parseFloat(form.weightTarget)
-      if (form.weightMode === 'maintain') {
-        if (Number.isNaN(targetDisplay) || targetDisplay <= 0) return
-      } else if (
-        Number.isNaN(startDisplay) ||
-        startDisplay <= 0 ||
-        Number.isNaN(targetDisplay) ||
-        targetDisplay <= 0
-      ) {
-        return
-      }
-      if (form.weightMode === 'bulk' && targetDisplay <= startDisplay) return
-      if (form.weightMode === 'cut' && targetDisplay >= startDisplay) return
-
-      const startKg =
-        form.weightMode === 'maintain'
-          ? displayToKg(targetDisplay, unit)
-          : displayToKg(startDisplay, unit)
-      const targetKg =
-        form.weightMode === 'maintain'
-          ? displayToKg(targetDisplay, unit)
-          : displayToKg(targetDisplay, unit)
       const existing = form.mode === 'edit' && form.goalId
         ? goals.find((g) => g.id === form.goalId)
         : activeWeightGoal
@@ -1209,7 +730,7 @@ export function MetricsEditor({
         user_id: userId,
         metric_key: 'weight',
         name: 'Weight',
-        target_value: null,
+        target_value: existing?.target_value ?? null,
         log_period: form.logPeriod,
         ...(form.logPeriod === 'daily'
           ? {
@@ -1219,15 +740,17 @@ export function MetricsEditor({
                 : {}),
             }
           : {}),
-        goal_weight_start: startKg,
-        goal_weight_target: targetKg,
-        period_start_date: form.weightStartDate,
-        period_end_date: form.weightTargetDate,
+        goal_weight_start: existing?.goal_weight_start ?? null,
+        goal_weight_target: existing?.goal_weight_target ?? null,
+        period_start_date: existing?.period_start_date,
+        period_end_date: existing?.period_end_date,
         unit,
         is_active: true,
         created_at: existing?.created_at ?? new Date().toISOString(),
+        category_id: storedLibraryCategoryId(form.categoryId),
       })
       onSaveGoal(savedWeightGoal)
+      enableMetricsSection('weight')
       // Weekly weight can't live on the morning log — clear any leftover assignment.
       if (form.logPeriod === 'weekly') {
         saveMorningLogGoalKeys(getMorningLogGoalKeys().filter((key) => key !== 'weight'))
@@ -1244,12 +767,7 @@ export function MetricsEditor({
     }
 
     if (form.kind === 'workout') {
-      if (form.setTarget) {
-        const value = parseFloat(form.targetValue)
-        if (Number.isNaN(value) || value <= 0) return
-      }
-
-      const logPeriod = form.setTarget ? form.logPeriod : 'daily'
+      const logPeriod = form.logPeriod
       const askFields =
         logPeriod === 'weekly'
           ? { log_period: 'weekly' as const }
@@ -1276,11 +794,12 @@ export function MetricsEditor({
                 unit,
                 ...askFields,
                 subtypes: subtypes.length > 0 ? subtypes : undefined,
+                category_id: storedLibraryCategoryId(form.categoryId),
               }
             : t,
         )
         persistWorkoutTypes(updated)
-        saveWorkoutGoal(form.workoutId, name, form.setTarget, form.targetValue, form, workoutGoal(form.workoutId))
+        saveWorkoutGoal(form.workoutId, name, form, workoutGoal(form.workoutId))
       } else {
         let id = slugifyWorkoutId(name)
         let n = 2
@@ -1299,16 +818,18 @@ export function MetricsEditor({
             unit,
             ...askFields,
             ...(subtypes.length > 0 ? { subtypes } : {}),
+            category_id: storedLibraryCategoryId(form.categoryId) ?? undefined,
           },
         ])
-        saveWorkoutGoal(id, name, form.setTarget, form.targetValue, form)
+        saveWorkoutGoal(id, name, form)
+        enableMetricsSection('workouts')
+        updateSettings({ showWorkoutMetrics: true })
       }
       closeForm()
     }
   }
 
   const deleteHabit = (habit: HabitTypeDefinition) => {
-    if (habits.length <= 1) return
     persistHabit(habits.filter((h) => h.id !== habit.id))
     setPendingDelete(null)
   }
@@ -1340,96 +861,148 @@ export function MetricsEditor({
     }
   }
 
-  const sectionItemCount = (sectionId: MetricsSection): number => {
-    switch (sectionId) {
-      case 'habits':
-        return habits.length
-      case 'sleep':
-        return sleepMetricsConfig.enabledIds.length
-      case 'focus':
-        return activeFocusGoal ? 1 : 0
-      case 'weight':
-        return goals.filter(isWeightGoal).length
-      case 'workouts':
-        return workoutTypes.length
-      case DEFAULT_GOAL_CATEGORY_ID:
-        return goalsForCategory(DEFAULT_GOAL_CATEGORY_ID).length
-      default:
-        return goalsForCategory(sectionId).length
-    }
-  }
+  const libraryItems = useMemo(() => {
+    const items: Array<{
+      key: string
+      categoryId: string
+      node: 'habit' | 'sleep' | 'goal' | 'workout'
+      habit?: HabitTypeDefinition
+      sleepMetric?: SleepMetricDefinition
+      goal?: Goal
+      workout?: WorkoutTypeDefinition
+    }> = []
 
-  const executeDeleteSection = (sectionId: MetricsSection) => {
+    for (const habit of habits) {
+      items.push({
+        key: `habit:${habit.id}`,
+        categoryId: resolveGoalCategoryId(habit.category_id),
+        node: 'habit',
+        habit,
+      })
+    }
+    for (const metric of getEnabledSleepMetrics(sleepMetricsConfig)) {
+      items.push({
+        key: `sleep:${metric.id}`,
+        categoryId: resolveGoalCategoryId(sleepMetricsConfig.categories?.[metric.id]),
+        node: 'sleep',
+        sleepMetric: metric,
+      })
+    }
+    if (activeWeightGoal) {
+      items.push({
+        key: `goal:${activeWeightGoal.id}`,
+        categoryId: resolveGoalCategoryId(activeWeightGoal.category_id),
+        node: 'goal',
+        goal: activeWeightGoal,
+      })
+    }
+    if (activeFocusGoal) {
+      items.push({
+        key: `goal:${activeFocusGoal.id}`,
+        categoryId: resolveGoalCategoryId(activeFocusGoal.category_id),
+        node: 'goal',
+        goal: activeFocusGoal,
+      })
+    }
+    for (const goal of customGoals) {
+      items.push({
+        key: `goal:${goal.id}`,
+        categoryId: resolveGoalCategoryId(goal.category_id),
+        node: 'goal',
+        goal,
+      })
+    }
+    for (const workout of workoutTypes) {
+      items.push({
+        key: `workout:${workout.id}`,
+        categoryId: resolveGoalCategoryId(workout.category_id),
+        node: 'workout',
+        workout,
+      })
+    }
+    return items
+  }, [
+    habits,
+    sleepMetricsConfig,
+    activeWeightGoal,
+    activeFocusGoal,
+    customGoals,
+    workoutTypes,
+  ])
+
+  const categoryItemCount = (categoryId: string): number =>
+    libraryItems.filter((item) => item.categoryId === categoryId).length
+
+  const executeDeleteCategory = (categoryId: string) => {
     closeForm()
     setSectionDeleteConfirm(null)
     setEditingCategoryId(null)
-
-    switch (sectionId) {
-      case 'habits':
-        persistHabit([])
-        break
-      case 'sleep':
-        if (activeSleepGoal) deleteGoalInSection(activeSleepGoal)
-        saveSleepMetricsConfig({
-          ...sleepMetricsConfig,
-          enabledIds: [],
-          customMetrics: [],
-          targets: {},
-        })
-        saveMorningLogSleepFieldIds([])
-        saveShutdownLogSleepFieldIds([])
-        break
-      case 'focus':
-        if (activeFocusGoal) deleteFocusGoal(activeFocusGoal)
-        break
-      case 'weight':
-        goals.filter(isWeightGoal).forEach(deleteGoalInSection)
-        break
-      case 'workouts':
-        [...workoutTypes].forEach(deleteWorkout)
-        updateSettings({ showWorkoutMetrics: false })
-        break
-      case DEFAULT_GOAL_CATEGORY_ID:
-        goalsForCategory(DEFAULT_GOAL_CATEGORY_ID).forEach(deleteGoalInSection)
-        break
-      default:
-        goalsForCategory(sectionId).forEach(deleteGoalInSection)
-        if (!isDefaultGoalCategory(sectionId)) {
-          persistCategories(getCustomGoalCategories().filter((c) => c.id !== sectionId))
-        }
-        break
+    ungroupMetricsInCategory(categoryId)
+    for (const goal of goals) {
+      if (goal.category_id === categoryId) {
+        onSaveGoal(normalizeGoal({ ...goal, category_id: null }))
+      }
     }
-
-    disableMetricsSection(sectionId)
-    refreshEnabledSections()
     refreshCategories()
-
-    const remaining = getEnabledMetricsSections()
-    if (activeSection === sectionId || !remaining.includes(activeSection)) {
-      setActiveSection((remaining[0] as MetricsSection | undefined) ?? 'habits')
-    }
+    refreshWorkouts()
   }
 
-  const handleSaveFocusGoal = async (values: Parameters<typeof saveFocusGoal>[2]) => {
-    const { settings: next, goal } = await saveFocusGoal(userId, getFocusSettings(), values)
-    saveFocusSettings(next)
-    onSaveGoal(goal)
-  }
+  const renderHabitCard = (habit: HabitTypeDefinition) => {
+    const isEditing = form?.kind === 'habit' && form.habitId === habit.id
 
-  const handleFocusUnitChange = (nextUnit: 'hours' | 'minutes') => {
-    if (!form || form.kind !== 'focus' || nextUnit === form.focusUnit) return
-    const parsed = parseFloat(form.targetValue)
-    if (nextUnit === 'hours') {
-      const hrs = Number.isFinite(parsed)
-        ? Math.max(1, Math.min(12, Math.round(parsed / 60) || 1))
-        : 1
-      setForm({ ...form, focusUnit: 'hours', targetValue: String(hrs) })
-      return
+    if (isEditing) {
+      return renderInlineFormCard(habit.id)
     }
-    const mins = Number.isFinite(parsed)
-      ? Math.max(1, Math.min(480, Math.round(parsed * 60)))
-      : 60
-    setForm({ ...form, focusUnit: 'minutes', targetValue: String(mins) })
+
+    if (isPendingDelete('habit', habit.id)) {
+      return (
+        <Card key={habit.id} className="border-red-900/40 bg-red-950/20">
+          <MetricDeleteConfirmInline
+            name={habit.label}
+            onCancel={() => setPendingDelete(null)}
+            onConfirm={() => deleteHabit(habit)}
+          />
+        </Card>
+      )
+    }
+
+    return (
+      <Card key={habit.id} onClick={() => openMetricHistory({ kind: 'habit', habitId: habit.id })}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-start gap-2">
+            <Flame size={14} className="mt-0.5 shrink-0 text-[var(--accent-400)]" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium text-zinc-200">{habit.label}</h3>
+              <p className="text-[10px] text-zinc-500">{formatHabitCardSubtitle(habit)}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openEditHabit(habit)
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label={`Edit ${habit.label} settings`}
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                requestDelete({ kind: 'habit', id: habit.id })
+              }}
+              className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400"
+              aria-label={`Delete ${habit.label}`}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      </Card>
+    )
   }
 
   const renderGoalCard = (goal: Goal) => {
@@ -1463,9 +1036,7 @@ export function MetricsEditor({
             <h3 className="text-sm font-medium text-zinc-200">{goal.name}</h3>
             <p className="text-[10px] text-zinc-500">
               {formatGoalScheduleLabel(goal, today)}
-              {hasTarget(goal) && goal.target_value != null
-                ? ` · ${isTimerFocusGoal ? formatFocusGoalTarget(goal.target_value) : formatGoalTargetLabel(goal.target_value, goal.unit, goal.metric_key)}`
-                : ' · track only'}
+              {goal.unit ? ` · ${goal.unit}` : ''}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
@@ -1498,7 +1069,6 @@ export function MetricsEditor({
   }
 
   const renderWorkoutCard = (type: WorkoutTypeDefinition) => {
-    const goal = workoutGoal(type.id)
     const isEditing = form?.kind === 'workout' && form.workoutId === type.id
 
     if (isEditing) {
@@ -1528,9 +1098,7 @@ export function MetricsEditor({
             <div className="min-w-0">
               <h3 className="text-sm font-medium text-zinc-200">{type.label}</h3>
               <p className="text-[10px] text-zinc-500">
-                {goal && hasTarget(goal)
-                  ? `${formatGoalScheduleLabel(goal, today)} · ${goal.target_value} ${workoutGoalUnitLabel(goal.unit || type.unit, goalLogPeriod(goal))}`
-                  : `${type.unit || DEFAULT_WORKOUT_UNIT} · track only`}
+                {`${type.unit || DEFAULT_WORKOUT_UNIT} · ${workoutLogPeriod(type)}`}
                 {type.subtypes && type.subtypes.length > 0
                   ? ` · ${type.subtypes.join(' / ')}`
                   : ''}
@@ -1567,13 +1135,6 @@ export function MetricsEditor({
   }
 
   const renderWeightCard = (goal: Goal) => {
-    const unit = settings.weightUnit
-    const mode = weightGoalMode(goal)
-    const range =
-      goal.goal_weight_start != null && goal.goal_weight_target != null
-        ? formatWeightGoalRange(goal.goal_weight_start, goal.goal_weight_target, unit)
-        : null
-    const dateRange = formatWeightGoalDateRange(goal)
     const isEditing = form?.kind === 'weight' && form.goalId === goal.id
 
     if (isEditing) {
@@ -1597,16 +1158,11 @@ export function MetricsEditor({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-              {weightGoalModeLabel(mode)} goal · {goalLogPeriod(goal) === 'daily' ? 'daily' : 'weekly'}
+              Weight · {goalLogPeriod(goal) === 'daily' ? 'daily' : 'weekly'}
             </p>
-            {range && (
-              <p className="mt-1 text-lg font-semibold tabular-nums leading-tight text-zinc-100">
-                {range}
-              </p>
-            )}
-            {dateRange && (
-              <p className="mt-0.5 text-[10px] text-zinc-500">{dateRange}</p>
-            )}
+            <p className="mt-1 text-lg font-semibold tabular-nums leading-tight text-zinc-100">
+              {settings.weightUnit}
+            </p>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <button
@@ -1639,117 +1195,15 @@ export function MetricsEditor({
 
   const canSaveForm = (() => {
     if (!form) return false
-    if (form.kind === 'weight') {
-      const start = parseFloat(form.weightStart)
-      const target = parseFloat(form.weightTarget)
-      if (Number.isNaN(target) || target <= 0) return false
-      if (!form.weightStartDate.trim() || !form.weightTargetDate.trim()) return false
-      if (form.weightStartDate >= form.weightTargetDate) return false
-      if (form.weightMode === 'maintain') return true
-      if (Number.isNaN(start) || start <= 0) return false
-      if (form.weightMode === 'bulk') return target > start
-      if (form.weightMode === 'cut') return target < start
-      return false
-    }
-    if (form.kind === 'focus') {
-      const v = parseFloat(form.targetValue)
-      return !Number.isNaN(v) && v > 0
-    }
-    if (form.kind === 'sleep') {
-      if (!form.setTarget) return true
-      const v = parseFloat(form.targetValue)
-      return !Number.isNaN(v) && v > 0
-    }
+    if (form.kind === 'weight' || form.kind === 'focus' || form.kind === 'sleep') return true
     if (
       (form.kind === 'habit' || form.kind === 'goal' || form.kind === 'workout') &&
       !form.name.trim()
     ) {
       return false
     }
-    if (form.kind === 'habit') {
-      if (!isValidHabitRampForm(form)) return false
-      if (!isValidHabitDurationForm(form)) return false
-      return true
-    }
-    if (form.kind === 'goal' || form.kind === 'workout') {
-      if (!form.setTarget) return true
-      const v = parseFloat(form.targetValue)
-      if (Number.isNaN(v) || v <= 0) return false
-      if (form.targetPeriod === 'custom_duration') {
-        const amount = parseFloat(form.periodAmount)
-        return !Number.isNaN(amount) && amount > 0
-      }
-      if (form.targetPeriod === 'custom_date') {
-        return form.periodEndDate.trim().length > 0
-      }
-      return true
-    }
-    return false
+    return true
   })()
-
-  const navItems = useMemo((): { id: MetricsSection; label: string }[] => {
-    const items: { id: MetricsSection; label: string }[] = []
-    const enabled = new Set(enabledSections)
-
-    if (enabled.has('habits')) {
-      items.push({ id: 'habits', label: 'Habits' })
-    }
-
-    if (enabled.has('sleep')) {
-      items.push({ id: 'sleep', label: 'Sleep' })
-    }
-
-    if (enabled.has('focus')) {
-      items.push({ id: 'focus', label: 'Focus' })
-    }
-
-    if (enabled.has('weight')) {
-      items.push({ id: 'weight', label: 'Weight Goal' })
-    }
-
-    if (enabled.has('workouts') && showWorkouts) {
-      items.push({ id: 'workouts', label: 'Workouts' })
-    }
-
-    for (const category of goalCategories) {
-      if (!isDefaultGoalCategory(category.id) && enabled.has(category.id)) {
-        items.push({ id: category.id, label: category.label })
-      }
-    }
-
-    if (enabled.has('default')) {
-      items.push({ id: 'default', label: DEFAULT_GOAL_CATEGORY_LABEL })
-    }
-
-    return items
-  }, [enabledSections, goalCategories, showWorkouts])
-
-  const activeNavLabel =
-    navItems.find((item) => item.id === activeSection)?.label ?? 'Metrics'
-
-  useEffect(() => {
-    if (navItems.length === 0) return
-    if (!navItems.some((item) => item.id === activeSection)) {
-      setActiveSection(navItems[0].id)
-    }
-  }, [navItems, activeSection])
-
-  useEffect(() => {
-    setForm(null)
-    setCategoryPickerOpen(false)
-    setSectionDeleteConfirm(null)
-    setAddingSleepMetric(false)
-  }, [activeSection])
-
-  const isAddingInSection =
-    !!form &&
-    form.mode === 'add' &&
-    ((activeSection === 'habits' && form.kind === 'habit') ||
-      (activeSection === 'sleep' && form.kind === 'sleep') ||
-      (activeSection === 'focus' && form.kind === 'focus') ||
-      (activeSection === 'weight' && form.kind === 'weight') ||
-      (activeSection === 'workouts' && form.kind === 'workout') ||
-      (form.kind === 'goal' && form.categoryId === activeSection))
 
   const renderInlineForm = () => {
     if (!form) return null
@@ -1782,15 +1236,13 @@ export function MetricsEditor({
           />
         )}
 
-        {form.kind === 'goal' && (
-          <GoalCategoryPicker
-            value={form.categoryId}
-            categories={goalCategories}
-            open={categoryPickerOpen}
-            onOpenChange={setCategoryPickerOpen}
-            onChange={(categoryId) => setForm({ ...form, categoryId })}
-          />
-        )}
+        <GoalCategoryPicker
+          value={form.categoryId}
+          categories={goalCategories}
+          open={categoryPickerOpen}
+          onOpenChange={setCategoryPickerOpen}
+          onChange={(categoryId) => setForm({ ...form, categoryId })}
+        />
 
         {form.kind === 'focus' && (
           <>
@@ -1799,35 +1251,9 @@ export function MetricsEditor({
               value={form.logPeriod}
               onChange={(logPeriod) => setForm({ ...form, logPeriod })}
             />
-            <div className="grid grid-cols-2 gap-1.5">
-              <MetricInput
-                compact
-                label="Target"
-                type="number"
-                min={1}
-                max={form.focusUnit === 'hours' ? 12 : 480}
-                step={1}
-                value={form.targetValue}
-                onChange={(e) => setForm({ ...form, targetValue: e.target.value })}
-                placeholder={form.focusUnit === 'hours' ? '2' : '90'}
-              />
-              <div>
-                <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                  Unit
-                </span>
-                <SlidingSegmentedControl
-                  className="w-full"
-                  value={form.focusUnit}
-                  options={[
-                    { value: 'hours', label: 'Hours' },
-                    { value: 'minutes', label: 'Minutes' },
-                  ]}
-                  onChange={handleFocusUnitChange}
-                />
-              </div>
-            </div>
             <p className="text-[10px] leading-snug text-zinc-500">
-              Tracked automatically from your focus timer sessions.
+              Tracked automatically from your focus timer sessions. Set a focus target on the Goals
+              page.
             </p>
           </>
         )}
@@ -1845,24 +1271,6 @@ export function MetricsEditor({
                 })
               }
             />
-            <ToggleRow
-              label="Set target"
-              description="Compare nightly sleep against a goal"
-              checked={form.setTarget}
-              compact
-              onChange={(setTarget) => setForm({ ...form, setTarget })}
-            />
-            {form.setTarget && (
-              <MetricInput
-                compact
-                label="Target"
-                unit="hrs"
-                step="0.5"
-                value={form.targetValue}
-                onChange={(e) => setForm({ ...form, targetValue: e.target.value })}
-                placeholder="8"
-              />
-            )}
             {form.logPeriod === 'daily' && (
               <>
                 <SegmentPicker
@@ -1908,61 +1316,6 @@ export function MetricsEditor({
 
         {form.kind === 'weight' && (
           <>
-            <WeightModePicker
-              value={form.weightMode}
-              onChange={(weightMode) => {
-                if (weightMode === 'maintain' && form.weightStart) {
-                  setForm({ ...form, weightMode, weightTarget: form.weightStart })
-                  return
-                }
-                setForm({ ...form, weightMode })
-              }}
-            />
-            {form.weightMode === 'maintain' ? (
-              <MetricInput
-                compact
-                label="Maintain at"
-                unit={settings.weightUnit}
-                value={form.weightTarget}
-                onChange={(e) =>
-                  setForm({ ...form, weightTarget: e.target.value, weightStart: e.target.value })
-                }
-                placeholder="e.g. 80"
-              />
-            ) : (
-              <div className="grid grid-cols-2 gap-1.5">
-                <MetricInput
-                  compact
-                  label="Starting weight"
-                  unit={settings.weightUnit}
-                  value={form.weightStart}
-                  onChange={(e) => setForm({ ...form, weightStart: e.target.value })}
-                  placeholder="e.g. 80"
-                />
-                <MetricInput
-                  compact
-                  label={form.weightMode === 'bulk' ? 'Goal (gain to)' : 'Goal (cut to)'}
-                  unit={settings.weightUnit}
-                  value={form.weightTarget}
-                  onChange={(e) => setForm({ ...form, weightTarget: e.target.value })}
-                  placeholder={form.weightMode === 'bulk' ? 'e.g. 85' : 'e.g. 75'}
-                />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-1.5">
-              <DatePickerField
-                allowPast
-                placeholder="Start date"
-                value={form.weightStartDate}
-                onChange={(weightStartDate) => setForm({ ...form, weightStartDate })}
-              />
-              <DatePickerField
-                placeholder="Target date"
-                value={form.weightTargetDate}
-                minDate={form.weightStartDate}
-                onChange={(weightTargetDate) => setForm({ ...form, weightTargetDate })}
-              />
-            </div>
             <PeriodPicker
               label="Log"
               value={form.logPeriod}
@@ -1998,14 +1351,12 @@ export function MetricsEditor({
                   />
                 )}
                 <p className="text-[10px] leading-snug text-zinc-500">
-                  Daily weigh-ins. Weekly shutdown won&apos;t ask for weight.
+                  Daily weigh-ins. Set a bulk, cut, or maintain target on the Goals page.
                 </p>
               </>
             ) : (
               <p className="text-[10px] leading-snug text-zinc-500">
-                Log once at weekly shutdown. Can&apos;t also be on the morning log — each week
-                compares last week&apos;s weight to this week&apos;s against your bulk, cut, or
-                maintain goal.
+                Log once at weekly shutdown. Set the weight outcome on the Goals page.
               </p>
             )}
           </>
@@ -2059,165 +1410,23 @@ export function MetricsEditor({
                 </p>
               </>
             )}
-            <ToggleRow
-              label="Target units"
-              description="Optional target amount for this habit"
-              checked={form.habitDurationEnabled}
-              compact
-              onChange={(habitDurationEnabled) => setForm({ ...form, habitDurationEnabled })}
-            />
-            {form.habitDurationEnabled && (
-              <div className="grid grid-cols-2 gap-1.5">
-                <MetricInput
-                  compact
-                  label="Target"
-                  unit={form.habitDurationUnit || 'min'}
-                  value={form.habitDurationValue}
-                  onChange={(e) => setForm({ ...form, habitDurationValue: e.target.value })}
-                  placeholder="10"
-                />
-                <MetricInput
-                  compact
-                  label="Unit"
-                  type="text"
-                  value={form.habitDurationUnit}
-                  onChange={(e) => setForm({ ...form, habitDurationUnit: e.target.value })}
-                  placeholder="min"
-                />
-              </div>
-            )}
-            <ToggleRow
-              label="Ramping goal"
-              description="Level up after a streak of days, capped at Build to"
-              checked={form.rampEnabled}
-              compact
-              onChange={(rampEnabled) => setForm({ ...form, rampEnabled })}
-            />
-            {form.rampEnabled && (
-              <>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <MetricInput
-                    compact
-                    label="Start at"
-                    unit={form.rampUnit || 'min'}
-                    value={form.rampStartValue}
-                    onChange={(e) => setForm({ ...form, rampStartValue: e.target.value })}
-                    placeholder="5"
-                  />
-                  <MetricInput
-                    compact
-                    label="Build to"
-                    unit={form.rampUnit || 'min'}
-                    value={form.rampTargetValue}
-                    onChange={(e) => setForm({ ...form, rampTargetValue: e.target.value })}
-                    placeholder="30"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <MetricInput
-                    compact
-                    label="Increase by"
-                    unit={form.rampUnit || 'min'}
-                    value={form.rampStepValue}
-                    onChange={(e) => setForm({ ...form, rampStepValue: e.target.value })}
-                    placeholder="5"
-                  />
-                  <MetricInput
-                    compact
-                    label="Every"
-                    unit="streak days"
-                    value={form.rampIntervalStreakDays}
-                    onChange={(e) =>
-                      setForm({ ...form, rampIntervalStreakDays: e.target.value })
-                    }
-                    placeholder="7"
-                  />
-                </div>
-                <MetricInput
-                  compact
-                  label="Unit"
-                  type="text"
-                  value={form.rampUnit}
-                  onChange={(e) => setForm({ ...form, rampUnit: e.target.value })}
-                  placeholder="min"
-                />
-                {isValidHabitRampForm(form) && (
-                  <p className="text-[10px] leading-snug text-zinc-500">
-                    Current target:{' '}
-                    <span className="text-[var(--accent-300)]">
-                      {formatHabitRampTarget({
-                        id: 'preview',
-                        label: form.name.trim() || 'Habit',
-                        ramp: habitRampFromForm(form),
-                      }) ?? '—'}
-                    </span>
-                    {' · '}
-                    level {form.rampLevel}. Increases every {form.rampIntervalStreakDays || '—'}{' '}
-                    day streak. Never goes above Build to. Still check off when done.
-                  </p>
-                )}
-              </>
-            )}
           </>
         )}
 
         {form.kind === 'goal' && (
           <>
-            <ToggleRow
-              label="Set a target"
-              checked={form.setTarget}
-              compact
-              onChange={(setTarget) =>
+            <PeriodPicker
+              label="Log"
+              value={form.logPeriod}
+              onChange={(logPeriod) =>
                 setForm({
                   ...form,
-                  setTarget,
-                  targetPeriod: setTarget ? form.targetPeriod : 'daily',
-                  logPeriod: setTarget ? form.logPeriod : 'daily',
+                  logPeriod,
+                  goalLogWhen: logPeriod === 'weekly' ? 'home' : form.goalLogWhen,
                 })
               }
             />
-            {form.setTarget && (
-              <div className="space-y-1.5">
-                <TargetPeriodPicker
-                  value={form.targetPeriod}
-                  onChange={(targetPeriod) => setForm(applyTargetPeriod(form, targetPeriod))}
-                  customMode={form.customPeriodMode}
-                  onCustomModeChange={(customPeriodMode) =>
-                    setForm(applyCustomPeriodMode(form, customPeriodMode))
-                  }
-                  periodAmount={form.periodAmount}
-                  onPeriodAmountChange={(periodAmount) => setForm({ ...form, periodAmount })}
-                  periodUnit={form.periodUnit}
-                  onPeriodUnitChange={(periodUnit) => setForm({ ...form, periodUnit })}
-                  periodEndDate={form.periodEndDate}
-                  onPeriodEndDateChange={(periodEndDate) =>
-                    setForm({ ...form, periodEndDate })
-                  }
-                />
-                <PeriodPicker
-                  label="Log"
-                  value={form.logPeriod}
-                  onChange={(logPeriod) =>
-                    setForm({
-                      ...form,
-                      logPeriod,
-                      goalLogWhen: logPeriod === 'weekly' ? 'home' : form.goalLogWhen,
-                    })
-                  }
-                />
-                {(form.targetPeriod === 'custom_duration' ||
-                  form.targetPeriod === 'custom_date') && (
-                  <ToggleRow
-                    label="Recurring"
-                    description="Start a new period when this one ends"
-                    checked={form.periodRecurring}
-                    compact
-                    onChange={(periodRecurring) => setForm({ ...form, periodRecurring })}
-                  />
-                )}
-              </div>
-            )}
-            {(!form.setTarget || form.logPeriod === 'daily') && (
+            {form.logPeriod === 'daily' && (
               <>
                 <SegmentPicker
                   label="Ask in"
@@ -2252,93 +1461,38 @@ export function MetricsEditor({
                 </p>
               </>
             )}
-            {form.setTarget && form.logPeriod === 'weekly' && (
+            {form.logPeriod === 'weekly' && (
               <p className="text-[10px] leading-snug text-zinc-500">
-                Weekly log entries are entered at weekly shutdown.
+                Weekly log entries are entered at weekly shutdown. Set the target on the Goals page.
               </p>
             )}
-            {form.setTarget && (
-              <div className="space-y-1.5">
-                <div className="grid grid-cols-2 gap-1.5">
-                  {usesTimedMetricInput(form.unit) ? (
-                    <DurationMetricInput
-                      compact
-                      label={`Target (${targetLabelForForm(form)})`}
-                      value={form.targetValue ? parseFloat(form.targetValue) : null}
-                      onChange={(minutes) =>
-                        setForm({
-                          ...form,
-                          targetValue: minutes != null ? String(minutes) : '',
-                        })
-                      }
-                    />
-                  ) : (
-                    <MetricInput
-                      compact
-                      label={`Target (${targetLabelForForm(form)})`}
-                      value={form.targetValue}
-                      onChange={(e) => setForm({ ...form, targetValue: e.target.value })}
-                    />
-                  )}
-                  <div>
-                    <MetricInput
-                      compact
-                      label="Unit"
-                      type="text"
-                      value={form.unit}
-                      onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                      placeholder="hrs, min, hrs:min, kg"
-                    />
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {METRIC_UNIT_OPTIONS.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setForm({ ...form, unit: option })}
-                          className={cn(
-                            'rounded-md border px-1.5 py-0.5 text-[9px] transition-colors',
-                            form.unit === option
-                              ? 'border-[var(--accent-500)]/50 bg-[var(--accent-500)]/10 text-[var(--accent-300)]'
-                              : 'border-zinc-700/60 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
-                          )}
-                        >
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <MetricInput
+                compact
+                label="Unit"
+                type="text"
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                placeholder="hrs, min, hrs:min, kg"
+              />
+              <div className="flex flex-wrap content-end gap-1 pb-0.5">
+                {METRIC_UNIT_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setForm({ ...form, unit: option })}
+                    className={cn(
+                      'rounded-md border px-1.5 py-0.5 text-[9px] transition-colors',
+                      form.unit === option
+                        ? 'border-[var(--accent-500)]/50 bg-[var(--accent-500)]/10 text-[var(--accent-300)]'
+                        : 'border-zinc-700/60 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
+                    )}
+                  >
+                    {option}
+                  </button>
+                ))}
               </div>
-            )}
-            {!form.setTarget && (
-              <div className="grid grid-cols-2 gap-1.5">
-                <MetricInput
-                  compact
-                  label="Unit"
-                  type="text"
-                  value={form.unit}
-                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                  placeholder="hrs, min, hrs:min, kg"
-                />
-                <div className="flex flex-wrap content-end gap-1 pb-0.5">
-                  {METRIC_UNIT_OPTIONS.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setForm({ ...form, unit: option })}
-                      className={cn(
-                        'rounded-md border px-1.5 py-0.5 text-[9px] transition-colors',
-                        form.unit === option
-                          ? 'border-[var(--accent-500)]/50 bg-[var(--accent-500)]/10 text-[var(--accent-300)]'
-                          : 'border-zinc-700/60 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
-                      )}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            </div>
           </>
         )}
 
@@ -2388,72 +1542,18 @@ export function MetricsEditor({
               Optional. Comma-separated. Home planner and the weekly exercise template ask you to pick
               one after choosing this workout.
             </p>
-            <ToggleRow
-              label="Set a target"
-              checked={form.setTarget}
-              compact
-              onChange={(setTarget) =>
+            <PeriodPicker
+              label="Log"
+              value={form.logPeriod}
+              onChange={(logPeriod) =>
                 setForm({
                   ...form,
-                  setTarget,
-                  targetPeriod: setTarget ? form.targetPeriod : 'daily',
+                  logPeriod,
+                  workoutLogWhen: logPeriod === 'weekly' ? 'home' : form.workoutLogWhen,
                 })
               }
             />
-            {form.setTarget && (
-              <div className="space-y-1.5">
-                <TargetPeriodPicker
-                  value={form.targetPeriod}
-                  onChange={(targetPeriod) => setForm(applyTargetPeriod(form, targetPeriod))}
-                  customMode={form.customPeriodMode}
-                  onCustomModeChange={(customPeriodMode) =>
-                    setForm(applyCustomPeriodMode(form, customPeriodMode))
-                  }
-                  periodAmount={form.periodAmount}
-                  onPeriodAmountChange={(periodAmount) => setForm({ ...form, periodAmount })}
-                  periodUnit={form.periodUnit}
-                  onPeriodUnitChange={(periodUnit) => setForm({ ...form, periodUnit })}
-                  periodEndDate={form.periodEndDate}
-                  onPeriodEndDateChange={(periodEndDate) =>
-                    setForm({ ...form, periodEndDate })
-                  }
-                />
-                <PeriodPicker
-                  label="Log"
-                  value={form.logPeriod}
-                  onChange={(logPeriod) =>
-                    setForm({
-                      ...form,
-                      logPeriod,
-                      workoutLogWhen: logPeriod === 'weekly' ? 'home' : form.workoutLogWhen,
-                    })
-                  }
-                />
-                {(form.targetPeriod === 'custom_duration' ||
-                  form.targetPeriod === 'custom_date') && (
-                  <ToggleRow
-                    label="Recurring"
-                    description="Start a new period when this one ends"
-                    checked={form.periodRecurring}
-                    compact
-                    onChange={(periodRecurring) => setForm({ ...form, periodRecurring })}
-                  />
-                )}
-                <MetricInput
-                  compact
-                  label={`Target (${targetLabelForForm(form)})`}
-                  unit={normalizeWorkoutUnit(form.unit || DEFAULT_WORKOUT_UNIT)}
-                  value={form.targetValue}
-                  onChange={(e) => setForm({ ...form, targetValue: e.target.value })}
-                />
-                <p className="text-[10px] leading-snug text-zinc-500">
-                  {form.logPeriod === 'weekly'
-                    ? 'Weekly totals are entered at weekly shutdown.'
-                    : 'Sessions are logged in this unit.'}
-                </p>
-              </div>
-            )}
-            {(!form.setTarget || form.logPeriod === 'daily') && (
+            {form.logPeriod === 'daily' && (
               <>
                 <SegmentPicker
                   label="Ask in"
@@ -2488,9 +1588,9 @@ export function MetricsEditor({
                 </p>
               </>
             )}
-            {form.setTarget && form.logPeriod === 'weekly' && (
+            {form.logPeriod === 'weekly' && (
               <p className="text-[10px] leading-snug text-zinc-500">
-                Ask in is weekly shutdown — enter the week’s total when you close out the week.
+                Weekly totals are entered at weekly shutdown. Set a training target on the Goals page.
               </p>
             )}
           </>
@@ -2514,86 +1614,8 @@ export function MetricsEditor({
     </Card>
   )
 
-  const renderHabitsPanel = () => (
-    <>
-      {habits.length > 0 && (
-        <p className="mb-3 text-[10px] text-zinc-600">Drag to set order on Home</p>
-      )}
-      <HabitMetricsReorderList
-        habits={habits}
-        onReorder={persistHabit}
-        onView={(habit) => openMetricHistory({ kind: 'habit', habitId: habit.id })}
-        onEdit={openEditHabit}
-        onDelete={(habit) => {
-          if (habits.length <= 1) return
-          requestDelete({ kind: 'habit', id: habit.id })
-        }}
-        onConfirmDelete={deleteHabit}
-        onCancelDelete={() => setPendingDelete(null)}
-        deleteConfirmId={pendingDelete?.kind === 'habit' ? pendingDelete.id : null}
-        onAdd={!isAddingInSection ? openAddHabit : undefined}
-        addForm={isAddingInSection ? renderInlineFormCard('add-habit') : undefined}
-        editingHabitId={
-          form?.kind === 'habit' && form.mode === 'edit' ? form.habitId ?? null : null
-        }
-        renderInlineEditor={renderInlineForm}
-      />
-    </>
-  )
-
-  const renderWeightPanel = () => (
-    <div className="grid items-start gap-3 sm:grid-cols-2">
-      {activeWeightGoal && renderWeightCard(activeWeightGoal)}
-      {isAddingInSection && !activeWeightGoal && renderInlineFormCard('add-weight')}
-      {!activeWeightGoal && !isAddingInSection && (
-        <AddGhostCard onClick={openAddWeight} label="Add weight goal" />
-      )}
-    </div>
-  )
-
-  const syncSleepDurationGoal = (targetMinutes: number | null) => {
-    const hours =
-      targetMinutes != null && targetMinutes > 0
-        ? Math.round((targetMinutes / 60) * 100) / 100
-        : null
-    const existing = activeSleepGoal
-
-    if (hours == null) {
-      if (existing && hasTarget(existing)) {
-        onSaveGoal(normalizeGoal({ ...existing, target_value: null }))
-      }
-      return
-    }
-
-    const nextSleep: Goal = {
-      id: existing?.id ?? generateId(),
-      user_id: userId,
-      metric_key: 'sleep',
-      name: existing?.name ?? 'Sleep',
-      target_value: hours,
-      log_period: existing?.log_period ?? 'daily',
-      target_period: existing?.target_period ?? 'daily',
-      goal_weight_start: null,
-      goal_weight_target: null,
-      unit: 'hrs',
-      is_active: true,
-      created_at: existing?.created_at ?? new Date().toISOString(),
-      log_when: existing?.log_when ?? 'morning',
-      morning_day: existing?.morning_day ?? 'today',
-    }
-    if (existing?.period_start_date) nextSleep.period_start_date = existing.period_start_date
-    if (existing?.period_end_date) nextSleep.period_end_date = existing.period_end_date
-    if (existing?.period_days) nextSleep.period_days = existing.period_days
-    if (existing?.period_recurring != null) nextSleep.period_recurring = existing.period_recurring
-    onSaveGoal(normalizeGoal(nextSleep))
-  }
-
   const renderSleepMetricCard = (metric: SleepMetricDefinition) => {
     const unitLabel = sleepMetricDisplayUnit(metric)
-    const supportsTarget = sleepMetricSupportsTarget(metric)
-    const target = getSleepMetricTarget(sleepMetricsConfig, metric.id)
-    const targetInput = sleepMetricTargetToInputValue(metric, target)
-    const targetUnit = sleepMetricTargetInputUnit(metric)
     const isEditingSettings = editingSleepMetricId === metric.id
 
     if (isEditingSettings) {
@@ -2613,64 +1635,33 @@ export function MetricsEditor({
               <X size={14} />
             </button>
           </div>
-          {supportsTarget && (
-            <div className="mt-3">
-              {isClockSleepMetric(metric) ? (
-                <label className="block">
-                  <span className="mb-1.5 block text-[11px] font-medium text-zinc-400">Target</span>
-                  <input
-                    type="time"
-                    value={targetInput}
-                    onChange={(e) => {
-                      const nextTarget = sleepMetricTargetFromInputValue(metric, e.target.value)
-                      saveSleepMetricsConfig(
-                        setSleepMetricTarget(sleepMetricsConfig, metric.id, nextTarget),
-                      )
-                    }}
-                    className="w-full rounded-lg border border-zinc-700/80 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[var(--accent-500)]"
-                  />
-                  <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
-                    Optional target time for this metric.
-                  </p>
-                </label>
-              ) : (
-                <>
-                  <MetricInput
-                    compact
-                    label="Target"
-                    unit={targetUnit}
-                    step={
-                      metric.unit === 'score10' ||
-                      metric.id === 'sleep_duration' ||
-                      metric.id === 'in_bed'
-                        ? '0.5'
-                        : '1'
-                    }
-                    value={targetInput}
-                    onChange={(e) => {
-                      const nextTarget = sleepMetricTargetFromInputValue(metric, e.target.value)
-                      saveSleepMetricsConfig(
-                        setSleepMetricTarget(sleepMetricsConfig, metric.id, nextTarget),
-                      )
-                      if (metric.id === 'sleep_duration') syncSleepDurationGoal(nextTarget)
-                    }}
-                    placeholder={
-                      metric.id === 'sleep_duration' || metric.id === 'in_bed'
-                        ? '8'
-                        : metric.unit === 'percent'
-                          ? '85'
-                          : metric.unit === 'score10'
-                            ? '7'
-                            : ''
-                    }
-                  />
-                  <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
-                    Optional — used for Pulse when this metric is weighted.
-                  </p>
-                </>
-              )}
-            </div>
-          )}
+          <p className="mt-3 text-[10px] leading-snug text-zinc-500">
+            Sleep targets live on the Goals page. This field is only for measurement.
+          </p>
+          <label className="mt-3 block">
+            <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+              Category
+            </span>
+            <select
+              value={resolveGoalCategoryId(sleepMetricsConfig.categories?.[metric.id])}
+              onChange={(e) =>
+                saveSleepMetricsConfig(
+                  setSleepMetricCategory(
+                    sleepMetricsConfig,
+                    metric.id,
+                    storedLibraryCategoryId(e.target.value),
+                  ),
+                )
+              }
+              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+            >
+              {goalCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="mt-3 flex gap-2 border-t border-zinc-800/80 pt-3">
             <Button
               size="sm"
@@ -2692,7 +1683,6 @@ export function MetricsEditor({
                 }
                 removeSleepFieldFromMorningLog(metric.id)
                 removeSleepFieldFromShutdownLog(metric.id)
-                if (metric.id === 'sleep_duration') syncSleepDurationGoal(null)
                 setEditingSleepMetricId(null)
               }}
             >
@@ -2703,13 +1693,6 @@ export function MetricsEditor({
       )
     }
 
-    const targetSummary =
-      supportsTarget && target != null
-        ? isClockSleepMetric(metric)
-          ? `Target ${formatSleepMetricDisplay(metric, target)}`
-          : `Target ${sleepMetricTargetToInputValue(metric, target)}${targetUnit ? ` ${targetUnit}` : ''}`
-        : 'Tap to view history'
-
     return (
       <Card
         key={metric.id}
@@ -2718,7 +1701,7 @@ export function MetricsEditor({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="text-sm font-medium text-zinc-200">{metric.label}</h3>
-            <p className="text-[10px] text-zinc-500">{targetSummary}</p>
+            <p className="text-[10px] text-zinc-500">{unitLabel}</p>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <button
@@ -2743,7 +1726,6 @@ export function MetricsEditor({
                 }
                 removeSleepFieldFromMorningLog(metric.id)
                 removeSleepFieldFromShutdownLog(metric.id)
-                if (metric.id === 'sleep_duration') syncSleepDurationGoal(null)
               }}
               className="rounded-lg p-1.5 text-zinc-600 hover:text-red-400"
               aria-label={`Remove ${metric.label}`}
@@ -2756,291 +1738,315 @@ export function MetricsEditor({
     )
   }
 
-  const renderSleepPanel = () => {
-    const enabledSleepMetrics = getEnabledSleepMetrics(sleepMetricsConfig)
+  const renderLibraryItem = (item: (typeof libraryItems)[number]) => {
+    if (item.node === 'habit' && item.habit) return renderHabitCard(item.habit)
+    if (item.node === 'sleep' && item.sleepMetric) return renderSleepMetricCard(item.sleepMetric)
+    if (item.node === 'goal' && item.goal) {
+      return item.goal.metric_key === 'weight'
+        ? renderWeightCard(item.goal)
+        : renderGoalCard(item.goal)
+    }
+    if (item.node === 'workout' && item.workout) return renderWorkoutCard(item.workout)
+    return null
+  }
+
+  const kindOptions = [
+    { id: 'habit' as const, label: 'Habit', description: 'Done or not done', icon: Repeat },
+    { id: 'goal' as const, label: 'Number', description: 'Pages, hours, kg…', icon: Shapes },
+    { id: 'workout' as const, label: 'Workout', description: 'Training sessions', icon: Dumbbell },
+    { id: 'sleep' as const, label: 'Sleep field', description: 'Duration, bedtime, scores', icon: Moon },
+    { id: 'weight' as const, label: 'Weight', description: 'Weigh-ins', icon: Scale, hidden: !!activeWeightGoal },
+    { id: 'focus' as const, label: 'Focus', description: 'From the focus timer', icon: Brain, hidden: !!activeFocusGoal },
+  ].filter((option) => !option.hidden)
+
+  const handleKindPick = (id: (typeof kindOptions)[number]['id']) => {
+    if (id === 'habit') openAddHabit(kindPickerCategoryId)
+    else if (id === 'goal') openAdd(kindPickerCategoryId)
+    else if (id === 'workout') openAddWorkout(kindPickerCategoryId)
+    else if (id === 'sleep') openAddSleep(kindPickerCategoryId)
+    else if (id === 'weight') openAddWeight(kindPickerCategoryId)
+    else openAddFocus(kindPickerCategoryId)
+  }
+
+  const renderKindPickerCard = () => (
+    <Card className="p-3 ring-1 ring-[var(--accent-500)]/25 sm:col-span-2">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+          What do you measure?
+        </p>
+        <button
+          type="button"
+          onClick={() => setKindPickerOpen(false)}
+          className="rounded p-1 text-zinc-500 hover:text-zinc-300"
+          aria-label="Cancel"
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {kindOptions.map((option) => {
+          const Icon = option.icon
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => handleKindPick(option.id)}
+              className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2.5 text-left hover:border-[var(--accent-500)]/40"
+            >
+              <Icon size={14} className="mt-0.5 shrink-0 text-zinc-400" />
+              <span>
+                <span className="block text-sm font-medium text-zinc-100">{option.label}</span>
+                <span className="block text-[10px] text-zinc-500">{option.description}</span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </Card>
+  )
+
+  const groupedCategories = goalCategories.filter((category) => {
+    if (category.id !== UNGROUPED_CATEGORY_ID) return true
+    return (
+      libraryItems.some((item) => item.categoryId === UNGROUPED_CATEGORY_ID) ||
+      goalCategories.length === 1
+    )
+  })
+
+  const metricsEmpty = libraryItems.length === 0
+
+  const renderCategoryGrid = (categoryId: string) => {
+    const items = libraryItems.filter((item) => item.categoryId === categoryId)
+    const showAddForm = form?.mode === 'add' && form.categoryId === categoryId
+    const showKindPicker = kindPickerOpen && kindPickerCategoryId === categoryId
+    const showSleepPicker = addingSleepMetric && kindPickerCategoryId === categoryId
 
     return (
       <div className="grid items-start gap-3 sm:grid-cols-2">
-        {enabledSleepMetrics.map(renderSleepMetricCard)}
-
-        {addingSleepMetric && (
-          <Card key="add-sleep-metric" className="p-3 ring-1 ring-[var(--accent-500)]/25 sm:col-span-2">
+        {items.map((item) => (
+          <div key={item.key}>{renderLibraryItem(item)}</div>
+        ))}
+        {showAddForm && renderInlineFormCard(`add-${form.kind}`)}
+        {showKindPicker && renderKindPickerCard()}
+        {showSleepPicker && (
+          <Card className="p-3 ring-1 ring-[var(--accent-500)]/25 sm:col-span-2">
             <SleepMetricTemplatePicker
               config={sleepMetricsConfig}
-              onChange={saveSleepMetricsConfig}
+              onChange={(config) => {
+                enableMetricsSection('sleep')
+                const added = config.enabledIds.filter(
+                  (id) => !sleepMetricsConfig.enabledIds.includes(id),
+                )
+                let next = config
+                for (const id of added) {
+                  next = setSleepMetricCategory(
+                    next,
+                    id,
+                    storedLibraryCategoryId(kindPickerCategoryId),
+                  )
+                }
+                saveSleepMetricsConfig(next)
+              }}
               onDone={() => setAddingSleepMetric(false)}
             />
           </Card>
         )}
-
-        {!addingSleepMetric && (
-          <AddGhostCard onClick={() => setAddingSleepMetric(true)} label="Add" />
+        {!showAddForm && !showKindPicker && !showSleepPicker && (
+          <AddGhostCard onClick={() => openKindPicker(categoryId)} label="Add metric" />
         )}
       </div>
     )
   }
-
-  const renderFocusPanel = () => (
-    <div className="grid items-start gap-3 sm:grid-cols-2">
-      {activeFocusGoal && renderGoalCard(activeFocusGoal)}
-      {isAddingInSection && !activeFocusGoal && renderInlineFormCard('add-focus')}
-      {!activeFocusGoal && !isAddingInSection && (
-        <AddGhostCard onClick={openAddFocus} label="Add focus goal" />
-      )}
-    </div>
-  )
-
-  const renderWorkoutsPanel = () => (
-    <div className="grid items-start gap-3 sm:grid-cols-2">
-      {workoutTypes.map(renderWorkoutCard)}
-      {isAddingInSection && renderInlineFormCard('add-workout')}
-      {!isAddingInSection && <AddGhostCard onClick={openAddWorkout} label="Add workout" />}
-    </div>
-  )
-
-  const renderActivePanel = () => {
-    if (activeSection === 'habits') return renderHabitsPanel()
-    if (activeSection === 'sleep') return renderSleepPanel()
-    if (activeSection === 'focus') return renderFocusPanel()
-    if (activeSection === 'weight') return renderWeightPanel()
-    if (activeSection === 'workouts') return renderWorkoutsPanel()
-
-    const category = goalCategories.find((c) => c.id === activeSection)
-    if (category) return renderCategorySection(category)
-    return null
-  }
-
-  const isCustomCategorySection =
-    activeSection !== 'habits' &&
-    activeSection !== 'sleep' &&
-    activeSection !== 'focus' &&
-    activeSection !== 'weight' &&
-    activeSection !== 'workouts' &&
-    !isDefaultGoalCategory(activeSection)
-
-  const renderCategorySection = (category: GoalCategoryDefinition) => {
-    const categoryGoals = goalsForCategory(category.id)
-
-    return (
-      <section key={category.id}>
-        <div className="grid items-start gap-3 sm:grid-cols-2">
-          {categoryGoals.map(renderGoalCard)}
-          {isAddingInSection && form?.categoryId === category.id && renderInlineFormCard('add-goal')}
-          {!isAddingInSection && (
-            <AddGhostCard onClick={() => openAdd(category.id)} label="Add" />
-          )}
-        </div>
-      </section>
-    )
-  }
-
-  const activateBuiltinSection = (sectionId: (typeof BUILTIN_METRICS_SECTIONS)[number]) => {
-    enableMetricsSection(sectionId)
-    if (sectionId === 'workouts') {
-      updateSettings({ showWorkoutMetrics: true })
-    }
-    refreshEnabledSections()
-    refreshCategories()
-    setActiveSection(sectionId)
-    setTemplatePickerOpen(false)
-  }
-
-  const templateOptions = getAvailableMetricTemplates({
-    showWorkoutMetrics: showWorkouts,
-  })
-  const metricsEmpty = navItems.length === 0
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-zinc-100">Metrics</h2>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="shrink-0"
-          onClick={() => setEditLogsOpen(true)}
-        >
-          <History size={14} />
-          Edit logs
-        </Button>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-100">Metrics</h2>
+          <p className="mt-0.5 max-w-xl text-xs text-zinc-500">
+            A library of what you measure — name, unit, and when you log. Group them into categories
+            only to keep order. Outcomes live on{' '}
+            <Link to="/goals" className="text-[var(--accent-300)] hover:underline">
+              Goals
+            </Link>
+            .
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setNewCategoryName('')}
+          >
+            + Category
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setEditLogsOpen(true)}
+          >
+            <History size={14} />
+            Edit logs
+          </Button>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
-        {!metricsEmpty && (
-          <SlidingNavList
-            activeId={activeSection}
-            items={navItems}
-            getKey={(item) => item.id}
-            onSelect={(item) => setActiveSection(item.id)}
-            ariaLabel="Metrics sections"
-            className="flex gap-1 overflow-x-auto pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-0.5 sm:overflow-visible sm:pb-0"
-            itemClassName="shrink-0 px-3 py-2 sm:w-full"
-            renderItem={(item) => item.label}
-          />
-        )}
-
-        <div className="min-w-0 flex-1">
-          <div className="relative mb-4">
-            <button
-              type="button"
-              onClick={() => setTemplatePickerOpen((open) => !open)}
-              className={cn(
-                'rounded-lg px-3 py-2 text-sm transition-colors',
-                metricsEmpty
-                  ? 'border border-dashed border-zinc-700 text-zinc-300 hover:border-[var(--accent-500)]/50 hover:text-[var(--accent-300)]'
-                  : 'text-zinc-600 hover:bg-zinc-900/80 hover:text-zinc-300',
-              )}
+      {newCategoryName != null && (
+        <Card className="p-3 ring-1 ring-[var(--accent-500)]/25">
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            New category
+          </p>
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="e.g. Health, Training"
+              className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newCategoryName.trim()) {
+                  createMetricCategory(newCategoryName)
+                  refreshCategories()
+                  setNewCategoryName(null)
+                }
+                if (e.key === 'Escape') setNewCategoryName(null)
+              }}
+            />
+            <Button
+              size="sm"
+              disabled={!newCategoryName.trim()}
+              onClick={() => {
+                createMetricCategory(newCategoryName)
+                refreshCategories()
+                setNewCategoryName(null)
+              }}
             >
-              + Category
-            </button>
-            {templatePickerOpen && (
-              <div className="absolute left-0 top-full z-20 mt-2 w-full max-w-sm overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl">
-                {templateOptions.map((option) => {
-                  const Icon = METRIC_TEMPLATE_ICONS[option.id]
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => activateBuiltinSection(option.id)}
-                      className="flex w-full items-start gap-3 border-b border-zinc-800/80 px-4 py-3 text-left last:border-b-0 hover:bg-zinc-900/80"
-                    >
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-zinc-300 ring-1 ring-zinc-800">
-                        <Icon size={16} />
-                      </span>
-                      <span className="min-w-0 flex flex-col gap-0.5">
-                        <span className="text-sm font-medium text-zinc-100">{option.label}</span>
-                        <span className="text-[11px] leading-snug text-zinc-500">
-                          {option.description}
-                        </span>
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+              <Check size={13} /> Add
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setNewCategoryName(null)}>
+              <X size={13} />
+            </Button>
           </div>
+        </Card>
+      )}
 
-          {metricsEmpty ? (
-            <div className="rounded-xl border border-dashed border-zinc-800 px-6 py-12 text-center">
-              <p className="text-sm text-zinc-400">No metrics yet</p>
-              <p className="mt-1 text-xs text-zinc-600">
-                Add habits, goals, a weight target, or workouts to get started.
-              </p>
-            </div>
-          ) : (
-            <>
-          <div className="mb-4 flex items-center gap-1.5">
-            {isCustomCategorySection && editingCategoryId === activeSection ? (
-              <>
-                <input
-                  type="text"
-                  value={editingCategoryName}
-                  onChange={(e) => setEditingCategoryName(e.target.value)}
-                  className="w-48 max-w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-base font-semibold text-zinc-100 focus:border-[var(--accent-500)] focus:outline-none"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      renameCategory(activeSection, editingCategoryName)
-                      setEditingCategoryId(null)
-                    }
-                    if (e.key === 'Escape') setEditingCategoryId(null)
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    renameCategory(activeSection, editingCategoryName)
-                    setEditingCategoryId(null)
-                  }}
-                  className="rounded p-1 text-zinc-500 hover:text-emerald-400"
-                  aria-label="Save category name"
-                >
-                  <Check size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditingCategoryId(null)}
-                  className="rounded p-1 text-zinc-500 hover:text-zinc-300"
-                  aria-label="Cancel rename"
-                >
-                  <X size={14} />
-                </button>
-              </>
-            ) : (
-              <>
-                <h3 className="text-base font-semibold text-zinc-100">{activeNavLabel}</h3>
-                {isCustomCategorySection && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingCategoryId(activeSection)
-                      setEditingCategoryName(activeNavLabel)
-                    }}
-                    className="rounded p-1 text-zinc-600 hover:text-indigo-400"
-                    aria-label={`Rename ${activeNavLabel}`}
-                  >
-                    <Pencil size={12} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setSectionDeleteConfirm(activeSection)}
-                  className="rounded p-1 text-zinc-600 hover:text-red-400"
-                  aria-label={`Delete ${activeNavLabel}`}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </>
-            )}
-          </div>
-          {sectionDeleteConfirm === activeSection && (
-            <div className="mb-4 rounded-lg border border-red-900/40 bg-red-950/20 px-4 py-3">
-              <p className="text-sm text-zinc-300">
-                {sectionItemCount(activeSection) > 0 ? (
+      {metricsEmpty && !kindPickerOpen && !form && !addingSleepMetric ? (
+        <div className="rounded-xl border border-dashed border-zinc-800 px-6 py-12 text-center">
+          <p className="text-sm text-zinc-400">No metrics yet</p>
+          <p className="mt-1 text-xs text-zinc-600">
+            Add anything you want to measure. A metric can exist with no goal attached.
+          </p>
+          <Button size="sm" className="mt-4" onClick={() => openKindPicker()}>
+            <Plus size={14} />
+            Add metric
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {kindPickerOpen && metricsEmpty && renderKindPickerCard()}
+          {form?.mode === 'add' && metricsEmpty && renderInlineFormCard('add-empty')}
+          {groupedCategories.map((category) => (
+            <section key={category.id}>
+              <div className="mb-3 flex items-center gap-1.5">
+                {editingCategoryId === category.id ? (
                   <>
-                    Delete <span className="font-medium text-zinc-100">{activeNavLabel}</span>? This
-                    will permanently remove all{' '}
-                    {activeSection === 'habits'
-                      ? 'habits'
-                      : activeSection === 'sleep'
-                        ? 'sleep goal and sleep metrics'
-                        : activeSection === 'focus'
-                          ? 'focus goals'
-                          : activeSection === 'workouts'
-                            ? 'workouts'
-                            : 'goals'}{' '}
-                    in this category ({sectionItemCount(activeSection)}).
+                    <input
+                      type="text"
+                      value={editingCategoryName}
+                      onChange={(e) => setEditingCategoryName(e.target.value)}
+                      className="w-48 max-w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-base font-semibold text-zinc-100 focus:border-[var(--accent-500)] focus:outline-none"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          renameCategory(category.id, editingCategoryName)
+                          setEditingCategoryId(null)
+                        }
+                        if (e.key === 'Escape') setEditingCategoryId(null)
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        renameCategory(category.id, editingCategoryName)
+                        setEditingCategoryId(null)
+                      }}
+                      className="rounded p-1 text-zinc-500 hover:text-emerald-400"
+                      aria-label="Save category name"
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCategoryId(null)}
+                      className="rounded p-1 text-zinc-500 hover:text-zinc-300"
+                      aria-label="Cancel rename"
+                    >
+                      <X size={14} />
+                    </button>
                   </>
                 ) : (
                   <>
-                    Remove <span className="font-medium text-zinc-100">{activeNavLabel}</span>? You
-                    can add it back later with + Category.
+                    <h3 className="text-sm font-semibold text-zinc-200">{category.label}</h3>
+                    {category.id !== UNGROUPED_CATEGORY_ID && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCategoryId(category.id)
+                            setEditingCategoryName(category.label)
+                          }}
+                          className="rounded p-1 text-zinc-600 hover:text-indigo-400"
+                          aria-label={`Rename ${category.label}`}
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSectionDeleteConfirm(category.id)}
+                          className="rounded p-1 text-zinc-600 hover:text-red-400"
+                          aria-label={`Delete ${category.label}`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
-              </p>
-              <div className="mt-3 flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setSectionDeleteConfirm(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => executeDeleteSection(activeSection)}
-                >
-                  Delete category
-                </Button>
               </div>
-            </div>
-          )}
-          {renderActivePanel()}
-            </>
-          )}
+              {sectionDeleteConfirm === category.id && (
+                <div className="mb-3 rounded-lg border border-red-900/40 bg-red-950/20 px-4 py-3">
+                  <p className="text-sm text-zinc-300">
+                    Remove <span className="font-medium text-zinc-100">{category.label}</span>? Metrics
+                    stay — they move to {UNGROUPED_CATEGORY_LABEL}
+                    {categoryItemCount(category.id) > 0
+                      ? ` (${categoryItemCount(category.id)})`
+                      : ''}
+                    .
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setSectionDeleteConfirm(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => executeDeleteCategory(category.id)}
+                    >
+                      Remove category
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {renderCategoryGrid(category.id)}
+            </section>
+          ))}
         </div>
-      </div>
+      )}
 
       {editLogsOpen && (
         <EditLogsModal

@@ -29,18 +29,18 @@ export const METRICS_SECTION_LABELS: Record<BuiltinMetricsSection, string> = {
   habits: 'Habits',
   sleep: 'Sleep',
   focus: 'Focus',
-  weight: 'Weight Goal',
+  weight: 'Weight',
   workouts: 'Workouts',
   default: DEFAULT_GOAL_CATEGORY_LABEL,
 }
 
 export const METRICS_SECTION_DESCRIPTIONS: Record<BuiltinMetricsSection, string> = {
-  habits: 'Daily or weekly habits with optional ramping targets',
-  sleep: 'Nightly hours goal and optional sleep metrics',
-  focus: 'Deep work target tracked from your focus timer',
+  habits: 'Daily or weekly habits — when and where you log them',
+  sleep: 'Nightly fields like duration, bedtime, and wearable scores',
+  focus: 'Deep work tracked automatically from your focus timer',
   default: 'Custom metrics like reading or protein',
-  weight: 'Bulk, cut, or maintain — log daily or at weekly shutdown',
-  workouts: 'Workout types with optional weekly minute targets',
+  weight: 'Daily weigh-ins or a weekly log at shutdown',
+  workouts: 'Workout types and units — log daily or at weekly shutdown',
 }
 
 function hasSleepMetricsActivity(): boolean {

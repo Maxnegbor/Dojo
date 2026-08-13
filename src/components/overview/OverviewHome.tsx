@@ -7,8 +7,10 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
+import { OverviewGoalsSection } from '@/components/overview/OverviewGoalsSection'
 import { resolveGoalCategoryId } from '@/lib/goalCategories'
 import { getActiveGoals } from '@/lib/goals'
+import type { OutcomeGoalProgress } from '@/lib/outcomeGoals'
 import type { OverviewCategory, OverviewCategoryItem } from '@/lib/overviewCategories'
 import type { OverviewPeriod, OverviewPeriodStats } from '@/lib/overviewPeriods'
 import { formatDuration } from '@/lib/utils'
@@ -131,6 +133,7 @@ interface OverviewHomeProps {
   categories: OverviewCategoryItem[]
   stats: OverviewPeriodStats
   goals: Goal[]
+  outcomeProgress: OutcomeGoalProgress[]
   onOpenCategory: (category: OverviewCategory) => void
 }
 
@@ -139,12 +142,15 @@ export function OverviewHome({
   categories,
   stats,
   goals,
+  outcomeProgress,
   onOpenCategory,
 }: OverviewHomeProps) {
   const cards = buildAreaCards(categories, stats, goals, period)
 
   return (
     <div className="space-y-5">
+      <OverviewGoalsSection progressList={outcomeProgress} />
+
       {cards.length === 0 ? (
         <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">
           Add metrics categories on the Metrics page to see overview cards.

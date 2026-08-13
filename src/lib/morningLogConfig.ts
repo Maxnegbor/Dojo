@@ -689,8 +689,11 @@ export function isMorningLogComplete(
   date?: string,
   todayWorkouts: Workout[] = [],
   yesterdayWorkouts: Workout[] = [],
+  requireTypedReminder = false,
 ): boolean {
   if (date && isMorningLogSubmitted(date)) return true
+  // Typed reminder can only be completed by submitting the morning log modal.
+  if (requireTypedReminder) return false
   if (!log) return false
 
   if (!isMorningSleepLogComplete(log, getMorningLogSleepConfig(sleepConfig))) return false

@@ -45,6 +45,8 @@ export interface SleepMetricsConfig {
   customMetrics: SleepMetricDefinition[]
   /** Target in the metric’s native logged unit (minutes, hours, %, or 1–10). */
   targets: Record<string, number>
+  /** Optional Metrics library grouping by sleep metric id. */
+  categories?: Record<string, string>
 }
 
 export const SLEEP_METRICS_CHANGED = 'personal-os-sleep-metrics-changed'
@@ -106,10 +108,18 @@ export function normalizeSleepMetricsConfig(raw: unknown): SleepMetricsConfig {
     if (!enabled.has(key)) delete targets[key]
   }
 
+  const categories: Record<string, string> = {}
+  if (obj.categories && typeof obj.categories === 'object') {
+    for (const [key, value] of Object.entries(obj.categories)) {
+      if (key && typeof value === 'string' && value.trim()) categories[key] = value.trim()
+    }
+  }
+
   return {
     enabledIds,
     customMetrics,
     targets,
+    ...(Object.keys(categories).length > 0 ? { categories } : {}),
   }
 }
 
@@ -173,7 +183,14 @@ export function toggleSleepMetric(config: SleepMetricsConfig, id: string, enable
   else enabledIds.delete(id)
   const targets = { ...config.targets }
   if (!enabled) delete targets[id]
-  return { ...config, enabledIds: Array.from(enabledIds), targets }
+  const categories = { ...(config.categories ?? {}) }
+  if (!enabled) delete categories[id]
+  return {
+    ...config,
+    enabledIds: Array.from(enabledIds),
+    targets,
+    ...(Object.keys(categories).length > 0 ? { categories } : { categories: undefined }),
+  }
 }
 
 export function addCustomSleepMetric(
@@ -197,6 +214,7 @@ export function addCustomSleepMetric(
     enabledIds: [...config.enabledIds, id],
     customMetrics: [...config.customMetrics, metric],
     targets: { ...config.targets },
+    ...(config.categories ? { categories: config.categories } : {}),
   }
 }
 
@@ -207,7 +225,21 @@ export function removeCustomSleepMetric(config: SleepMetricsConfig, id: string):
     enabledIds: config.enabledIds.filter((entry) => entry !== id),
     customMetrics: config.customMetrics.filter((m) => m.id !== id),
     targets,
+    ...(config.categories
+      ? { categories: Object.fromEntries(Object.entries(config.categories).filter(([key]) => key !== id)) }
+      : {}),
   }
+}
+
+export function setSleepMetricCategory(
+  config: SleepMetricsConfig,
+  id: string,
+  categoryId: string | null,
+): SleepMetricsConfig {
+  const categories = { ...(config.categories ?? {}) }
+  if (!categoryId || categoryId === 'default') delete categories[id]
+  else categories[id] = categoryId
+  return { ...config, categories: Object.keys(categories).length > 0 ? categories : undefined }
 }
 
 /** All sleep metrics can carry an optional target (including bedtime / wake time). */

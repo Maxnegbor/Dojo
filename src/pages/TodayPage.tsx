@@ -1002,7 +1002,7 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-4 overflow-hidden lg:grid-cols-2 lg:grid-rows-none lg:gap-5">
+      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-4 overflow-hidden lg:grid-cols-2 lg:grid-rows-none lg:gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(17rem,22rem)]">
         <div data-schedule-height-host className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           {!showShutdown && (
             <HourlyTimeline
@@ -1119,10 +1119,13 @@ export function TodayPage() {
                 onRemove={removeReminder}
               />
             </div>
-            <div className="min-w-0">
-              <TodoistTasksCard viewDate={viewDate} />
-            </div>
           </div>
+          <div className="min-w-0 xl:hidden">
+            <TodoistTasksCard viewDate={viewDate} />
+          </div>
+        </aside>
+        <aside className="relative z-30 hidden min-h-0 min-w-0 flex-col overflow-y-auto overscroll-contain scrollbar-hidden xl:flex xl:h-full">
+          <TodoistTasksCard viewDate={viewDate} className="flex h-full min-h-0 flex-col" />
         </aside>
       </div>
 

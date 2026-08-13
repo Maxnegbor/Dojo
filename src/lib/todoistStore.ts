@@ -1,6 +1,7 @@
 import { storageGetItem, storageRemoveItem, storageSetItem } from '@/lib/userStorage'
 
 const STORAGE_KEY = 'personal-os-todoist'
+const HOME_COLLAPSED_KEY = 'personal-os-todoist-home-collapsed'
 export const TODOIST_CHANGED = 'personal-os-todoist-changed'
 
 export interface TodoistConfig {
@@ -48,4 +49,17 @@ export function clearTodoistConfig() {
 
 export function isTodoistConnected(): boolean {
   return getTodoistToken() != null
+}
+
+export function isTodoistHomeCollapsed(): boolean {
+  try {
+    return storageGetItem(HOME_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function setTodoistHomeCollapsed(collapsed: boolean) {
+  if (collapsed) storageSetItem(HOME_COLLAPSED_KEY, '1')
+  else storageRemoveItem(HOME_COLLAPSED_KEY)
 }

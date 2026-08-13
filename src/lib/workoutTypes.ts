@@ -20,6 +20,8 @@ export interface WorkoutTypeDefinition {
    * Shown when planning workouts in the exercise planner and weekly template.
    */
   subtypes?: string[]
+  /** Optional Metrics library grouping. */
+  category_id?: string | null
 }
 
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
@@ -125,6 +127,7 @@ function normalizeWorkoutType(
       ? { morning_day: normalizeWorkoutMorningDay(t.morning_day) }
       : {}),
     ...(subtypes ? { subtypes } : {}),
+    ...(t.category_id && t.category_id !== 'default' ? { category_id: t.category_id } : {}),
   }
 }
 

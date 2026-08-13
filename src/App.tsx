@@ -8,6 +8,7 @@ import { AuthProvider } from '@/context/AuthContext'
 import { TodayPage } from '@/pages/TodayPage'
 import { FocusTimerPage } from '@/pages/FocusTimerPage'
 import { GoalsPage } from '@/pages/GoalsPage'
+import { OutcomeGoalsPage } from '@/pages/OutcomeGoalsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -25,7 +26,8 @@ export default function App() {
                 <Route element={<AppLayout />}>
                   <Route index element={<TodayPage />} />
                   <Route path="focus" element={<FocusTimerPage />} />
-                  <Route path="goals" element={<GoalsPage />} />
+                  <Route path="goals" element={<OutcomeGoalsPage />} />
+                  <Route path="metrics" element={<GoalsPage />} />
                   <Route path="overview" element={<OverviewPage />} />
                   <Route path="pulse" element={<Navigate to="/overview" replace />} />
                   <Route path="settings" element={<SettingsPage />} />

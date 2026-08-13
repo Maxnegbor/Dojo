@@ -13,6 +13,7 @@ import {
   isMorningLogComplete,
 } from '@/lib/morningLogConfig'
 import { persistMorningLogPayload } from '@/lib/morningLogSave'
+import { isTypedReminderRequired } from '@/lib/typedReminder'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import type { DailyLog, Goal } from '@/types'
@@ -105,7 +106,16 @@ export function MorningLogGate(_props: MorningLogGateProps) {
     !loading &&
     !!userId &&
     !!log &&
-    !isMorningLogComplete(log, sleepMetricsConfig, goals, yesterdayLog, today, workouts, yesterdayWorkouts)
+    !isMorningLogComplete(
+      log,
+      sleepMetricsConfig,
+      goals,
+      yesterdayLog,
+      today,
+      workouts,
+      yesterdayWorkouts,
+      isTypedReminderRequired(settings, 'morning'),
+    )
 
   const saveMorningLog = async (payload: MorningLogSavePayload) => {
     if (!log || !userId) throw new Error('Daily log not loaded')

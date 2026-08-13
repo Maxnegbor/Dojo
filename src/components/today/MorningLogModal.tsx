@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { format } from 'date-fns'
 import { Check, ListTodo, PenLine, Sun, X } from 'lucide-react'
@@ -192,16 +192,24 @@ export function MorningLogModal({
   )
   const hasChecklist = checklistGroups.length > 0
   const showTodoist = isTodoistConnected()
+  const hasLogFields = loggableMetrics.length > 0 || enabledMorningMetrics.length > 0
 
   const flowSteps = useMemo((): MorningLogStep[] => {
-    const steps: MorningLogStep[] = ['log']
+    const steps: MorningLogStep[] = []
+    if (hasLogFields) steps.push('log')
     if (showTodoist) steps.push('todoist')
     if (hasChecklist) steps.push('checklist')
     if (requireTypedReminder) steps.push('reminder')
+    if (steps.length === 0) steps.push('log')
     return steps
-  }, [hasChecklist, requireTypedReminder, showTodoist])
+  }, [hasChecklist, hasLogFields, requireTypedReminder, showTodoist])
 
-  const [step, setStep] = useState<MorningLogStep>('log')
+  const [step, setStep] = useState<MorningLogStep>(() => flowSteps[0])
+
+  useEffect(() => {
+    setStep((current) => (flowSteps.includes(current) ? current : flowSteps[0]))
+  }, [flowSteps])
+
   const [bedtime, setBedtime] = useState(initial?.bedtime ?? '23:00')
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(
     initial?.sleep_minutes ?? initialLog?.sleep_metrics?.sleep_duration ?? 420,
@@ -640,10 +648,7 @@ export function MorningLogModal({
             <Button
               onClick={goNextFromLog}
               className="w-full"
-              disabled={
-                saving ||
-                (loggableMetrics.length === 0 && enabledMorningMetrics.length === 0)
-              }
+              disabled={saving || (!hasMoreAfterLog && !hasLogFields)}
             >
               {saving ? 'Saving…' : hasMoreAfterLog ? 'Continue' : 'Finish morning log'}
             </Button>

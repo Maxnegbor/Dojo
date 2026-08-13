@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Check, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -19,17 +19,29 @@ import { cn, formatDate } from '@/lib/utils'
 export interface TodoistTasksPanelProps {
   viewDate: string
   className?: string
-  /** Hide the header row (title / refresh / open). */
+  /** Hide the default “Todoist” title (toolbar can still render). */
   hideHeader?: boolean
+  /** Hide refresh / open toolbar (when parent owns those controls). */
+  hideToolbar?: boolean
   /** Compact empty / disconnect copy for modal flows. */
   compact?: boolean
+  /** Optional extra controls rendered in the toolbar (e.g. collapse). */
+  toolbarExtra?: ReactNode
+  /** Replaces the default title; rendered on the same row as refresh / open. */
+  headerLeading?: ReactNode
+  /** Header only — hide the task list. */
+  collapsed?: boolean
 }
 
 export function TodoistTasksPanel({
   viewDate,
   className,
   hideHeader = false,
+  hideToolbar = false,
   compact = false,
+  toolbarExtra,
+  headerLeading,
+  collapsed = false,
 }: TodoistTasksPanelProps) {
   const [connected, setConnected] = useState(() => isTodoistConnected())
   const [tasks, setTasks] = useState<TodoistTask[]>([])
@@ -120,9 +132,57 @@ export function TodoistTasksPanel({
     }
   }
 
+  const toolbar = !hideToolbar && connected && (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button
+        type="button"
+        onClick={() => void load()}
+        disabled={loading}
+        aria-label="Refresh Todoist"
+        className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40"
+      >
+        {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+      </button>
+      <a
+        href="https://todoist.com/app"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Open Todoist"
+        className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+      >
+        <ExternalLink size={14} />
+      </a>
+      {toolbarExtra}
+    </div>
+  )
+
+  const showTitleHeader = !hideHeader || headerLeading != null
+  const header = showTitleHeader ? (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-2',
+        !collapsed && 'mb-2',
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        {headerLeading ?? <p className="text-sm font-semibold text-zinc-200">Todoist</p>}
+      </div>
+      {toolbar}
+    </div>
+  ) : toolbar ? (
+    <div className={cn('flex items-center justify-end gap-0.5', !collapsed && 'mb-2')}>
+      {toolbar}
+    </div>
+  ) : null
+
+  if (collapsed) {
+    return <div className={cn(className)}>{header}</div>
+  }
+
   if (!connected) {
     return (
       <div className={cn(className)}>
+        {header}
         <p className={cn('leading-relaxed text-zinc-500', compact ? 'text-xs' : 'text-xs')}>
           Connect Todoist in{' '}
           <Link
@@ -139,58 +199,12 @@ export function TodoistTasksPanel({
   }
 
   return (
-    <div className={cn(className)}>
-      {!hideHeader && (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-zinc-200">Todoist</p>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => void load()}
-              disabled={loading}
-              aria-label="Refresh Todoist"
-              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40"
-            >
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            </button>
-            <a
-              href="https://todoist.com/app"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open Todoist"
-              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-            >
-              <ExternalLink size={14} />
-            </a>
-          </div>
-        </div>
-      )}
+    <div className={cn('flex min-h-0 flex-col', className)}>
+      {header}
 
-      {hideHeader && (
-        <div className="mb-2 flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            aria-label="Refresh Todoist"
-            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40"
-          >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          </button>
-          <a
-            href="https://todoist.com/app"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Open Todoist"
-            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-          >
-            <ExternalLink size={14} />
-          </a>
-        </div>
-      )}
+      {error && <p className="mb-2 shrink-0 text-xs text-red-400">{error}</p>}
 
-      {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
-
+      <div className="min-h-0 flex-1 overflow-y-auto">
       <ul className="flex flex-col gap-1">
         {tasks.map((task) => {
           const overdue =
@@ -263,6 +277,7 @@ export function TodoistTasksPanel({
           + Add task
         </button>
       )}
+      </div>
     </div>
   )
 }

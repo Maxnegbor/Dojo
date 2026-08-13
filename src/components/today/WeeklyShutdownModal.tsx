@@ -200,16 +200,6 @@ export function WeeklyShutdownModal({
             review how the week went.
           </p>
 
-          {showTodoist && (
-            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
-              <h3 className="mb-1 text-sm font-semibold text-[var(--accent-300)]">Todoist</h3>
-              <p className="mb-3 text-xs text-zinc-500">
-                Tick off leftover tasks or add anything for today.
-              </p>
-              <TodoistTasksPanel viewDate={todoistDate} hideHeader compact />
-            </section>
-          )}
-
           {weeklyLogHabits.length > 0 && (
             <section>
               <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">

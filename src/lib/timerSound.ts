@@ -66,6 +66,24 @@ export function playTimerChime() {
   })
 }
 
+/** Clear completion chime when a focus block (or the whole session) ends. */
+export function playFocusTimerFinishSound(options?: { sessionComplete?: boolean }) {
+  withAudioContext((ctx) => {
+    const now = ctx.currentTime
+    if (options?.sessionComplete) {
+      playTone(ctx, 392.0, now, 0.16, 0.07, 'sine')
+      playTone(ctx, 523.25, now + 0.12, 0.18, 0.065, 'sine')
+      playTone(ctx, 659.25, now + 0.24, 0.2, 0.06, 'sine')
+      playTone(ctx, 783.99, now + 0.38, 0.28, 0.055, 'sine')
+      playTone(ctx, 1046.5, now + 0.52, 0.45, 0.045, 'sine')
+      return
+    }
+    playTone(ctx, 523.25, now, 0.14, 0.07, 'sine')
+    playTone(ctx, 659.25, now + 0.11, 0.16, 0.06, 'sine')
+    playTone(ctx, 783.99, now + 0.22, 0.32, 0.055, 'sine')
+  })
+}
+
 function playBlip(
   ctx: AudioContext,
   freq: number,

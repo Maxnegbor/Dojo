@@ -126,6 +126,40 @@ export interface Goal {
   created_at: string
 }
 
+/** How often an outcome goal is reviewed. */
+export type OutcomeGoalReview = 'weekly' | 'monthly'
+
+export type OutcomeGoalLinkRole = 'outcome' | 'process'
+
+export type OutcomeGoalComparator = 'gte' | 'lte' | 'eq'
+
+export type OutcomeGoalLinkPeriod = 'daily' | 'weekly' | 'by_deadline'
+
+/** A Goal referencing Metrics — targets live here, not on the Metric. */
+export interface OutcomeGoalLink {
+  id: string
+  metric_key: MetricKey
+  role: OutcomeGoalLinkRole
+  target_value: number
+  comparator: OutcomeGoalComparator
+  period: OutcomeGoalLinkPeriod
+}
+
+/**
+ * Outcome-oriented goal (what I want). References Metrics for measurement.
+ * Distinct from legacy {@link Goal} rows which still own metric identity + logging.
+ */
+export interface OutcomeGoal {
+  id: string
+  title: string
+  deadline?: string
+  review: OutcomeGoalReview
+  is_active: boolean
+  links: OutcomeGoalLink[]
+  created_at: string
+  updated_at: string
+}
+
 export interface Reminder {
   id: string
   user_id: string

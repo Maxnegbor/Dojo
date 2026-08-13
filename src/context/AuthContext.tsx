@@ -94,6 +94,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId || !storageReady) return
     void migrateMorningLogToSleepDuration(userId)
+    void import('@/lib/outcomeGoals').then(({ runOutcomeGoalsMigration }) =>
+      runOutcomeGoalsMigration(userId),
+    )
   }, [userId, storageReady])
 
   const signIn = useCallback(async (rawEmail: string, password: string) => {
