@@ -78,9 +78,8 @@ import {
   type ScheduleTemplate,
 } from '@/lib/scheduleTemplates'
 import {
-  attachScheduleBlockToExercisePlan,
-  removePlannedWorkoutByScheduleBlockId,
-  syncPlannedWorkoutFromScheduleBlock,
+  applyWorkoutTypeToScheduleBlock,
+  unlinkPlannedWorkoutByScheduleBlockId,
 } from '@/lib/exercisePlan'
 import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
@@ -484,14 +483,12 @@ export function TodayPage() {
       isWorkoutScheduleColor(previous.activity_type) &&
       !isWorkoutScheduleColor(normalized.activity_type)
     ) {
-      removePlannedWorkoutByScheduleBlockId(normalized.id)
-    } else if (isWorkoutScheduleColor(normalized.activity_type)) {
-      syncPlannedWorkoutFromScheduleBlock(normalized)
+      unlinkPlannedWorkoutByScheduleBlockId(normalized.id)
     }
   }
 
   const assignExerciseBlock = async (block: ScheduleBlock, category: string) => {
-    const saved = await attachScheduleBlockToExercisePlan({ block, category })
+    const saved = await applyWorkoutTypeToScheduleBlock({ block, category })
     setBlocks((prev) => {
       const idx = prev.findIndex((b) => b.id === saved.id)
       if (idx >= 0) {
@@ -508,7 +505,7 @@ export function TodayPage() {
       const { deleteScheduleBlock } = await import('@/lib/supabase')
       await deleteScheduleBlock(id)
     } else localStore.deleteScheduleBlock(id)
-    removePlannedWorkoutByScheduleBlockId(id)
+    unlinkPlannedWorkoutByScheduleBlockId(id)
     setBlocks((prev) => prev.filter((b) => b.id !== id))
   }
 
@@ -540,14 +537,12 @@ export function TodayPage() {
       isWorkoutScheduleColor(previous.activity_type) &&
       !isWorkoutScheduleColor(normalized.activity_type)
     ) {
-      removePlannedWorkoutByScheduleBlockId(normalized.id)
-    } else if (isWorkoutScheduleColor(normalized.activity_type)) {
-      syncPlannedWorkoutFromScheduleBlock(normalized)
+      unlinkPlannedWorkoutByScheduleBlockId(normalized.id)
     }
   }
 
   const assignTomorrowExerciseBlock = async (block: ScheduleBlock, category: WorkoutCategory) => {
-    const saved = await attachScheduleBlockToExercisePlan({
+    const saved = await applyWorkoutTypeToScheduleBlock({
       block: { ...block, date: tomorrowDate },
       category,
     })
@@ -564,7 +559,7 @@ export function TodayPage() {
 
   const removeTomorrowBlock = async (id: string) => {
     await removeScheduleBlock(id)
-    removePlannedWorkoutByScheduleBlockId(id)
+    unlinkPlannedWorkoutByScheduleBlockId(id)
     setTomorrowBlocks((prev) => prev.filter((b) => b.id !== id))
   }
 
@@ -816,7 +811,7 @@ export function TodayPage() {
       )}
       <div
         className={cn(
-          'relative shrink-0 overflow-visible px-1 py-1 sm:px-2 sm:py-1.5',
+          'relative shrink-0 overflow-visible px-1 pt-3 pb-1 sm:px-2 sm:pt-4 sm:pb-1.5',
           pulseCelebrating || pulseBreakdownOpen ? 'z-40' : 'z-20',
         )}
       >
@@ -850,7 +845,7 @@ export function TodayPage() {
                   onBreakdownOpenChange={setPulseBreakdownOpen}
                   meterClassName={cn(
                     !pulseCelebrating &&
-                      '[mask-image:linear-gradient(to_bottom,transparent_0%,black_18%,black_82%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_18%,black_82%,transparent_100%)]',
+                      '[mask-image:linear-gradient(to_bottom,black_0%,black_78%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_78%,transparent_100%)]',
                   )}
                 />
               </div>

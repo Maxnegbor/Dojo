@@ -382,60 +382,15 @@ export function clearPlannedWorkoutsForDate(date: string) {
   writeAll(readAll().filter((item) => item.date !== date))
 }
 
-/** Keep a linked planned workout in sync when its schedule block is moved or resized. */
-export function syncPlannedWorkoutFromScheduleBlock(block: ScheduleBlock): PlannedWorkout | null {
-  const items = readAll()
-  const index = items.findIndex((item) => item.schedule_block_id === block.id)
-  if (index < 0) return null
-
-  const startMin = parseTimeToMinutes(block.start_time)
-  const endMin = parseTimeToMinutes(block.end_time)
-  if (!Number.isFinite(startMin) || !Number.isFinite(endMin) || endMin <= startMin) return null
-
-  const start_time = minutesToTime(startMin)
-  const duration_minutes = Math.max(MIN_PLAN_SCHEDULE_MINUTES, endMin - startMin)
-  const current = items[index]
-  const unit = getWorkoutTypeUnit(current.category)
-  const timed = isTimedWorkoutUnit(unit)
-
-  if (
-    current.start_time === start_time &&
-    current.duration_minutes === duration_minutes &&
-    current.date === block.date
-  ) {
-    return current
-  }
-
-  return updatePlannedWorkout(current.id, {
-    start_time,
-    duration_minutes,
-    date: block.date,
-    ...(timed && !current.completed ? { amount: duration_minutes } : {}),
-  })
-}
-
-/** Delete the planned workout linked to a schedule block (block itself is deleted separately). */
-export function removePlannedWorkoutByScheduleBlockId(scheduleBlockId: string) {
-  const items = readAll()
-  const next = items.filter((item) => item.schedule_block_id !== scheduleBlockId)
-  if (next.length === items.length) return
-  writeAll(next)
-}
-
 /**
- * Color a grey schedule block amber for a workout type and add/link it in the exercise plan.
+ * Color a schedule block as a workout type.
+ * Does not create or update Exercise plan rows (plan → schedule is one-way only).
  */
-export async function attachScheduleBlockToExercisePlan(params: {
+export async function applyWorkoutTypeToScheduleBlock(params: {
   block: ScheduleBlock
   category: WorkoutCategory
 }): Promise<ScheduleBlock> {
-  const startMin = parseTimeToMinutes(params.block.start_time)
-  const endMin = parseTimeToMinutes(params.block.end_time)
-  const duration_minutes = Math.max(MIN_PLAN_SCHEDULE_MINUTES, endMin - startMin)
   const title = formatWorkoutPlanLabel(params.category)
-  const unit = getWorkoutTypeUnit(params.category)
-  const timed = isTimedWorkoutUnit(unit)
-
   const workout = getWorkoutSchedulePreset()
   const nextBlock = normalizeScheduleBlock({
     ...params.block,
@@ -443,37 +398,15 @@ export async function attachScheduleBlockToExercisePlan(params: {
     color: workout.hex,
     title,
   })
-  const saved = await persistScheduleBlock(nextBlock)
+  return persistScheduleBlock(nextBlock)
+}
 
-  const existing = readAll().find((item) => item.schedule_block_id === saved.id)
-  if (existing) {
-    updatePlannedWorkout(existing.id, {
-      category: params.category,
-      start_time: saved.start_time,
-      duration_minutes,
-      date: saved.date,
-      ...(timed ? { amount: duration_minutes } : {}),
-    })
-    return saved
-  }
-
-  const item: PlannedWorkout = {
-    id: generateId(),
-    date: saved.date,
-    category: params.category,
-    subtype: null,
-    start_time: normalizeStartTime(saved.start_time),
-    duration_minutes,
-    amount: timed ? duration_minutes : null,
-    schedule_block_id: saved.id,
-    completed: false,
-    logged_workout_id: null,
-    template_slot_id: null,
-    notes: '',
-    created_at: new Date().toISOString(),
-  }
-  writeAll([...readAll(), item])
-  return saved
+/** @deprecated Use applyWorkoutTypeToScheduleBlock — schedule no longer writes to the exercise plan. */
+export async function attachScheduleBlockToExercisePlan(params: {
+  block: ScheduleBlock
+  category: WorkoutCategory
+}): Promise<ScheduleBlock> {
+  return applyWorkoutTypeToScheduleBlock(params)
 }
 
 /** If a schedule block was deleted, drop the link on any matching planned workout. */

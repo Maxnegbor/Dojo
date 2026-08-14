@@ -312,8 +312,10 @@ export function AppLayout() {
         />
         <main
           className={cn(
-            'relative z-10 flex min-h-0 flex-1 flex-col overflow-x-hidden px-6 py-6 scrollbar-hidden sm:px-8 lg:px-10',
-            pathname === '/' ? 'overflow-hidden' : 'overflow-y-auto',
+            'relative z-10 flex min-h-0 flex-1 flex-col overflow-x-hidden scrollbar-hidden sm:px-8 lg:px-10',
+            pathname === '/'
+              ? 'overflow-hidden px-6 pt-14 pb-6 sm:pt-16'
+              : 'overflow-y-auto px-6 py-6',
             focusImmersive && 'px-4 sm:px-6 lg:px-8',
           )}
         >

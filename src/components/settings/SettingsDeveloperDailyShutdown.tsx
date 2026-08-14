@@ -34,9 +34,8 @@ import {
   removeScheduleBlock,
 } from '@/lib/scheduleBlock'
 import {
-  attachScheduleBlockToExercisePlan,
-  removePlannedWorkoutByScheduleBlockId,
-  syncPlannedWorkoutFromScheduleBlock,
+  applyWorkoutTypeToScheduleBlock,
+  unlinkPlannedWorkoutByScheduleBlockId,
 } from '@/lib/exercisePlan'
 import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
@@ -443,14 +442,12 @@ export function SettingsDeveloperDailyShutdown() {
               isWorkoutScheduleColor(previous.activity_type) &&
               !isWorkoutScheduleColor(normalized.activity_type)
             ) {
-              removePlannedWorkoutByScheduleBlockId(normalized.id)
-            } else if (isWorkoutScheduleColor(normalized.activity_type)) {
-              syncPlannedWorkoutFromScheduleBlock(normalized)
+              unlinkPlannedWorkoutByScheduleBlockId(normalized.id)
             }
           }}
           onDeleteTomorrowBlock={async (id) => {
             await removeScheduleBlock(id)
-            removePlannedWorkoutByScheduleBlockId(id)
+            unlinkPlannedWorkoutByScheduleBlockId(id)
             setPreviewTomorrowBlocks((prev) => prev.filter((b) => b.id !== id))
           }}
           onCreateTomorrowBlock={async (block) => {
@@ -458,7 +455,7 @@ export function SettingsDeveloperDailyShutdown() {
             setPreviewTomorrowBlocks((prev) => [...prev, normalized])
           }}
           onAssignTomorrowExercise={async (block, category: WorkoutCategory) => {
-            const saved = await attachScheduleBlockToExercisePlan({
+            const saved = await applyWorkoutTypeToScheduleBlock({
               block: { ...block, date: tomorrow },
               category,
             })
