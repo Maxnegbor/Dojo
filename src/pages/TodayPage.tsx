@@ -114,7 +114,7 @@ export function TodayPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [viewDate, setViewDate] = useState(formatDate(new Date()))
-  const { log, workouts, loading, updateLog, refresh, syncFromStore, removeWorkout } = useDailyLog(viewDate)
+  const { log, workouts, loading, refresh, syncFromStore, removeWorkout } = useDailyLog(viewDate)
   const { userId } = useAuth()
 
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])

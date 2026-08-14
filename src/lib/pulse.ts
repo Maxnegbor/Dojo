@@ -59,7 +59,7 @@ export function getPulseDayMetricValue(
     const draftMins = draft?.workouts?.[cat as WorkoutCategory]
     if (draftMins == null || draftMins <= 0) return fromSessions
 
-    const additive = draft.workoutMode === 'additive' || usesAdditiveTodayDraft(day)
+    const additive = draft?.workoutMode === 'additive' || usesAdditiveTodayDraft(day)
     return additive ? fromSessions + draftMins : draftMins
   }
 
