@@ -33,8 +33,8 @@ export function parseHrsMinToMinutes(input: string): number | null {
 
   if (trimmed.includes(':')) {
     const [hoursPart, minutesPart = '0'] = trimmed.split(':')
-    const hours = parseInt(hoursPart, 10)
-    const minutes = parseInt(minutesPart, 10)
+    const hours = parseInt(hoursPart || '0', 10)
+    const minutes = minutesPart === '' ? 0 : parseInt(minutesPart, 10)
     if (Number.isNaN(hours) || Number.isNaN(minutes) || hours < 0 || minutes < 0 || minutes >= 60) {
       return null
     }

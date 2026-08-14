@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { DatePickerField } from '@/components/ui/DatePickerField'
+import { DurationMetricInput } from '@/components/ui/DurationMetricInput'
 import {
   createEmptyOutcomeGoal,
   createOutcomeGoalLink,
@@ -19,6 +20,7 @@ import {
   sleepMetricTargetFromInputValue,
   sleepMetricTargetToInputValue,
 } from '@/lib/sleepMetrics'
+import { isTimedMetricUnit } from '@/lib/timedMetrics'
 import type {
   Goal,
   MetricKey,
@@ -82,18 +84,16 @@ function LinkTargetInput({
     )
   }
 
-  if (sleepMetric && (sleepMetric.id === 'sleep_duration' || sleepMetric.id === 'in_bed')) {
+  if (
+    isTimedMetricUnit(unit) ||
+    sleepMetric?.id === 'sleep_duration' ||
+    sleepMetric?.id === 'in_bed'
+  ) {
     return (
-      <input
-        type="number"
-        min={0}
-        step="any"
-        value={sleepMetricTargetToInputValue(sleepMetric, link.target_value)}
-        onChange={(e) => {
-          const next = sleepMetricTargetFromInputValue(sleepMetric, e.target.value)
-          onChange({ ...link, target_value: next ?? 0 })
-        }}
-        className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100"
+      <DurationMetricInput
+        label=""
+        value={link.target_value}
+        onChange={(minutes) => onChange({ ...link, target_value: minutes ?? 0 })}
       />
     )
   }

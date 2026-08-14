@@ -1,5 +1,6 @@
 import { slugifyWorkoutId } from '@/lib/workoutTypes'
 import { formatMorningMinutes } from '@/lib/morningLog'
+import { parseHrsMinToMinutes } from '@/lib/timedMetrics'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import type { DailyLog, MetricKey, MorningLog } from '@/types'
 
@@ -338,9 +339,14 @@ export function sleepMetricTargetFromInputValue(
     }
     return h * 60 + m
   }
+  if (metric.id === 'sleep_duration' || metric.id === 'in_bed') {
+    if (trimmed.includes(':')) return parseHrsMinToMinutes(trimmed)
+    const n = parseFloat(trimmed)
+    if (!Number.isFinite(n) || n <= 0) return null
+    return n * 60
+  }
   const n = parseFloat(trimmed)
   if (!Number.isFinite(n) || n <= 0) return null
-  if (metric.id === 'sleep_duration' || metric.id === 'in_bed') return n * 60
   return n
 }
 

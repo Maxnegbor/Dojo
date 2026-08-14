@@ -75,7 +75,7 @@ export const DurationMetricInput = forwardRef<DurationMetricInputHandle, Duratio
       <div className="relative">
         <input
           type="text"
-          inputMode="numeric"
+          inputMode="text"
           placeholder={placeholder}
           disabled={disabled}
           value={text}
