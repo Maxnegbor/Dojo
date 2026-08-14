@@ -147,7 +147,7 @@ export function SettingsShutdownStepsEditor({
       {confirmReset && (
         <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-3">
           <p className="text-xs text-zinc-400">
-            Restore Wrap up → Habits → Plan tomorrow?
+            Restore Wrap up → Todoist → Plan tomorrow?
           </p>
           <div className="mt-2 flex gap-2">
             <Button variant="primary" size="sm" onClick={resetSteps}>

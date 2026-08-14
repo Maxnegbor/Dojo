@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { PulseMeter } from '@/components/pulse/PulseMeter'
 import { PULSE_HEADER_SCALE, pulseCorePx } from '@/lib/pulse'
-import type { PulseContributor } from '@/lib/pulseBreakdown'
+import {
+  groupPulseContributorsByCategory,
+  type PulseContributor,
+} from '@/lib/pulseBreakdown'
 import { cn } from '@/lib/utils'
 
 const HOVER_DELAY_MS = 500
@@ -36,6 +39,8 @@ function PulseBreakdownPanel({
   score: number
   closing?: boolean
 }) {
+  const categories = groupPulseContributorsByCategory(contributors)
+
   return (
     <div
       className={cn(
@@ -59,48 +64,69 @@ function PulseBreakdownPanel({
           Configure Pulse to choose what counts toward your score.
         </p>
       ) : (
-        <ul className="space-y-1">
-          {contributors.map((row) => (
-            <li
-              key={row.id}
-              className="rounded-xl border border-zinc-800/90 bg-zinc-900/70 px-2.5 py-2"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-zinc-100">{row.label}</p>
-                  <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">{row.detail}</p>
-                  {row.subdetails?.map((line) => (
-                    <p
-                      key={line}
-                      className="mt-0.5 text-[10px] tabular-nums text-zinc-600"
-                    >
-                      {line}
-                    </p>
-                  ))}
-                </div>
-                <p className="shrink-0 text-xs font-semibold tabular-nums text-[var(--accent-300)]">
-                  +{formatScorePts(row.scoreEarned)}
-                  <span className="font-normal text-zinc-600">
-                    {' '}
-                    / {formatScorePts(row.scoreMax)}
-                  </span>
+        <div className="max-h-[min(24rem,55vh)] space-y-3 overflow-y-auto overscroll-contain scrollbar-hidden">
+          {categories.map((category) => (
+            <section key={category.id}>
+              <div className="mb-1.5 flex items-baseline justify-between gap-2 px-0.5">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  {category.label}
+                </p>
+                <p className="text-[10px] tabular-nums text-zinc-600">
+                  +{formatScorePts(category.scoreEarned)} / {formatScorePts(category.scoreMax)}
                 </p>
               </div>
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-[var(--accent-500)]/80"
-                  style={{
-                    width: `${
-                      row.scoreMax > 0
-                        ? Math.min(100, Math.max(0, (row.scoreEarned / row.scoreMax) * 100))
-                        : 0
-                    }%`,
-                  }}
-                />
-              </div>
-            </li>
+              <ul className="space-y-1">
+                {category.rows.map((row) => (
+                  <li
+                    key={row.id}
+                    className="rounded-xl border border-zinc-800/90 bg-zinc-900/70 px-2.5 py-2"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-zinc-100">
+                          {row.label}
+                          {row.kind === 'or-group' && (
+                            <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-zinc-500">
+                              either/or
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">{row.detail}</p>
+                        {row.subdetails?.map((line) => (
+                          <p
+                            key={line}
+                            className="mt-0.5 text-[10px] tabular-nums text-zinc-600"
+                          >
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                      <p className="shrink-0 text-xs font-semibold tabular-nums text-[var(--accent-300)]">
+                        +{formatScorePts(row.scoreEarned)}
+                        <span className="font-normal text-zinc-600">
+                          {' '}
+                          / {formatScorePts(row.scoreMax)}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className="h-full rounded-full bg-[var(--accent-500)]/80"
+                        style={{
+                          width: `${
+                            row.scoreMax > 0
+                              ? Math.min(100, Math.max(0, (row.scoreEarned / row.scoreMax) * 100))
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   )

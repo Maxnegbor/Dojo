@@ -122,11 +122,11 @@ export function OutcomeGoalsPage() {
         <div>
           <h2 className="text-lg font-semibold text-zinc-100">Goals</h2>
           <p className="mt-0.5 text-xs text-zinc-500">
-            What you want to change. Link metrics from the{' '}
+            What you want. Link metrics from the{' '}
             <Link to="/metrics" className="text-[var(--accent-300)] hover:underline">
               Metrics
             </Link>{' '}
-            library — outcomes for results, process for behaviors.
+            library to measure it.
           </p>
         </div>
         {editing == null && (
@@ -150,7 +150,7 @@ export function OutcomeGoalsPage() {
         <div className="rounded-xl border border-dashed border-zinc-800 px-6 py-12 text-center">
           <p className="text-sm text-zinc-400">No goals yet</p>
           <p className="mt-1 text-xs text-zinc-600">
-            Define an outcome (e.g. bodyweight) and optional process metrics (workouts, habits).
+            Name a goal and connect the metric you want to hit.
           </p>
           <Button size="sm" className="mt-4" onClick={() => setEditing('new')}>
             <Plus size={14} />

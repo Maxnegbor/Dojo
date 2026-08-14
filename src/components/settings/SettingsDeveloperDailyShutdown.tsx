@@ -40,7 +40,7 @@ import {
 } from '@/lib/exercisePlan'
 import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
-import type { DailyLog, Goal, Reminder, ScheduleBlock, WorkoutCategory } from '@/types'
+import type { DailyLog, Goal, ScheduleBlock, WorkoutCategory } from '@/types'
 import { normalizeHabits } from '@/types'
 import { addDaysToDateString, cn, formatDate } from '@/lib/utils'
 
@@ -331,20 +331,6 @@ export function SettingsDeveloperDailyShutdown() {
     setAfterHabits((prev) => ({ ...prev, [habitId]: !prev[habitId] }))
   }
 
-  const previewReminders: Reminder[] = [
-    {
-      id: 'dev-reminder-1',
-      user_id: userId ?? 'preview',
-      title: 'Preview reminder',
-      due_date: today,
-      due_time: null,
-      completed: false,
-      rescheduled_from: null,
-      kind: 'task',
-      created_at: new Date().toISOString(),
-    },
-  ]
-
   const shutdownPreviewWorkouts = getContext()?.workoutsBefore ?? []
 
   return (
@@ -437,7 +423,6 @@ export function SettingsDeveloperDailyShutdown() {
           )}
           viewDate={today}
           tomorrowDate={tomorrow}
-          reminders={previewReminders}
           userId={userId}
           todayBlocks={previewTodayBlocks}
           tomorrowBlocks={previewTomorrowBlocks}
@@ -508,10 +493,6 @@ export function SettingsDeveloperDailyShutdown() {
           }}
           onClose={closeShutdownPreview}
           onComplete={completeShutdownPreview}
-          onCompleteReminder={() => undefined}
-          onAddReminder={() => undefined}
-          onUpdateReminder={() => undefined}
-          onRemoveReminder={() => undefined}
         />
       )}
 

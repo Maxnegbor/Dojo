@@ -1,33 +1,17 @@
 import { useMemo, useState } from 'react'
 import { CalendarCheck, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
-import { WeightStepper } from '@/components/ui/WeightStepper'
-import { HabitLogRow } from '@/components/today/HabitLogRow'
 import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
+import { WeeklyLogFields, useWeeklyLogDraft } from '@/components/today/WeeklyLogFields'
 import { useSettings } from '@/context/SettingsContext'
-import { useHabitCompleteAnimation } from '@/hooks/useHabitCompleteAnimation'
-import { getWeeklyShutdownLogGoals } from '@/lib/trackedLogsNet'
-import { getHabitTargetLabel } from '@/lib/habitRamp'
-import {
-  getWeeklyLogHabitTypes,
-  habitWeeklyLogKey,
-  type HabitTypeDefinition,
-} from '@/lib/habitTypes'
-import { playHabitCheckSound } from '@/lib/timerSound'
 import { isTodoistConnected } from '@/lib/todoistStore'
 import {
   activeWeeklyShutdownChecklist,
   allWeeklyShutdownItemIds,
-  getWeeklyShutdownWeekKey,
   weekDateRangeLabel,
 } from '@/lib/weeklyShutdown'
-import { resolvePriorWeeklyWeight } from '@/lib/weightAutofill'
-import { getActiveWeightGoal, isWeightGoal } from '@/lib/weightGoal'
-import { getWeeklyLog, setWeeklyLog } from '@/lib/weeklyLogStore'
 import type { Goal } from '@/types'
 import { cn, formatDate } from '@/lib/utils'
-import { parseHrsMinToMinutes, usesTimedMetricInput } from '@/lib/timedMetrics'
 
 interface WeeklyShutdownModalProps {
   weekDates: string[]
@@ -43,7 +27,6 @@ export function WeeklyShutdownModal({
   onComplete,
 }: WeeklyShutdownModalProps) {
   const { settings } = useSettings()
-  const weekKey = getWeeklyShutdownWeekKey(weekDates)
   const checklist = useMemo(
     () => activeWeeklyShutdownChecklist(settings.weeklyShutdownChecklist),
     [settings.weeklyShutdownChecklist],
@@ -51,53 +34,13 @@ export function WeeklyShutdownModal({
   const showTodoist = isTodoistConnected()
   const todoistDate = formatDate(new Date())
   const itemIds = useMemo(() => allWeeklyShutdownItemIds(checklist), [checklist])
-  const weeklyLogGoals = useMemo(() => getWeeklyShutdownLogGoals(goals), [goals])
-  const weightGoal = useMemo(() => getActiveWeightGoal(weeklyLogGoals), [weeklyLogGoals])
-  const otherWeeklyGoals = useMemo(
-    () => weeklyLogGoals.filter((g) => !isWeightGoal(g)),
-    [weeklyLogGoals],
-  )
-  const weeklyLogHabits = useMemo(() => getWeeklyLogHabitTypes(), [])
+  const weeklyDraft = useWeeklyLogDraft(weekDates, goals)
 
   const [checked, setChecked] = useState<Set<string>>(() => new Set())
-  const { getPhase, startComplete, clearPhase } = useHabitCompleteAnimation()
-  const [weightKg, setWeightKg] = useState<number | null>(() => {
-    const stored = getWeeklyLog(weekKey).weight
-    if (stored != null) return stored
-    return resolvePriorWeeklyWeight(weekDates, settings.weekStartsOn)
-  })
-  const [weeklyValues, setWeeklyValues] = useState<Record<string, string>>(() => {
-    const stored = getWeeklyLog(weekKey)
-    const initial: Record<string, string> = {}
-    for (const goal of getWeeklyShutdownLogGoals(goals)) {
-      if (isWeightGoal(goal)) continue
-      const v = stored[goal.metric_key]
-      if (v != null) initial[goal.metric_key] = String(v)
-    }
-    for (const habit of getWeeklyLogHabitTypes()) {
-      const key = habitWeeklyLogKey(habit.id)
-      const v = stored[key]
-      initial[key] = v != null ? String(v) : '0'
-    }
-    return initial
-  })
 
   const hasChecklist = itemIds.length > 0
   const allChecklistDone = !hasChecklist || itemIds.every((id) => checked.has(id))
-  const weightComplete = !weightGoal || weightKg != null
-  const otherWeeklyGoalsComplete =
-    otherWeeklyGoals.length === 0 ||
-    otherWeeklyGoals.every((g) => {
-      const raw = weeklyValues[g.metric_key]?.trim()
-      if (raw == null || raw === '') return false
-      if (usesTimedMetricInput(g.unit, g.metric_key)) {
-        return parseHrsMinToMinutes(raw) != null
-      }
-      return !Number.isNaN(parseFloat(raw))
-    })
-  const weeklyGoalInputsComplete = weightComplete && otherWeeklyGoalsComplete
-  const allDone =
-    weeklyGoalInputsComplete && allChecklistDone
+  const allDone = weeklyDraft.inputsComplete && allChecklistDone
   const rangeLabel = weekDateRangeLabel(weekDates)
 
   const toggle = (id: string) => {
@@ -109,62 +52,12 @@ export function WeeklyShutdownModal({
     })
   }
 
-  const isHabitDone = (habitId: string) => weeklyValues[habitWeeklyLogKey(habitId)] === '1'
-
-  const toggleWeeklyHabit = (habitId: string) => {
-    const key = habitWeeklyLogKey(habitId)
-    const done = isHabitDone(habitId)
-    if (!done) {
-      playHabitCheckSound()
-      startComplete(habitId)
-    } else {
-      clearPhase(habitId)
-    }
-    setWeeklyValues((prev) => ({
-      ...prev,
-      [key]: done ? '0' : '1',
-    }))
-  }
-
-  const renderWeeklyHabitRow = (habit: HabitTypeDefinition) => (
-    <HabitLogRow
-      habit={habit}
-      done={isHabitDone(habit.id)}
-      phase={getPhase(habit.id)}
-      targetLabel={getHabitTargetLabel(habit)}
-      streak={0}
-      disabled={false}
-      onToggle={() => toggleWeeklyHabit(habit.id)}
-    />
-  )
-
   const handleComplete = () => {
-    const toSave: Record<string, number | null> = {}
-    if (weightGoal && weightKg != null) {
-      toSave.weight = weightKg
-    }
-    for (const goal of otherWeeklyGoals) {
-      const raw = weeklyValues[goal.metric_key]?.trim()
-      if (!raw) {
-        toSave[goal.metric_key] = null
-        continue
-      }
-      if (usesTimedMetricInput(goal.unit, goal.metric_key)) {
-        toSave[goal.metric_key] = parseHrsMinToMinutes(raw)
-        continue
-      }
-      toSave[goal.metric_key] = parseFloat(raw)
-    }
-    for (const habit of weeklyLogHabits) {
-      const key = habitWeeklyLogKey(habit.id)
-      const raw = weeklyValues[key]?.trim()
-      toSave[key] = raw === '1' ? 1 : 0
-    }
-    setWeeklyLog(weekKey, toSave)
+    weeklyDraft.persist()
     onComplete()
   }
 
-  const continueLabel = !weeklyGoalInputsComplete
+  const continueLabel = !weeklyDraft.inputsComplete
     ? 'Fill in weekly log to continue'
     : !allChecklistDone
       ? 'Complete checklist to continue'
@@ -200,58 +93,11 @@ export function WeeklyShutdownModal({
             review how the week went.
           </p>
 
-          {weeklyLogHabits.length > 0 && (
-            <section>
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                Weekly habits
-              </p>
-              <div className="space-y-1">
-                {weeklyLogHabits.map((habit) => (
-                  <div key={habit.id}>{renderWeeklyHabitRow(habit)}</div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {weeklyLogGoals.length > 0 && (
-            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
-              <h3 className="mb-1 text-sm font-semibold text-[var(--accent-300)]">Weekly log</h3>
-              <p className="mb-4 text-xs text-zinc-500">Enter your weekly metrics.</p>
-              <div className="space-y-4">
-                {weightGoal && (
-                  <WeightStepper
-                    label={weightGoal.name}
-                    valueKg={weightKg}
-                    unit={settings.weightUnit}
-                    onChange={setWeightKg}
-                  />
-                )}
-
-                {otherWeeklyGoals.map((goal) => (
-                  <GoalMetricInput
-                    key={goal.id}
-                    label={goal.name}
-                    unit={goal.unit}
-                    metricKey={goal.metric_key}
-                    value={
-                      weeklyValues[goal.metric_key]
-                        ? usesTimedMetricInput(goal.unit, goal.metric_key)
-                          ? parseHrsMinToMinutes(weeklyValues[goal.metric_key]!)
-                          : parseFloat(weeklyValues[goal.metric_key]!)
-                        : null
-                    }
-                    onChange={(value) =>
-                      setWeeklyValues((prev) => ({
-                        ...prev,
-                        [goal.metric_key]: value != null ? String(value) : '',
-                      }))
-                    }
-                    placeholder="0"
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+          <WeeklyLogFields
+            draft={weeklyDraft}
+            heading="Weekly log"
+            description="Enter your weekly metrics."
+          />
 
           {showTodoist && (
             <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">

@@ -229,9 +229,6 @@ export async function applyOnboardingConfig(
         color: draft.color,
         unit: 'min',
         log_period: draft.logPeriod === 'weekly' ? ('weekly' as const) : ('daily' as const),
-        ...(draft.logPeriod === 'weekly'
-          ? {}
-          : { log_when: 'home' as const }),
       }))
       .filter((t) => t.label)
     saveWorkoutTypes(types)

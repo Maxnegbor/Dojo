@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Brain, Flag, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
 import { DojoLogo } from '@/components/ui/DojoLogo'
 import { FocusBadge } from '@/components/layout/FocusBadge'
+import { MissedLogGate } from '@/components/layout/MissedLogGate'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
 import { ShutdownGate } from '@/components/layout/ShutdownGate'
 import { cn } from '@/lib/utils'
@@ -322,6 +323,7 @@ export function AppLayout() {
               pathname === '/' ? 'max-w-[96rem]' : 'max-w-6xl',
             )}
           >
+            <MissedLogGate />
             <MorningLogGate />
             <ShutdownGate>
               <Outlet />

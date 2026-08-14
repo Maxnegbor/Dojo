@@ -1,7 +1,7 @@
 import { Check, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { OutcomeGoalProgress } from '@/lib/outcomeGoals'
-import { formatDeadlineLabel } from '@/lib/outcomeGoals'
+import { formatDeadlineLabel, formatOutcomeGoalRecurrence } from '@/lib/outcomeGoals'
 
 interface OutcomeGoalCardProps {
   progress: OutcomeGoalProgress
@@ -10,8 +10,10 @@ interface OutcomeGoalCardProps {
 }
 
 export function OutcomeGoalCard({ progress, onEdit, onDelete }: OutcomeGoalCardProps) {
-  const { goal, primary, processes, onTrack } = progress
+  const { goal, outcomes, onTrack } = progress
   const deadlineLabel = formatDeadlineLabel(goal.deadline)
+  const recurrenceLabel = formatOutcomeGoalRecurrence(goal)
+  const metrics = outcomes
 
   return (
     <article
@@ -35,15 +37,12 @@ export function OutcomeGoalCard({ progress, onEdit, onDelete }: OutcomeGoalCardP
               {onTrack ? 'On track' : 'Off track'}
             </span>
           </div>
-          {primary && (
-            <p className="mt-1.5 text-lg font-semibold tabular-nums text-zinc-100">
-              {primary.display.replace(/ \(.*\)$/, '')}
-            </p>
-          )}
-          <p className="mt-0.5 text-[11px] text-zinc-500">
-            {primary ? primary.label : 'No metrics linked'}
+          <p className="mt-1 text-[11px] text-zinc-500">
+            {metrics.length === 0
+              ? 'No metrics linked'
+              : `${metrics.length} metric${metrics.length === 1 ? '' : 's'}`}
             {deadlineLabel ? ` · by ${deadlineLabel}` : ''}
-            {` · Review ${goal.review}`}
+            {` · ${recurrenceLabel}`}
           </p>
         </button>
         <button
@@ -56,12 +55,9 @@ export function OutcomeGoalCard({ progress, onEdit, onDelete }: OutcomeGoalCardP
         </button>
       </div>
 
-      {processes.length > 0 && (
+      {metrics.length > 0 && (
         <ul className="mt-3 space-y-1 border-t border-zinc-800/80 pt-3">
-          <li className="text-[10px] font-medium uppercase tracking-wide text-zinc-600">
-            This {goal.review === 'monthly' ? 'month' : 'week'}
-          </li>
-          {processes.map((entry) => (
+          {metrics.map((entry) => (
             <li
               key={entry.link.id}
               className="flex items-center gap-2 text-xs text-zinc-300"
@@ -78,7 +74,10 @@ export function OutcomeGoalCard({ progress, onEdit, onDelete }: OutcomeGoalCardP
               </span>
               <span className="min-w-0 flex-1 truncate">
                 {entry.label}
-                <span className="text-zinc-500"> · {entry.display.replace(/ \(.*\)$/, '')}</span>
+                <span className="text-zinc-500">
+                  {' '}
+                  · {entry.display.replace(/ \(.*\)$/, '')}
+                </span>
               </span>
             </li>
           ))}

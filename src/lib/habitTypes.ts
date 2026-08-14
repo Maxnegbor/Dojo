@@ -46,8 +46,8 @@ const STORAGE_KEY = 'personal-os-habit-types'
 export const HABIT_TYPES_CHANGED = 'personal-os-habit-types-changed'
 
 export const DEFAULT_HABIT_TYPES: HabitTypeDefinition[] = [
-  { id: 'meditation', label: 'Meditation', log_when: 'home' },
-  { id: 'skincare', label: 'Skincare', log_when: 'home' },
+  { id: 'meditation', label: 'Meditation' },
+  { id: 'skincare', label: 'Skincare' },
 ]
 
 export function slugifyHabitId(label: string): string {
@@ -159,11 +159,7 @@ export function useDailyLogHabitTypes(): HabitTypeDefinition[] {
 }
 
 export function useHomeLogHabitTypes(): HabitTypeDefinition[] {
-  const types = useHabitTypes()
-  return useMemo(
-    () => types.filter((h) => habitLogPeriod(h) === 'daily' && habitLogWhen(h) === 'home'),
-    [types],
-  )
+  return useDailyLogHabitTypes()
 }
 
 export function useWeeklyLogHabitTypes(): HabitTypeDefinition[] {
@@ -183,7 +179,8 @@ function normalizeHabitType(type: HabitTypeDefinition): HabitTypeDefinition {
   const duration_value = Number(type.duration_value)
   const hasDuration = Number.isFinite(duration_value) && duration_value > 0
   const log_period = type.log_period === 'weekly' ? 'weekly' : 'daily'
-  const log_when = log_period === 'weekly' ? undefined : normalizeHabitLogWhen(type.log_when)
+  const log_when =
+    log_period === 'weekly' || !type.log_when ? undefined : normalizeHabitLogWhen(type.log_when)
   const morning_day =
     log_when === 'morning' ? normalizeHabitMorningDay(type.morning_day) : undefined
 
@@ -228,7 +225,7 @@ export function getDailyLogHabitTypes(): HabitTypeDefinition[] {
 }
 
 export function getHomeLogHabitTypes(): HabitTypeDefinition[] {
-  return getDailyLogHabitTypes().filter((h) => habitLogWhen(h) === 'home')
+  return getDailyLogHabitTypes()
 }
 
 export function getMorningLogHabitTypes(): HabitTypeDefinition[] {

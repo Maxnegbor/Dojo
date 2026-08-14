@@ -14,7 +14,6 @@ import { SettingsWeeklyShutdownEditor } from '@/components/settings/SettingsWeek
 import { SettingsDailyChecklistEditor } from '@/components/settings/SettingsDailyChecklistEditor'
 import { SettingsShutdownStepsEditor } from '@/components/settings/SettingsShutdownStepsEditor'
 import { MorningLogMetricsEditor } from '@/components/settings/MorningLogMetricsEditor'
-import { ShutdownLogMetricsEditor } from '@/components/settings/ShutdownLogMetricsEditor'
 import { TimelineRangePicker } from '@/components/settings/TimelineRangePicker'
 import { ScheduleColorsEditor } from '@/components/settings/ScheduleColorsEditor'
 import { ScheduleTemplatesEditor } from '@/components/settings/ScheduleTemplatesEditor'
@@ -30,8 +29,6 @@ import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { useMorningLogGoalKeys } from '@/hooks/useMorningLogGoalKeys'
 import { useMorningLogYesterdayKeys } from '@/hooks/useMorningLogYesterdayKeys'
 import { useMorningLogSleepFieldIds } from '@/hooks/useMorningLogSleepFieldIds'
-import { useShutdownLogGoalKeys } from '@/hooks/useShutdownLogGoalKeys'
-import { useShutdownLogSleepFieldIds } from '@/hooks/useShutdownLogSleepFieldIds'
 import { usePulseConfig } from '@/hooks/usePulseConfig'
 import { localStore } from '@/lib/localStore'
 import type { Goal } from '@/types'
@@ -68,10 +65,6 @@ export function SettingsPage() {
     useMorningLogYesterdayKeys()
   const { sleepFieldIds: morningLogSleepFieldIds, saveSleepFieldIds: saveMorningLogSleepFieldIds } =
     useMorningLogSleepFieldIds()
-  const { goalKeys: shutdownLogGoalKeys, saveGoalKeys: saveShutdownLogGoalKeys } =
-    useShutdownLogGoalKeys()
-  const { sleepFieldIds: shutdownLogSleepFieldIds, saveSleepFieldIds: saveShutdownLogSleepFieldIds } =
-    useShutdownLogSleepFieldIds()
   const { configured: pulseConfigured, currentFormula, saveFormula } = usePulseConfig()
   const [goals, setGoals] = useState<Goal[]>([])
   const [showPulseConfigure, setShowPulseConfigure] = useState(false)
@@ -90,7 +83,6 @@ export function SettingsPage() {
     return fromState ?? 'account'
   })
   const [morningLogPickerOpen, setMorningLogPickerOpen] = useState(false)
-  const [shutdownLogPickerOpen, setShutdownLogPickerOpen] = useState(false)
   const [focusTimerSettings, setFocusTimerSettings] = useState(getFocusSettings)
   const settingsLayoutRef = useRef<HTMLDivElement>(null)
   const mainScrollTopRef = useRef<number | null>(null)
@@ -158,28 +150,6 @@ export function SettingsPage() {
       setGoals(localStore.getGoals())
     }
   }, [userId])
-
-  const saveGoal = useCallback(
-    async (goal: Goal) => {
-      if (!userId) return
-      if (isSupabaseConfigured) {
-        const { upsertGoal } = await import('@/lib/supabase')
-        await upsertGoal(goal)
-      } else {
-        localStore.upsertGoal(goal)
-      }
-      setGoals((prev) => {
-        const idx = prev.findIndex((g) => g.id === goal.id)
-        if (idx >= 0) {
-          const next = [...prev]
-          next[idx] = goal
-          return next
-        }
-        return [...prev, goal]
-      })
-    },
-    [userId],
-  )
 
   useEffect(() => {
     void loadGoals()
@@ -530,10 +500,6 @@ export function SettingsPage() {
               saveMorningLogSleepFieldIds(ids)
               flashSaved()
             }}
-            onSaveGoal={async (goal) => {
-              await saveGoal(goal)
-            }}
-            onMovedToShutdown={flashSaved}
             onPickerOpenChange={setMorningLogPickerOpen}
           />
           <div className="mt-5 border-t border-zinc-800/80 pt-5">
@@ -576,10 +542,10 @@ export function SettingsPage() {
           </div>
         </SettingsSection>
       </Card>
-      <Card className={cn(shutdownLogPickerOpen && 'relative z-50')}>
+      <Card>
         <SettingsSection
           title="Daily shutdown"
-          description="What you log at the end of your day, which steps run, and optional checklist items"
+          description="Which steps run at the end of your day, and optional checklist items. Wrap-up asks for any daily metrics you haven’t logged yet."
           collapsible
           defaultOpen={false}
         >
@@ -630,22 +596,6 @@ export function SettingsPage() {
               )}
             </div>
           )}
-          <ShutdownLogMetricsEditor
-            goals={goals}
-            sleepConfig={sleepMetricsConfig}
-            shutdownLogGoalKeys={shutdownLogGoalKeys}
-            shutdownLogSleepFieldIds={shutdownLogSleepFieldIds}
-            showWorkouts={settings.showWorkoutMetrics}
-            onShutdownLogGoalKeysChange={(keys) => {
-              saveShutdownLogGoalKeys(keys)
-              flashSaved()
-            }}
-            onShutdownLogSleepFieldIdsChange={(ids) => {
-              saveShutdownLogSleepFieldIds(ids)
-              flashSaved()
-            }}
-            onPickerOpenChange={setShutdownLogPickerOpen}
-          />
           <div className="mt-5 border-t border-zinc-800/80 pt-5">
             <p className="mb-3 text-sm font-medium text-zinc-200">Shutdown steps</p>
             <SettingsShutdownStepsEditor

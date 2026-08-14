@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/Button'
 import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl'
 import { Card } from '@/components/ui/Card'
 import { MetricInput } from '@/components/ui/MetricInput'
-import { AddGhostCard } from '@/components/goals/AddGhostCard'
 import { EditLogsModal } from '@/components/goals/EditLogsModal'
 import { MetricHistoryModal } from '@/components/goals/MetricHistoryModal'
 import type { MetricHistoryTarget } from '@/lib/metricHistory'
@@ -57,6 +56,7 @@ import {
   type WorkoutMorningDay,
 } from '@/lib/workoutTypes'
 import { cn, generateId, formatDate } from '@/lib/utils'
+import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { getActiveWeightGoal, getDuplicateActiveWeightGoals, isWeightGoal } from '@/lib/weightGoal'
 import {
   getMorningLogGoalKeys,
@@ -100,6 +100,25 @@ import {
 } from '@/lib/sleepMetrics'
 
 type MetricKind = 'habit' | 'goal' | 'workout' | 'weight' | 'focus' | 'sleep'
+
+const COLLAPSED_CATS_KEY = 'personal-os-metrics-collapsed-cats'
+
+function readCollapsedCategoryIds(): string[] {
+  try {
+    const raw = storageGetItem(COLLAPSED_CATS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function saveCollapsedCategoryIds(ids: string[]) {
+  storageSetItem(COLLAPSED_CATS_KEY, JSON.stringify(ids))
+}
 
 interface MetricsEditorProps {
   goals: Goal[]
@@ -293,18 +312,6 @@ function emptyForm(
   }
 }
 
-function goalAskFieldsFromForm(
-  form: MetricFormState,
-): Pick<Goal, 'log_when' | 'morning_day'> | { log_when?: undefined; morning_day?: undefined } {
-  if (form.logPeriod !== 'daily') {
-    return { log_when: undefined, morning_day: undefined }
-  }
-  return {
-    log_when: form.goalLogWhen,
-    morning_day: form.goalLogWhen === 'morning' ? form.goalMorningDay : undefined,
-  }
-}
-
 function buildHabitFields(form: MetricFormState): HabitTypeDefinition {
   const habit: HabitTypeDefinition = {
     id: form.habitId ?? '',
@@ -313,11 +320,9 @@ function buildHabitFields(form: MetricFormState): HabitTypeDefinition {
   }
   const categoryId = storedLibraryCategoryId(form.categoryId)
   if (categoryId) habit.category_id = categoryId
-  if (form.logPeriod === 'daily') {
-    habit.log_when = form.habitLogWhen
-    if (form.habitLogWhen === 'morning') {
-      habit.morning_day = form.habitMorningDay
-    }
+  if (form.logPeriod !== 'daily') {
+    delete habit.log_when
+    delete habit.morning_day
   }
   return habit
 }
@@ -332,17 +337,8 @@ function applyHabitFormFields(
     log_period: form.logPeriod,
     category_id: storedLibraryCategoryId(form.categoryId),
   }
-  if (form.logPeriod === 'daily') {
-    next.log_when = form.habitLogWhen
-    if (form.habitLogWhen === 'morning') {
-      next.morning_day = form.habitMorningDay
-    } else {
-      delete next.morning_day
-    }
-  } else {
-    delete next.log_when
-    delete next.morning_day
-  }
+  delete next.log_when
+  delete next.morning_day
   return next
 }
 
@@ -382,6 +378,9 @@ export function MetricsEditor({
   const [editingSleepMetricId, setEditingSleepMetricId] = useState<string | null>(null)
   const [addingSleepMetric, setAddingSleepMetric] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState<string | null>(null)
+  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<string[]>(() =>
+    readCollapsedCategoryIds(),
+  )
 
   const customGoals = goals.filter(
     (g) =>
@@ -396,6 +395,16 @@ export function MetricsEditor({
 
   const refreshWorkouts = useCallback(() => setWorkoutTypes(getWorkoutTypes()), [])
   const refreshCategories = useCallback(() => setGoalCategories(getMetricLibraryCategories()), [])
+
+  const toggleCategoryCollapsed = (categoryId: string) => {
+    setCollapsedCategoryIds((current) => {
+      const next = current.includes(categoryId)
+        ? current.filter((id) => id !== categoryId)
+        : [...current, categoryId]
+      saveCollapsedCategoryIds(next)
+      return next
+    })
+  }
 
   const persistCategories = (custom: GoalCategoryDefinition[]) => {
     saveCustomGoalCategories(custom)
@@ -572,11 +581,6 @@ export function MetricsEditor({
         name: label,
         unit,
         log_period: formState.logPeriod,
-        log_when: formState.logPeriod === 'daily' ? formState.workoutLogWhen : existing.log_when,
-        morning_day:
-          formState.logPeriod === 'daily' && formState.workoutLogWhen === 'morning'
-            ? formState.workoutMorningDay
-            : existing.morning_day,
       }),
     )
   }
@@ -663,10 +667,6 @@ export function MetricsEditor({
       }
       delete nextSleep.log_when
       delete nextSleep.morning_day
-      if (form.logPeriod === 'daily') {
-        nextSleep.log_when = form.goalLogWhen
-        if (form.goalLogWhen === 'morning') nextSleep.morning_day = form.goalMorningDay
-      }
 
       onSaveGoal(normalizeGoal(nextSleep))
       closeForm()
@@ -674,8 +674,6 @@ export function MetricsEditor({
     }
 
     if (form.kind === 'goal') {
-      const askFields = goalAskFieldsFromForm(form)
-
       if (form.mode === 'edit' && form.goalId) {
         const existing = goals.find((g) => g.id === form.goalId)
         if (!existing) return
@@ -688,10 +686,6 @@ export function MetricsEditor({
         }
         delete nextGoal.log_when
         delete nextGoal.morning_day
-        if (askFields.log_when) {
-          nextGoal.log_when = askFields.log_when
-          if (askFields.morning_day) nextGoal.morning_day = askFields.morning_day
-        }
         onSaveGoal(normalizeGoal(nextGoal))
       } else {
         const resolvedKey = goalKeyFromName(name)
@@ -708,10 +702,6 @@ export function MetricsEditor({
           category_id: storedLibraryCategoryId(form.categoryId),
           is_active: true,
           created_at: new Date().toISOString(),
-        }
-        if (askFields.log_when) {
-          nextGoal.log_when = askFields.log_when
-          if (askFields.morning_day) nextGoal.morning_day = askFields.morning_day
         }
         onSaveGoal(normalizeGoal(nextGoal))
       }
@@ -732,14 +722,6 @@ export function MetricsEditor({
         name: 'Weight',
         target_value: existing?.target_value ?? null,
         log_period: form.logPeriod,
-        ...(form.logPeriod === 'daily'
-          ? {
-              log_when: form.goalLogWhen,
-              ...(form.goalLogWhen === 'morning'
-                ? { morning_day: form.goalMorningDay }
-                : {}),
-            }
-          : {}),
         goal_weight_start: existing?.goal_weight_start ?? null,
         goal_weight_target: existing?.goal_weight_target ?? null,
         period_start_date: existing?.period_start_date,
@@ -768,16 +750,6 @@ export function MetricsEditor({
 
     if (form.kind === 'workout') {
       const logPeriod = form.logPeriod
-      const askFields =
-        logPeriod === 'weekly'
-          ? { log_period: 'weekly' as const }
-          : {
-              log_period: 'daily' as const,
-              log_when: form.workoutLogWhen,
-              ...(form.workoutLogWhen === 'morning'
-                ? { morning_day: form.workoutMorningDay }
-                : {}),
-            }
       const subtypes = form.workoutSubtypes
         .split(/[,;\n]/)
         .map((entry) => entry.trim())
@@ -792,9 +764,11 @@ export function MetricsEditor({
                 ...t,
                 label: name,
                 unit,
-                ...askFields,
+                log_period: logPeriod,
                 subtypes: subtypes.length > 0 ? subtypes : undefined,
                 category_id: storedLibraryCategoryId(form.categoryId),
+                log_when: undefined,
+                morning_day: undefined,
               }
             : t,
         )
@@ -816,7 +790,7 @@ export function MetricsEditor({
             label: name,
             color: WORKOUT_COLOR_PRESETS[0],
             unit,
-            ...askFields,
+            log_period: logPeriod,
             ...(subtypes.length > 0 ? { subtypes } : {}),
             category_id: storedLibraryCategoryId(form.categoryId) ?? undefined,
           },
@@ -1272,39 +1246,10 @@ export function MetricsEditor({
               }
             />
             {form.logPeriod === 'daily' && (
-              <>
-                <SegmentPicker
-                  label="Ask in"
-                  value={form.goalLogWhen}
-                  onChange={(goalLogWhen) => setForm({ ...form, goalLogWhen })}
-                  options={[
-                    { value: 'home', label: 'Home' },
-                    { value: 'morning', label: 'Morning' },
-                    { value: 'shutdown', label: 'Shutdown' },
-                  ]}
-                />
-                {form.goalLogWhen === 'morning' && (
-                  <SegmentPicker
-                    label="For"
-                    value={form.goalMorningDay}
-                    onChange={(goalMorningDay) => setForm({ ...form, goalMorningDay })}
-                    options={[
-                      { value: 'today', label: 'Today' },
-                      { value: 'yesterday', label: 'Yesterday' },
-                    ]}
-                  />
-                )}
-                <p className="text-[10px] leading-snug text-zinc-500">
-                  {form.goalLogWhen === 'home' &&
-                    'Sleep hours can also be logged on Home when configured.'}
-                  {form.goalLogWhen === 'morning' &&
-                    (form.goalMorningDay === 'yesterday'
-                      ? 'Asked in the morning log for yesterday’s sleep.'
-                      : 'Asked in the morning log for last night’s sleep.')}
-                  {form.goalLogWhen === 'shutdown' &&
-                    'Asked during evening shutdown.'}
-                </p>
-              </>
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Logged from Home, and at shutdown if it’s still missing. Add it to Morning log in
+                Settings if you want it there.
+              </p>
             )}
             {form.logPeriod === 'weekly' && (
               <p className="text-[10px] leading-snug text-zinc-500">
@@ -1328,32 +1273,11 @@ export function MetricsEditor({
               }
             />
             {form.logPeriod === 'daily' ? (
-              <>
-                <SegmentPicker
-                  label="Ask in"
-                  value={form.goalLogWhen}
-                  onChange={(goalLogWhen) => setForm({ ...form, goalLogWhen })}
-                  options={[
-                    { value: 'home', label: 'Home' },
-                    { value: 'morning', label: 'Morning' },
-                    { value: 'shutdown', label: 'Shutdown' },
-                  ]}
-                />
-                {form.goalLogWhen === 'morning' && (
-                  <SegmentPicker
-                    label="For"
-                    value={form.goalMorningDay}
-                    onChange={(goalMorningDay) => setForm({ ...form, goalMorningDay })}
-                    options={[
-                      { value: 'today', label: 'Today' },
-                      { value: 'yesterday', label: 'Yesterday' },
-                    ]}
-                  />
-                )}
-                <p className="text-[10px] leading-snug text-zinc-500">
-                  Daily weigh-ins. Set a bulk, cut, or maintain target on the Goals page.
-                </p>
-              </>
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Daily weigh-ins from Home, and at shutdown if still missing. Set a bulk, cut, or
+                maintain target on the Goals page. Add it to Morning log in Settings if you want it
+                there.
+              </p>
             ) : (
               <p className="text-[10px] leading-snug text-zinc-500">
                 Log once at weekly shutdown. Set the weight outcome on the Goals page.
@@ -1376,39 +1300,10 @@ export function MetricsEditor({
               }
             />
             {form.logPeriod === 'daily' && (
-              <>
-                <SegmentPicker
-                  label="Ask in"
-                  value={form.habitLogWhen}
-                  onChange={(habitLogWhen) => setForm({ ...form, habitLogWhen })}
-                  options={[
-                    { value: 'home', label: 'Home' },
-                    { value: 'morning', label: 'Morning' },
-                    { value: 'shutdown', label: 'Shutdown' },
-                  ]}
-                />
-                {form.habitLogWhen === 'morning' && (
-                  <SegmentPicker
-                    label="For"
-                    value={form.habitMorningDay}
-                    onChange={(habitMorningDay) => setForm({ ...form, habitMorningDay })}
-                    options={[
-                      { value: 'today', label: 'Today' },
-                      { value: 'yesterday', label: 'Yesterday' },
-                    ]}
-                  />
-                )}
-                <p className="text-[10px] leading-snug text-zinc-500">
-                  {form.habitLogWhen === 'home' &&
-                    'Shows in Habits on the homepage throughout the day.'}
-                  {form.habitLogWhen === 'morning' &&
-                    (form.habitMorningDay === 'yesterday'
-                      ? 'Asked in the morning log for yesterday’s value.'
-                      : 'Asked in the morning log for today’s value.')}
-                  {form.habitLogWhen === 'shutdown' &&
-                    'Asked during evening shutdown.'}
-                </p>
-              </>
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Logged from Home, and at shutdown if it’s still missing. Add it to Morning log in
+                Settings if you want it there.
+              </p>
             )}
           </>
         )}
@@ -1427,39 +1322,10 @@ export function MetricsEditor({
               }
             />
             {form.logPeriod === 'daily' && (
-              <>
-                <SegmentPicker
-                  label="Ask in"
-                  value={form.goalLogWhen}
-                  onChange={(goalLogWhen) => setForm({ ...form, goalLogWhen })}
-                  options={[
-                    { value: 'home', label: 'Home' },
-                    { value: 'morning', label: 'Morning' },
-                    { value: 'shutdown', label: 'Shutdown' },
-                  ]}
-                />
-                {form.goalLogWhen === 'morning' && (
-                  <SegmentPicker
-                    label="For"
-                    value={form.goalMorningDay}
-                    onChange={(goalMorningDay) => setForm({ ...form, goalMorningDay })}
-                    options={[
-                      { value: 'today', label: 'Today' },
-                      { value: 'yesterday', label: 'Yesterday' },
-                    ]}
-                  />
-                )}
-                <p className="text-[10px] leading-snug text-zinc-500">
-                  {form.goalLogWhen === 'home' &&
-                    'Shows with daily metrics on the homepage.'}
-                  {form.goalLogWhen === 'morning' &&
-                    (form.goalMorningDay === 'yesterday'
-                      ? 'Asked in the morning log for yesterday’s value.'
-                      : 'Asked in the morning log for today’s value.')}
-                  {form.goalLogWhen === 'shutdown' &&
-                    'Asked during evening shutdown.'}
-                </p>
-              </>
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Logged from Home, and at shutdown if it’s still missing. Add it to Morning log in
+                Settings if you want it there.
+              </p>
             )}
             {form.logPeriod === 'weekly' && (
               <p className="text-[10px] leading-snug text-zinc-500">
@@ -1554,39 +1420,10 @@ export function MetricsEditor({
               }
             />
             {form.logPeriod === 'daily' && (
-              <>
-                <SegmentPicker
-                  label="Ask in"
-                  value={form.workoutLogWhen}
-                  onChange={(workoutLogWhen) => setForm({ ...form, workoutLogWhen })}
-                  options={[
-                    { value: 'home', label: 'Home' },
-                    { value: 'morning', label: 'Morning' },
-                    { value: 'shutdown', label: 'Shutdown' },
-                  ]}
-                />
-                {form.workoutLogWhen === 'morning' && (
-                  <SegmentPicker
-                    label="For"
-                    value={form.workoutMorningDay}
-                    onChange={(workoutMorningDay) => setForm({ ...form, workoutMorningDay })}
-                    options={[
-                      { value: 'today', label: 'Today' },
-                      { value: 'yesterday', label: 'Yesterday' },
-                    ]}
-                  />
-                )}
-                <p className="text-[10px] leading-snug text-zinc-500">
-                  {form.workoutLogWhen === 'home' &&
-                    'Shows on the Workouts card on the homepage.'}
-                  {form.workoutLogWhen === 'morning' &&
-                    (form.workoutMorningDay === 'yesterday'
-                      ? 'Asked in the morning log for yesterday’s sessions.'
-                      : 'Asked in the morning log for today’s sessions.')}
-                  {form.workoutLogWhen === 'shutdown' &&
-                    'Asked during evening shutdown.'}
-                </p>
-              </>
+              <p className="text-[10px] leading-snug text-zinc-500">
+                Logged from Home, and at shutdown if it’s still missing. Add it to Morning log in
+                Settings if you want it there.
+              </p>
             )}
             {form.logPeriod === 'weekly' && (
               <p className="text-[10px] leading-snug text-zinc-500">
@@ -1817,43 +1654,12 @@ export function MetricsEditor({
 
   const renderCategoryGrid = (categoryId: string) => {
     const items = libraryItems.filter((item) => item.categoryId === categoryId)
-    const showAddForm = form?.mode === 'add' && form.categoryId === categoryId
-    const showKindPicker = kindPickerOpen && kindPickerCategoryId === categoryId
-    const showSleepPicker = addingSleepMetric && kindPickerCategoryId === categoryId
 
     return (
       <div className="grid items-start gap-3 sm:grid-cols-2">
         {items.map((item) => (
           <div key={item.key}>{renderLibraryItem(item)}</div>
         ))}
-        {showAddForm && renderInlineFormCard(`add-${form.kind}`)}
-        {showKindPicker && renderKindPickerCard()}
-        {showSleepPicker && (
-          <Card className="p-3 ring-1 ring-[var(--accent-500)]/25 sm:col-span-2">
-            <SleepMetricTemplatePicker
-              config={sleepMetricsConfig}
-              onChange={(config) => {
-                enableMetricsSection('sleep')
-                const added = config.enabledIds.filter(
-                  (id) => !sleepMetricsConfig.enabledIds.includes(id),
-                )
-                let next = config
-                for (const id of added) {
-                  next = setSleepMetricCategory(
-                    next,
-                    id,
-                    storedLibraryCategoryId(kindPickerCategoryId),
-                  )
-                }
-                saveSleepMetricsConfig(next)
-              }}
-              onDone={() => setAddingSleepMetric(false)}
-            />
-          </Card>
-        )}
-        {!showAddForm && !showKindPicker && !showSleepPicker && (
-          <AddGhostCard onClick={() => openKindPicker(categoryId)} label="Add metric" />
-        )}
       </div>
     )
   }
@@ -1873,6 +1679,14 @@ export function MetricsEditor({
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => openKindPicker()}
+          >
+            <Plus size={14} />
+            Metric
+          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -1944,9 +1758,34 @@ export function MetricsEditor({
         </div>
       ) : (
         <div className="space-y-8">
-          {kindPickerOpen && metricsEmpty && renderKindPickerCard()}
-          {form?.mode === 'add' && metricsEmpty && renderInlineFormCard('add-empty')}
-          {groupedCategories.map((category) => (
+          {kindPickerOpen && renderKindPickerCard()}
+          {addingSleepMetric && (
+            <Card className="p-3 ring-1 ring-[var(--accent-500)]/25">
+              <SleepMetricTemplatePicker
+                config={sleepMetricsConfig}
+                onChange={(config) => {
+                  enableMetricsSection('sleep')
+                  const added = config.enabledIds.filter(
+                    (id) => !sleepMetricsConfig.enabledIds.includes(id),
+                  )
+                  let next = config
+                  for (const id of added) {
+                    next = setSleepMetricCategory(
+                      next,
+                      id,
+                      storedLibraryCategoryId(kindPickerCategoryId),
+                    )
+                  }
+                  saveSleepMetricsConfig(next)
+                }}
+                onDone={() => setAddingSleepMetric(false)}
+              />
+            </Card>
+          )}
+          {form?.mode === 'add' && renderInlineFormCard(`add-${form.kind}`)}
+          {groupedCategories.map((category) => {
+            const collapsed = collapsedCategoryIds.includes(category.id)
+            return (
             <section key={category.id}>
               <div className="mb-3 flex items-center gap-1.5">
                 {editingCategoryId === category.id ? (
@@ -1987,7 +1826,21 @@ export function MetricsEditor({
                   </>
                 ) : (
                   <>
-                    <h3 className="text-sm font-semibold text-zinc-200">{category.label}</h3>
+                    <button
+                      type="button"
+                      onClick={() => toggleCategoryCollapsed(category.id)}
+                      className="flex min-w-0 items-center gap-1.5 text-left"
+                      aria-expanded={!collapsed}
+                    >
+                      <ChevronDown
+                        size={14}
+                        className={cn(
+                          'shrink-0 text-zinc-500 transition-transform',
+                          collapsed && '-rotate-90',
+                        )}
+                      />
+                      <h3 className="text-sm font-semibold text-zinc-200">{category.label}</h3>
+                    </button>
                     {category.id !== UNGROUPED_CATEGORY_ID && (
                       <>
                         <button
@@ -2042,9 +1895,10 @@ export function MetricsEditor({
                   </div>
                 </div>
               )}
-              {renderCategoryGrid(category.id)}
+              {!collapsed && renderCategoryGrid(category.id)}
             </section>
-          ))}
+            )
+          })}
         </div>
       )}
 

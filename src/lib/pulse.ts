@@ -1,35 +1,80 @@
 import type { CSSProperties } from 'react'
 import { addDays, format, parseISO } from 'date-fns'
-import { getLogValueForGoal } from '@/lib/dailyLog'
-import { getDraft, mergeDraftWithLog } from '@/lib/dailyLogDraft'
+import {
+  getDraft,
+  mergeDraftWithLog,
+  usesAdditiveTodayDraft,
+} from '@/lib/dailyLogDraft'
+import { hasTarget } from '@/lib/goals'
 import { getDailyLogHabitTypes, type HabitTypeDefinition } from '@/lib/habitTypes'
 import { getHabitStreak } from '@/lib/habitStreaks'
-import { hasTarget } from '@/lib/goals'
+import { getMetricValue } from '@/lib/metrics'
 import {
-  computeExerciseRate,
-  getPulseCustomMetricGoals,
   getPulseFormulaForDate,
+  resolvePulseMetricTarget,
   type PulseConfig,
   type PulseFormula,
 } from '@/lib/pulseConfig'
 import {
-  computeSleepPulseRate,
-  getPulseSleepMetrics,
+  getSleepMetricDefinition,
+  getSleepMetricValue,
   getSleepMetricsConfig,
+  metricRateForPulse,
+  sleepMetricIdFromLibraryKey,
   type SleepMetricsConfig,
 } from '@/lib/sleepMetrics'
-import type { DailyLog, Goal, Workout } from '@/types'
+import type { DailyLog, Goal, MetricKey, Workout, WorkoutCategory } from '@/types'
 import { normalizeHabits } from '@/types'
 import { formatDate, getWeekDates } from '@/lib/utils'
+
+function pulseDayKey(date: string): string {
+  return date.slice(0, 10)
+}
+
+function workoutsOnPulseDay(workouts: Workout[], date: string): Workout[] {
+  const day = pulseDayKey(date)
+  return workouts.filter((w) => pulseDayKey(w.date ?? '') === day)
+}
+
+/**
+ * Amount logged for Pulse on a single day (never week-to-date).
+ * Workouts: today's sessions + in-progress draft minutes for that day.
+ */
+export function getPulseDayMetricValue(
+  metricKey: MetricKey,
+  date: string,
+  log: DailyLog | undefined,
+  workouts: Workout[],
+): number {
+  const day = pulseDayKey(date)
+  const dayWorkouts = workoutsOnPulseDay(workouts, day)
+
+  if (metricKey.startsWith('workout_')) {
+    const cat = metricKey.replace('workout_', '')
+    const fromSessions = dayWorkouts
+      .filter((w) => w.category === cat || w.category === metricKey)
+      .reduce((sum, w) => sum + (w.duration_minutes || 0), 0)
+
+    const draft = getDraft(day)
+    const draftMins = draft?.workouts?.[cat as WorkoutCategory]
+    if (draftMins == null || draftMins <= 0) return fromSessions
+
+    const additive = draft.workoutMode === 'additive' || usesAdditiveTodayDraft(day)
+    return additive ? fromSessions + draftMins : draftMins
+  }
+
+  return getMetricValue(metricKey, log, dayWorkouts, day)
+}
 
 export interface DayPulse {
   date: string
   score: number
+  /** Average of weighted habit metrics (insights). */
   habitRate: number
   focusRate: number
   sleepRate: number
   exerciseRate: number
-  /** Completion % for custom metrics with pulse weight. */
+  /** Completion % for each weighted metric key. */
   metricRates: Record<string, number>
 }
 
@@ -62,17 +107,64 @@ function logForDate(
       screen_time_minutes: merged.screen_time_minutes ?? todayLog.screen_time_minutes,
       custom_metrics: { ...todayLog.custom_metrics, ...merged.custom_metrics },
       sleep_metrics: { ...todayLog.sleep_metrics, ...merged.sleep_metrics },
+      weight: merged.weight ?? todayLog.weight,
     }
   }
   return logs.find((l) => l.date === date)
 }
 
-function computeCustomMetricRate(log: DailyLog | undefined, goal: Goal): number {
-  const target = goal.target_value ?? 0
-  if (target <= 0) return 0
-  const value = log ? getLogValueForGoal(log, goal) : null
-  if (value == null || value <= 0) return 0
+/** 0–100 completion for one Pulse metric key. */
+export function computePulseMetricRate(input: {
+  metricKey: MetricKey
+  date: string
+  log: DailyLog | undefined
+  goals: Goal[]
+  workouts: Workout[]
+  formula: PulseFormula
+  sleepMetricsConfig?: SleepMetricsConfig
+}): number {
+  const { metricKey, date, log, goals, workouts, formula } = input
+  const sleepConfig = input.sleepMetricsConfig ?? getSleepMetricsConfig()
+
+  if (metricKey.startsWith('habit_')) {
+    const habitId = metricKey.slice('habit_'.length)
+    const h = normalizeHabits(log?.habits)
+    return h[habitId] ? 100 : 0
+  }
+
+  const sleepId = sleepMetricIdFromLibraryKey(metricKey)
+  if (sleepId) {
+    const metric = getSleepMetricDefinition(sleepConfig, sleepId)
+    if (!metric) return 0
+    const value = getSleepMetricValue(log, metric)
+    if (value == null) return 0
+    const target = resolvePulseMetricTarget(metricKey, goals, formula, sleepConfig)
+    return metricRateForPulse(metric, value, target) ?? 0
+  }
+
+  if (metricKey === 'sleep') {
+    const target = resolvePulseMetricTarget('sleep', goals, formula, sleepConfig)
+    if (target == null || target <= 0 || log?.sleep_hours == null) return 0
+    return Math.min(100, (log.sleep_hours / target) * 100)
+  }
+
+  if (metricKey === 'focus') {
+    const mins = log?.focus_minutes ?? 0
+    const target = resolvePulseMetricTarget('focus', goals, formula, sleepConfig)
+    if (target == null || target <= 0) return 0
+    return Math.min(100, (mins / target) * 100)
+  }
+
+  const value = getPulseDayMetricValue(metricKey, date, log, workouts)
+  const target = resolvePulseMetricTarget(metricKey, goals, formula, sleepConfig)
+  if (target == null || target <= 0) return 0
+  if (value <= 0) return 0
   return Math.min(100, (value / target) * 100)
+}
+
+function averageRates(rates: number[]): number {
+  if (rates.length === 0) return 0
+  return rates.reduce((sum, n) => sum + n, 0) / rates.length
 }
 
 export function computeDayPulse(
@@ -96,67 +188,61 @@ export function computeDayPulse(
 
   if (!formula) return empty
 
-  const { weights } = formula
+  const sleepConfig = sleepMetricsConfig ?? getSleepMetricsConfig()
   const metricWeights = formula.metricWeights ?? {}
-  let habitRate = 0
-  let focusRate = 0
-  let sleepRate = 0
-  let exerciseRate = 0
   const metricRates: Record<string, number> = {}
   const parts: { weight: number; value: number }[] = []
+  const habitRates: number[] = []
+  const sleepRates: number[] = []
+  const exerciseRates: number[] = []
+  let focusRate = 0
 
-  if (weights.habits > 0 && habits.length > 0) {
-    const h = normalizeHabits(log?.habits)
-    const done = habits.filter((habit) => h[habit.id]).length
-    habitRate = (done / habits.length) * 100
-    parts.push({ weight: weights.habits, value: habitRate })
-  }
-
-  if (weights.focus > 0) {
-    const focusGoal = goals.find((g) => g.metric_key === 'focus' && hasTarget(g))
-    if (focusGoal) {
-      const mins = log?.focus_minutes ?? 0
-      const target = focusGoal.target_value ?? 1
-      focusRate = Math.min(100, (mins / target) * 100)
-      parts.push({ weight: weights.focus, value: focusRate })
-    }
-  }
-
-  if (weights.sleep > 0) {
-    const sleepConfig = sleepMetricsConfig ?? getSleepMetricsConfig()
-    const sleepGoal = goals.find((g) => g.metric_key === 'sleep' && hasTarget(g))
-    const legacyHours = sleepGoal?.target_value ?? null
-    const pulseMetrics = getPulseSleepMetrics(sleepConfig)
-    sleepRate =
-      pulseMetrics.length > 0
-        ? computeSleepPulseRate(log, sleepConfig, legacyHours)
-        : legacyHours != null && legacyHours > 0 && log?.sleep_hours != null
-          ? Math.min(100, (log.sleep_hours / legacyHours) * 100)
-          : 0
-    parts.push({ weight: weights.sleep, value: sleepRate })
-  }
-
-  if (weights.exercise > 0) {
-    const hasWorkoutGoal = goals.some(
-      (g) => g.is_active && g.metric_key.startsWith('workout_') && hasTarget(g),
-    )
-    if (hasWorkoutGoal) {
-      exerciseRate = computeExerciseRate(date, workouts, formula.exerciseDailyMinutes)
-      parts.push({ weight: weights.exercise, value: exerciseRate })
-    }
-  }
-
-  const customGoalsByKey = new Map(
-    getPulseCustomMetricGoals(goals).map((g) => [g.metric_key as string, g]),
-  )
   for (const [key, weight] of Object.entries(metricWeights)) {
     if (weight <= 0) continue
-    const goal = customGoalsByKey.get(key)
-    if (!goal) continue
-    const rate = computeCustomMetricRate(log, goal)
+    if ((formula.orGroups ?? []).some((g) => g.metricKeys.includes(key as MetricKey))) continue
+    const rate = computePulseMetricRate({
+      metricKey: key as MetricKey,
+      date,
+      log,
+      goals,
+      workouts,
+      formula,
+      sleepMetricsConfig: sleepConfig,
+    })
     metricRates[key] = rate
     parts.push({ weight, value: rate })
+
+    if (key.startsWith('habit_')) habitRates.push(rate)
+    else if (key === 'focus') focusRate = rate
+    else if (key === 'sleep' || sleepMetricIdFromLibraryKey(key)) sleepRates.push(rate)
+    else if (key.startsWith('workout_')) exerciseRates.push(rate)
   }
+
+  for (const group of formula.orGroups ?? []) {
+    if (group.weight <= 0 || group.metricKeys.length === 0) continue
+    const memberRates = group.metricKeys.map((metricKey) => {
+      const rate = computePulseMetricRate({
+        metricKey,
+        date,
+        log,
+        goals,
+        workouts,
+        formula,
+        sleepMetricsConfig: sleepConfig,
+      })
+      metricRates[metricKey] = rate
+      return rate
+    })
+    const rate = Math.max(0, ...memberRates)
+    parts.push({ weight: group.weight, value: rate })
+    if (group.metricKeys.some((k) => k.startsWith('workout_'))) exerciseRates.push(rate)
+  }
+
+  // Insights still expect category-ish aggregates.
+  void habits
+  const habitRate = averageRates(habitRates)
+  const sleepRate = averageRates(sleepRates)
+  const exerciseRate = averageRates(exerciseRates)
 
   if (parts.length === 0) {
     return { ...empty, habitRate, focusRate, sleepRate, exerciseRate, metricRates }
@@ -167,6 +253,7 @@ export function computeDayPulse(
 
   return { date, score, habitRate, focusRate, sleepRate, exerciseRate, metricRates }
 }
+
 
 export function computePulseSeries(
   dates: string[],

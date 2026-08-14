@@ -14,6 +14,12 @@ import {
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeekDates } from '@/lib/utils'
 import { formatMetricAmount, usesTimedMetricDisplay } from '@/lib/timedMetrics'
+import {
+  getSleepMetricDefinition,
+  getSleepMetricValue,
+  getSleepMetricsConfig,
+  sleepMetricIdFromLibraryKey,
+} from '@/lib/sleepMetrics'
 
 export interface ProgressResult {
   current: number
@@ -55,6 +61,13 @@ export function getMetricValue(
     return log?.custom_metrics?.[metricKey] ?? 0
   }
 
+  const sleepId = sleepMetricIdFromLibraryKey(metricKey)
+  if (sleepId) {
+    const metric = getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
+    if (!metric) return 0
+    return getSleepMetricValue(log, metric) ?? 0
+  }
+
   switch (metricKey) {
     case 'sleep':
       return log?.sleep_hours ?? 0
@@ -69,8 +82,12 @@ export function getMetricValue(
     default:
       if (metricKey.startsWith('workout_')) {
         const cat = metricKey.replace('workout_', '')
+        const day = date.slice(0, 10)
         return workouts
-          .filter((w) => w.category === cat && w.date === date)
+          .filter((w) => {
+            const wDay = (w.date ?? '').slice(0, 10)
+            return wDay === day && (w.category === cat || w.category === metricKey)
+          })
           .reduce((s, w) => s + w.duration_minutes, 0)
       }
       return 0

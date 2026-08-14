@@ -23,6 +23,8 @@ export function isShutdownSubmitted(date: string): boolean {
 export function markShutdownSubmitted(date: string): void {
   storageSetItem(`${SHUTDOWN_SUBMITTED_PREFIX}${date}`, '1')
   window.dispatchEvent(new Event(SHUTDOWN_CHANGED))
+  // Keep in sync with MISSED_LOG_CHANGED in dailyLog.ts (avoid circular import).
+  window.dispatchEvent(new Event('personal-os-missed-log-changed'))
 }
 
 export function requestOpenShutdown(): void {

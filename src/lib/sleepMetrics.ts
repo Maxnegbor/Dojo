@@ -1,7 +1,19 @@
 import { slugifyWorkoutId } from '@/lib/workoutTypes'
 import { formatMorningMinutes } from '@/lib/morningLog'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
-import type { DailyLog, MorningLog } from '@/types'
+import type { DailyLog, MetricKey, MorningLog } from '@/types'
+
+export const SLEEP_LIBRARY_METRIC_PREFIX = 'sleep:'
+
+export function sleepLibraryMetricKey(id: string): MetricKey {
+  return `${SLEEP_LIBRARY_METRIC_PREFIX}${id}` as MetricKey
+}
+
+export function sleepMetricIdFromLibraryKey(metricKey: string): string | null {
+  if (!metricKey.startsWith(SLEEP_LIBRARY_METRIC_PREFIX)) return null
+  const id = metricKey.slice(SLEEP_LIBRARY_METRIC_PREFIX.length)
+  return id || null
+}
 
 export type SleepMetricUnit = 'hours' | 'minutes' | 'percent' | 'score10'
 

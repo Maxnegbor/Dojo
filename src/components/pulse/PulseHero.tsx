@@ -18,8 +18,8 @@ export function PulseHero({
 
       {!configured && (
         <p className="mt-6 max-w-sm text-center text-sm text-zinc-400">
-          Configure Pulse to choose what counts toward your daily score — habits, focus, sleep,
-          metrics with goals, and optionally exercise.
+          Configure Pulse to choose individual metrics and how much each counts toward your daily
+          score.
         </p>
       )}
     </div>

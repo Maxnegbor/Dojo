@@ -6,7 +6,7 @@ import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import { HabitLogRow } from '@/components/today/HabitLogRow'
 import type { DailyLog, Goal, Workout, WorkoutCategory } from '@/types'
 import { getDailyLogGoals, getHomeLogGoals } from '@/lib/goals'
-import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes, useHomeLogHabitTypes, useWeeklyLogHabitTypes } from '@/lib/habitTypes'
+import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes, useDailyLogHabitTypes, useHomeLogHabitTypes, useWeeklyLogHabitTypes } from '@/lib/habitTypes'
 import { WeeklyHabitsLogSection } from '@/components/today/WeeklyHabitsLogSection'
 import { getHabitTargetLabel, applyRampLevelSync } from '@/lib/habitRamp'
 import { getWorkoutTypes, getHomeLogWorkoutTypes, formatWorkoutAmount } from '@/lib/workoutTypes'
@@ -84,7 +84,9 @@ export function DailyLogForm({
 
   const dailyGoals = useMemo(() => getDailyLogGoals(goals), [goals])
   const homeGoals = useMemo(() => getHomeLogGoals(goals), [goals])
-  const dailyHabits = useHomeLogHabitTypes()
+  const homeHabits = useHomeLogHabitTypes()
+  const allDailyHabits = useDailyLogHabitTypes()
+  const dailyHabits = metricsFilter ? allDailyHabits : homeHabits
   const weeklyHabits = useWeeklyLogHabitTypes()
   const workoutTypes = useMemo(() => getHomeLogWorkoutTypes(), [])
   const filteredDailyHabits = useMemo(() => {
@@ -93,7 +95,7 @@ export function DailyLogForm({
   }, [dailyHabits, metricsFilter])
   const filteredWorkoutTypes = useMemo(() => {
     if (!metricsFilter) return workoutTypes
-    // Shutdown filter: include configured categories even if Ask in isn't home.
+    // Shutdown filter: include configured categories even if they are not Home-only.
     const all = getWorkoutTypes()
     return all.filter((type) => metricsFilter.workoutCategories.has(type.id))
   }, [workoutTypes, metricsFilter])
@@ -311,9 +313,10 @@ export function DailyLogForm({
 
   const showWorkouts =
     embedded &&
-    settings.showWorkoutMetrics &&
     !habitsOnly &&
-    (!metricsFilter || workoutTypesToShow.length > 0)
+    (metricsFilter
+      ? workoutTypesToShow.length > 0
+      : settings.showWorkoutMetrics && workoutTypesToShow.length > 0)
 
   const hasDailyLogItems = habitsOnly
     ? dailyHabits.length > 0 || (!hideWeeklyHabits && weeklyHabits.length > 0)
@@ -324,7 +327,7 @@ export function DailyLogForm({
       : metricsFilter
         ? filteredDailyHabits.length > 0 ||
           filteredScalarGoals.length > 0 ||
-          (embedded && settings.showWorkoutMetrics && filteredWorkoutTypes.length > 0)
+          (embedded && filteredWorkoutTypes.length > 0)
         : dailyGoals.some(
             (g) =>
               g.metric_key !== 'focus' &&

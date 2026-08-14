@@ -1,4 +1,11 @@
 import type { Goal, GoalPeriod, MetricKey } from '@/types'
+import { getHabitTypes } from '@/lib/habitTypes'
+import {
+  getSleepMetricDefinition,
+  getSleepMetricsConfig,
+  sleepMetricDisplayUnit,
+  sleepMetricIdFromLibraryKey,
+} from '@/lib/sleepMetrics'
 import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
 
 export type GoalLogWhen = 'home' | 'morning' | 'shutdown'
@@ -73,7 +80,8 @@ export function normalizeGoal(goal: Goal): Goal {
   const log_when =
     log_period === 'daily' &&
     goal.metric_key !== 'focus' &&
-    !goal.metric_key.startsWith('workout_')
+    !goal.metric_key.startsWith('workout_') &&
+    goal.log_when
     ? normalizeGoalLogWhen(goal.log_when)
     : undefined
   const morning_day = log_when === 'morning' ? normalizeGoalMorningDay(goal.morning_day) : undefined
@@ -160,15 +168,17 @@ export function getDailyLogGoals(goals: Goal[]): Goal[] {
   return getActiveGoals(goals).filter((g) => effectiveLogPeriod(g) === 'daily')
 }
 
-/** Daily metrics collected on the Home habits/metrics card (not morning/shutdown). */
+/** Daily metrics available on Home Log and shutdown wrap-up (if still missing). */
 export function getHomeLogGoals(goals: Goal[]): Goal[] {
-  return getDailyLogGoals(goals).filter((g) => goalLogWhen(g) === 'home')
+  return getDailyLogGoals(goals)
 }
 
+/** @deprecated Ask-in was removed; morning log is settings-only. */
 export function getMorningAskGoals(goals: Goal[]): Goal[] {
   return getDailyLogGoals(goals).filter((g) => goalLogWhen(g) === 'morning')
 }
 
+/** @deprecated Ask-in was removed; shutdown asks for unlogged daily metrics. */
 export function getShutdownAskGoals(goals: Goal[]): Goal[] {
   return getDailyLogGoals(goals).filter((g) => goalLogWhen(g) === 'shutdown')
 }
@@ -197,6 +207,14 @@ export function metricLabel(metricKey: MetricKey): string {
     const id = metricKey.replace('workout_', '')
     return getWorkoutTypes().find((t) => t.id === id)?.label ?? id
   }
+  if (metricKey.startsWith('habit_')) {
+    const id = metricKey.slice('habit_'.length)
+    return getHabitTypes().find((t) => t.id === id)?.label ?? id
+  }
+  const sleepId = sleepMetricIdFromLibraryKey(metricKey)
+  if (sleepId) {
+    return getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)?.label ?? sleepId
+  }
   if (metricKey.startsWith('custom:')) {
     return metricKey.replace('custom:', '').replace(/_/g, ' ')
   }
@@ -207,6 +225,15 @@ export function defaultUnitForMetric(metricKey: MetricKey): string {
   const builtin = BUILTIN_METRICS.find((m) => m.key === metricKey)
   if (builtin) return builtin.unit
   if (metricKey.startsWith('workout_')) return 'min'
+  if (metricKey.startsWith('habit_')) {
+    const id = metricKey.slice('habit_'.length)
+    return getHabitTypes().find((t) => t.id === id)?.duration_unit?.trim() || 'days'
+  }
+  const sleepId = sleepMetricIdFromLibraryKey(metricKey)
+  if (sleepId) {
+    const metric = getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
+    return metric ? sleepMetricDisplayUnit(metric) : 'units'
+  }
   return 'units'
 }
 

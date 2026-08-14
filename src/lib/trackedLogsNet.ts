@@ -12,9 +12,6 @@ import {
 } from '@/lib/shutdownLogConfig'
 import {
   getDailyLogGoals,
-  getHomeLogGoals,
-  getMorningAskGoals,
-  getShutdownAskGoals,
   getWeeklyLogGoals,
 } from '@/lib/goals'
 import {
@@ -27,6 +24,8 @@ import {
   type SleepMetricDefinition,
   type SleepMetricsConfig,
 } from '@/lib/sleepMetrics'
+import type { ShutdownLogFilter } from '@/lib/shutdownLogConfig'
+import { getDailyLogWorkoutTypes } from '@/lib/workoutTypes'
 import { getActiveWeightGoal, isWeightGoal, isWeightLoggedWeekly } from '@/lib/weightGoal'
 import type { Goal, MetricKey } from '@/types'
 
@@ -85,18 +84,12 @@ export function getTrackedDailyEditGoals(
   sleepConfig?: SleepMetricsConfig,
 ): Goal[] {
   const config = sleepConfigOrDefault(sleepConfig)
-  const morningItems = getConfiguredMorningLogItems(goals, config)
-  const shutdownItems = getConfiguredShutdownLogItems(goals, config)
 
   const keys = new Set<MetricKey>()
-  for (const goal of [
-    ...getHomeLogGoals(goals),
-    ...getMorningAskGoals(goals),
-    ...getShutdownAskGoals(goals),
-  ]) {
+  for (const goal of getDailyLogGoals(goals)) {
     keys.add(goal.metric_key)
   }
-  for (const item of [...morningItems, ...shutdownItems]) {
+  for (const item of getConfiguredMorningLogItems(goals, config)) {
     if (item.metricKey) keys.add(item.metricKey)
   }
 
@@ -161,5 +154,42 @@ export function getShutdownClaimedItemIds(
 ): Set<string> {
   return new Set(
     getConfiguredShutdownLogItems(goals, sleepConfigOrDefault(sleepConfig)).map((item) => item.id),
+  )
+}
+
+/** Sleep metrics added to the library (daily). */
+export function getHomeLogSleepMetrics(sleepConfig?: SleepMetricsConfig): SleepMetricDefinition[] {
+  return getEnabledSleepMetrics(sleepConfigOrDefault(sleepConfig))
+}
+
+/** All daily library items for the Home Log modal. */
+export function getHomeLogDailyFilter(
+  goals: Goal[],
+  sleepConfig?: SleepMetricsConfig,
+): ShutdownLogFilter {
+  return {
+    habitIds: new Set(getDailyLogHabitTypes().map((habit) => habit.id)),
+    goalKeys: new Set(getTrackedDailyEditGoals(goals, sleepConfig).map((goal) => goal.metric_key)),
+    workoutCategories: new Set(getDailyLogWorkoutTypes().map((type) => type.id)),
+  }
+}
+
+export function hasHomeLogDailyItems(
+  goals: Goal[],
+  sleepConfig?: SleepMetricsConfig,
+): boolean {
+  const filter = getHomeLogDailyFilter(goals, sleepConfig)
+  return (
+    filter.habitIds.size > 0 ||
+    filter.goalKeys.size > 0 ||
+    filter.workoutCategories.size > 0 ||
+    getHomeLogSleepMetrics(sleepConfig).length > 0
+  )
+}
+
+export function hasWeeklyLogItems(goals: Goal[], sleepConfig?: SleepMetricsConfig): boolean {
+  return (
+    getTrackedWeeklyEditHabits().length > 0 ||
+    getTrackedWeeklyEditGoals(goals, sleepConfig).length > 0
   )
 }

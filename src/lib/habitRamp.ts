@@ -1,7 +1,7 @@
 import type { DailyLog, DailyHabits } from '@/types'
 import { normalizeHabits } from '@/types'
 import type { HabitRampConfig, HabitTypeDefinition } from '@/lib/habitTypes'
-import { formatHabitDuration, habitLogPeriod, habitLogWhen } from '@/lib/habitTypes'
+import { formatHabitDuration, habitLogPeriod } from '@/lib/habitTypes'
 import { getLast7DayHabitConsistency } from '@/lib/habitStreaks'
 import { formatDate } from '@/lib/utils'
 import { storageGetItem, storageKeys, storageRemoveItem, storageSetItem } from '@/lib/userStorage'
@@ -61,9 +61,7 @@ export function getHabitTargetLabel(habit: HabitTypeDefinition): string | null {
 }
 
 export function formatHabitCardSubtitle(habit: HabitTypeDefinition): string {
-  const period = habitLogPeriod(habit)
-  if (period === 'weekly') return 'weekly'
-  return `daily · ${habitLogWhen(habit)}`
+  return habitLogPeriod(habit) === 'weekly' ? 'weekly' : 'daily'
 }
 
 export function normalizeHabitRamp(ramp: HabitRampConfig | undefined): HabitRampConfig | undefined {

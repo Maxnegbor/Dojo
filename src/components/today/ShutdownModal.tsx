@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ArrowRight,
   CalendarDays,
   Check,
   ClipboardCopy,
@@ -9,38 +8,42 @@ import {
   ListTodo,
   Moon,
   PenLine,
-  Repeat,
   X,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { Button } from '@/components/ui/Button'
-import { CompletionWaveFill } from '@/components/ui/CompletionWaveFill'
 import { DailyLogForm } from '@/components/today/DailyLogForm'
+import { SleepMetricField } from '@/components/today/SleepMetricField'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
-import { NotesAndReminders } from '@/components/today/NotesAndReminders'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { TypedReminderConfirm } from '@/components/today/TypedReminderConfirm'
 import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
 import { useSettings } from '@/context/SettingsContext'
 import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
-import { useReminderDismissAnimation } from '@/hooks/useReminderDismissAnimation'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import {
   getDailyShutdownStepPreset,
   normalizeDailyShutdownSteps,
 } from '@/lib/dailyShutdownSteps'
-import { getDraft, mergeDraftWithLog } from '@/lib/dailyLogDraft'
-import { getHomeLogHabitTypes } from '@/lib/habitTypes'
-import { buildWrapUpMetricsFilter } from '@/lib/shutdownLogConfig'
+import {
+  buildWrapUpMetricsFilter,
+  getShutdownLogSleepMetrics,
+  hasWrapUpLogFields,
+} from '@/lib/shutdownLogConfig'
+import {
+  buildEditLogDaySleepUpdates,
+  getSleepMetricValue,
+} from '@/lib/sleepMetrics'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { localStore } from '@/lib/localStore'
 import {
   getTypedReminderText,
   isTypedReminderRequired,
   typedReminderMatches,
 } from '@/lib/typedReminder'
 import { isTodoistConnected } from '@/lib/todoistStore'
-import { normalizeHabits } from '@/types'
-import type { DailyLog, DailyShutdownStepId, Goal, Reminder, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
+import type { DailyLog, DailyShutdownStepId, Goal, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import type { ScheduleTemplate } from '@/lib/scheduleTemplates'
 import { cn } from '@/lib/utils'
 
@@ -53,7 +56,6 @@ interface ShutdownModalProps {
   streakLogs: DailyLog[]
   viewDate: string
   tomorrowDate: string
-  reminders: Reminder[]
   userId: string
   todayBlocks: ScheduleBlock[]
   tomorrowBlocks: ScheduleBlock[]
@@ -64,22 +66,12 @@ interface ShutdownModalProps {
   onPasteTodaySchedule: () => void | Promise<void>
   onApplyScheduleTemplate?: (template: ScheduleTemplate) => void | Promise<void>
   onClose: () => void
-  onComplete: (deferredIds: string[]) => void | Promise<void>
-  onCompleteReminder: (id: string) => void
-  onAddReminder: (item: Reminder) => void
-  onUpdateReminder: (item: Reminder) => void
-  onRemoveReminder: (id: string) => void
+  onComplete: () => void | Promise<void>
   onTomorrowScheduleChange?: () => void
   /** Called after habit toggles flush so Home can refresh. */
   onHabitsSaved?: () => void
   /** When true, hide dismiss — used by require-shutdown gate. */
   required?: boolean
-}
-
-function countPendingHomeHabits(log: DailyLog, workouts: Workout[]): number {
-  const merged = mergeDraftWithLog(log, getDraft(log.date), workouts)
-  const habits = normalizeHabits(merged.habits)
-  return getHomeLogHabitTypes().filter((habit) => !habits[habit.id]).length
 }
 
 export function ShutdownModal({
@@ -89,7 +81,6 @@ export function ShutdownModal({
   streakLogs,
   viewDate,
   tomorrowDate,
-  reminders,
   userId,
   todayBlocks,
   tomorrowBlocks,
@@ -101,10 +92,6 @@ export function ShutdownModal({
   onApplyScheduleTemplate,
   onClose,
   onComplete,
-  onCompleteReminder,
-  onAddReminder,
-  onUpdateReminder,
-  onRemoveReminder,
   onTomorrowScheduleChange,
   onHabitsSaved,
   required = false,
@@ -114,6 +101,45 @@ export function ShutdownModal({
   const wrapUpMetricsFilter = useMemo(
     () => buildWrapUpMetricsFilter(goals, sleepMetricsConfig),
     [goals, sleepMetricsConfig],
+  )
+  const allShutdownSleep = useMemo(
+    () => getShutdownLogSleepMetrics(sleepMetricsConfig),
+    [sleepMetricsConfig],
+  )
+  const hasWrapUpForm = useMemo(
+    () => hasWrapUpLogFields(goals, sleepMetricsConfig),
+    [goals, sleepMetricsConfig],
+  )
+  const [missingSleepIds] = useState(() =>
+    getShutdownLogSleepMetrics(sleepMetricsConfig)
+      .filter((metric) => getSleepMetricValue(log, metric) == null)
+      .map((metric) => metric.id),
+  )
+  const shutdownSleepMetrics = useMemo(
+    () => allShutdownSleep.filter((metric) => missingSleepIds.includes(metric.id)),
+    [allShutdownSleep, missingSleepIds],
+  )
+  const [sleepValues, setSleepValues] = useState<Record<string, number | null>>(() => {
+    const values: Record<string, number | null> = {}
+    for (const metric of getShutdownLogSleepMetrics(sleepMetricsConfig)) {
+      values[metric.id] = getSleepMetricValue(log, metric)
+    }
+    return values
+  })
+
+  const persistSleep = useCallback(
+    async (values: Record<string, number | null>) => {
+      if (shutdownSleepMetrics.length === 0) return
+      const updates = buildEditLogDaySleepUpdates(log, values, shutdownSleepMetrics)
+      if (isSupabaseConfigured) {
+        const { updateDailyLogForDate } = await import('@/lib/supabase')
+        await updateDailyLogForDate(userId, viewDate, updates)
+      } else {
+        localStore.updateDailyLog(viewDate, updates)
+      }
+      onHabitsSaved?.()
+    },
+    [log, onHabitsSaved, shutdownSleepMetrics, userId, viewDate],
   )
 
   const configuredSteps = useMemo(
@@ -131,7 +157,7 @@ export function ShutdownModal({
 
   const visibleSteps = useMemo((): ShutdownFlowStep[] => {
     const next: ShutdownFlowStep[] = configuredSteps.filter((id) => {
-      if (id === 'habits') return countPendingHomeHabits(log, workouts) > 0
+      if (id === 'habits') return false
       if (id === 'checklist') return checklistGroups.length > 0
       if (id === 'todoist') return isTodoistConnected()
       return true
@@ -139,11 +165,9 @@ export function ShutdownModal({
     const base = next.length > 0 ? next : (['wrap-up'] as ShutdownFlowStep[])
     if (requireTypedReminder) return [...base, 'typed-reminder']
     return base
-  }, [checklistGroups.length, configuredSteps, log, requireTypedReminder, workouts])
+  }, [checklistGroups.length, configuredSteps, requireTypedReminder])
 
   const [step, setStep] = useState<ShutdownFlowStep>(() => visibleSteps[0] ?? 'wrap-up')
-  const [deferredIds, setDeferredIds] = useState<Set<string>>(() => new Set())
-  const [completedIds, setCompletedIds] = useState<Set<string>>(() => new Set())
   const [checklistChecked, setChecklistChecked] = useState<Set<string>>(() => new Set())
   const [typedReminderValue, setTypedReminderValue] = useState('')
   const [finishing, setFinishing] = useState(false)
@@ -156,32 +180,8 @@ export function ShutdownModal({
     }
   }, [step, visibleSteps])
 
-  const handleReminderDismissed = useCallback(
-    (id: string) => {
-      setCompletedIds((prev) => new Set(prev).add(id))
-      onCompleteReminder(id)
-    },
-    [onCompleteReminder],
-  )
-
-  const { dismiss: dismissReminder, getPhase, onFillAnimationEnd, onExitTransitionEnd } =
-    useReminderDismissAnimation({
-      onDismiss: handleReminderDismissed,
-    })
-
-  const openReminders = reminders.filter(
-    (r) => !r.completed && r.due_date <= viewDate && r.kind !== 'note',
-  )
-  const pendingReminders = openReminders.filter(
-    (r) => !completedIds.has(r.id) && !deferredIds.has(r.id) && !getPhase(r.id),
-  )
   const tomorrowLabel = format(parseISO(tomorrowDate), 'EEEE, MMM d')
 
-  const remindersReady =
-    pendingReminders.length === 0 ||
-    pendingReminders.every((r) => deferredIds.has(r.id))
-
-  const canLeaveWrapUp = remindersReady && !finishing
   const typedReminderReady =
     step !== 'typed-reminder' || typedReminderMatches(typedReminderText, typedReminderValue)
   const stepIndex = Math.max(1, visibleSteps.indexOf(step) + 1)
@@ -190,15 +190,6 @@ export function ShutdownModal({
   const isFirstStep = stepPos <= 0
   const isLastStep = stepPos === visibleSteps.length - 1
   const stepPreset = step === 'typed-reminder' ? null : getDailyShutdownStepPreset(step)
-
-  const toggleDefer = (id: string) => {
-    setDeferredIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
 
   const toggleChecklistItem = (id: string) => {
     setChecklistChecked((prev) => {
@@ -236,14 +227,13 @@ export function ShutdownModal({
   const handleDone = async () => {
     setFinishing(true)
     try {
-      await onComplete([...deferredIds])
+      await onComplete()
     } finally {
       setFinishing(false)
     }
   }
 
   const goNext = async () => {
-    if (step === 'wrap-up' && !canLeaveWrapUp) return
     if (step === 'typed-reminder' && !typedReminderReady) return
     if (isLastStep) {
       await handleDone()
@@ -281,8 +271,6 @@ export function ShutdownModal({
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-950">
               {step === 'schedule' ? (
                 <CalendarDays size={20} className="text-violet-400" />
-              ) : step === 'habits' ? (
-                <Repeat size={20} className="text-violet-400" />
               ) : step === 'todoist' ? (
                 <ListTodo size={20} className="text-violet-400" />
               ) : step === 'checklist' ? (
@@ -299,16 +287,14 @@ export function ShutdownModal({
               </h2>
               <p className="text-xs text-zinc-400">
                 {step === 'schedule'
-                  ? `Sketch ${tomorrowLabel} — schedule, workouts, and reminders`
-                  : step === 'habits'
-                    ? 'Complete what’s left, or leave habits unfinished and continue.'
-                    : step === 'todoist'
-                      ? 'Tick off tasks or add anything you still need to do.'
+                  ? `Sketch ${tomorrowLabel} — schedule and workouts`
+                  : step === 'todoist'
+                    ? 'Tick off tasks or add anything you still need to do.'
                       : step === 'checklist'
                       ? 'Tick anything you still want to close out tonight.'
                       : step === 'typed-reminder'
                         ? 'Type your reminder to finish'
-                        : 'Log today, then clear or carry reminders into tomorrow.'}
+                        : 'Log anything still missing today.'}
               </p>
             </div>
           </div>
@@ -329,139 +315,42 @@ export function ShutdownModal({
             <div className="space-y-5">
               <section>
                 <h3 className="mb-3 text-sm font-semibold text-zinc-200">Daily Log</h3>
-                <DailyLogForm
-                  log={log}
-                  goals={goals}
-                  workouts={workouts}
-                  streakLogs={streakLogs}
-                  embedded
-                  metricsFilter={wrapUpMetricsFilter}
-                />
-              </section>
-
-              <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4">
-                <h3 className="mb-3 text-sm font-semibold text-zinc-200">Reminders</h3>
-
-                {openReminders.length === 0 ? (
-                  <p className="py-2 text-center text-xs text-zinc-500">All clear for today</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {openReminders.map((item) => {
-                      if (completedIds.has(item.id)) return null
-
-                      const phase = getPhase(item.id)
-                      const completing = phase === 'completing'
-                      const exiting = phase === 'exiting'
-                      const checkActive = completing || exiting
-                      const deferred = deferredIds.has(item.id)
-
-                      return (
-                        <li
-                          key={item.id}
-                          className={cn('reminder-row', exiting && 'reminder-row-exiting')}
-                          onTransitionEnd={(event) => {
-                            if (exiting) onExitTransitionEnd(item.id, event.propertyName)
-                          }}
-                        >
-                          <div className="reminder-row-inner">
-                            <div
-                              className={cn(
-                                'reminder-row-content relative flex items-center gap-2 overflow-hidden rounded-lg px-2 py-2 transition-colors duration-200',
-                                !completing &&
-                                  !exiting &&
-                                  (deferred ? 'bg-zinc-900/30' : 'bg-zinc-900/60'),
-                              )}
-                            >
-                              <CompletionWaveFill
-                                plain
-                                phase={completing ? 'animating' : phase ? 'done' : undefined}
-                                onAnimationEnd={
-                                  completing ? () => onFillAnimationEnd(item.id) : undefined
-                                }
-                              />
-                              <button
-                                type="button"
-                                onClick={() => dismissReminder(item.id)}
-                                disabled={!!phase || deferred}
-                                aria-label={`Complete ${item.title}`}
-                                className={cn(
-                                  'relative z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-200',
-                                  checkActive
-                                    ? 'border-[var(--accent-500)] bg-[var(--accent-500)] text-black'
-                                    : deferred
-                                      ? 'border-zinc-700 text-transparent opacity-50'
-                                      : 'border-zinc-600 text-transparent hover:border-[var(--accent-500)] hover:bg-[var(--accent-500)]/20 hover:text-[var(--accent-400)]',
-                                )}
-                              >
-                                {checkActive ? (
-                                  <Check size={11} strokeWidth={3} />
-                                ) : (
-                                  <Check size={11} />
-                                )}
-                              </button>
-                              <p
-                                className={cn(
-                                  'relative z-10 min-w-0 flex-1 truncate text-sm transition-colors duration-300',
-                                  exiting
-                                    ? 'text-[var(--accent-200)]'
-                                    : deferred
-                                      ? 'text-zinc-500'
-                                      : 'text-zinc-200',
-                                )}
-                              >
-                                {item.title}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => toggleDefer(item.id)}
-                                disabled={!!phase}
-                                aria-label={
-                                  deferred
-                                    ? `Keep ${item.title} on today`
-                                    : `Move ${item.title} to tomorrow`
-                                }
-                                className={cn(
-                                  'relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors',
-                                  deferred
-                                    ? 'border-[var(--accent-500)]/60 bg-[var(--accent-500)]/25 text-[var(--accent-400)]'
-                                    : 'border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:bg-zinc-700/80 hover:text-zinc-200',
-                                )}
-                              >
-                                <ArrowRight size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                {shutdownSleepMetrics.length > 0 && (
+                  <div className="mb-4 grid grid-cols-2 gap-3">
+                    {shutdownSleepMetrics.map((metric) => (
+                      <SleepMetricField
+                        key={metric.id}
+                        metric={metric}
+                        value={sleepValues[metric.id] ?? null}
+                        onChange={(value) => {
+                          const next = { ...sleepValues, [metric.id]: value }
+                          setSleepValues(next)
+                          void persistSleep(next)
+                        }}
+                      />
+                    ))}
+                  </div>
                 )}
-
-                {pendingReminders.length > 0 && (
-                  <p className="mt-3 text-[10px] text-zinc-600">
-                    Complete each reminder or tap the arrow to move it to {tomorrowLabel}. Continue
-                    unlocks when all are handled.
+                {hasWrapUpForm ? (
+                  <DailyLogForm
+                    log={log}
+                    goals={goals}
+                    workouts={workouts}
+                    streakLogs={streakLogs}
+                    userId={userId}
+                    embedded
+                    hideWeeklyHabits
+                    unloggedMetricsOnly
+                    metricsFilter={wrapUpMetricsFilter}
+                    onSaved={onHabitsSaved}
+                  />
+                ) : shutdownSleepMetrics.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-zinc-500">
+                    All caught up for today.
                   </p>
-                )}
+                ) : null}
               </section>
             </div>
-          )}
-
-          {step === 'habits' && (
-            <section>
-              <DailyLogForm
-                log={log}
-                goals={goals}
-                workouts={workouts}
-                streakLogs={streakLogs}
-                userId={userId}
-                habitsOnly
-                hideWeeklyHabits
-                incompleteHabitsOnly
-                embedded
-                onSaved={onHabitsSaved}
-              />
-            </section>
           )}
 
           {step === 'todoist' && (
@@ -525,15 +414,6 @@ export function ShutdownModal({
                     singleDate
                     onScheduleChange={onTomorrowScheduleChange}
                   />
-                  <NotesAndReminders
-                    items={reminders}
-                    viewDate={tomorrowDate}
-                    userId={userId}
-                    exactDueDate
-                    onAdd={onAddReminder}
-                    onUpdate={onUpdateReminder}
-                    onRemove={onRemoveReminder}
-                  />
                 </div>
               </div>
             </div>
@@ -592,9 +472,6 @@ export function ShutdownModal({
         </div>
 
         <div className="shrink-0 border-t border-zinc-800/80 px-6 py-4">
-          {step === 'wrap-up' && !canLeaveWrapUp && (
-            <p className="mb-2 text-center text-[10px] text-zinc-500">Handle all reminders first</p>
-          )}
           {step === 'typed-reminder' && !typedReminderReady && (
             <p className="mb-2 text-center text-[10px] text-zinc-500">
               Type the reminder exactly to finish
@@ -611,7 +488,6 @@ export function ShutdownModal({
               className={isFirstStep ? 'w-full' : 'flex-[2]'}
               disabled={
                 finishing ||
-                (step === 'wrap-up' && !canLeaveWrapUp) ||
                 (step === 'typed-reminder' && !typedReminderReady)
               }
             >

@@ -5,8 +5,26 @@ import {
   metricLabel,
   normalizeGoal,
 } from '@/lib/goals'
+import { getFocusSettings } from '@/lib/focusStore'
 import { getHabitTypes } from '@/lib/habitTypes'
+import {
+  KIND_CATEGORY_LABELS,
+  getMetricLibraryCategories,
+  resolveLibraryCategoryId,
+} from '@/lib/metricLibrary'
+import { getEnabledMetricsSections } from '@/lib/metricsSections'
 import { getMetricValue } from '@/lib/metrics'
+import {
+  formatSleepMetricDisplay,
+  getEnabledSleepMetrics,
+  getSleepMetricDefinition,
+  getSleepMetricValue,
+  getSleepMetricsConfig,
+  isClockSleepMetric,
+  sleepLibraryMetricKey,
+  sleepMetricDisplayUnit,
+  sleepMetricIdFromLibraryKey,
+} from '@/lib/sleepMetrics'
 import { formatMetricAmount, formatGoalTargetLabel } from '@/lib/timedMetrics'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { getWeekDates, formatDate } from '@/lib/utils'
@@ -21,7 +39,7 @@ import type {
   OutcomeGoalLink,
   OutcomeGoalLinkPeriod,
   OutcomeGoalLinkRole,
-  OutcomeGoalReview,
+  OutcomeGoalRecurrence,
   Workout,
 } from '@/types'
 
@@ -47,8 +65,39 @@ function normalizeLinkPeriod(value: unknown): OutcomeGoalLinkPeriod {
   return 'weekly'
 }
 
-function normalizeReview(value: unknown): OutcomeGoalReview {
-  return value === 'monthly' ? 'monthly' : 'weekly'
+function normalizeRecurrence(raw: Record<string, unknown>): {
+  recurrence: OutcomeGoalRecurrence
+  recurrence_days?: number
+} {
+  const daysRaw =
+    typeof raw.recurrence_days === 'number'
+      ? raw.recurrence_days
+      : typeof raw.recurrence_days === 'string'
+        ? Number(raw.recurrence_days)
+        : NaN
+  const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.round(daysRaw) : undefined
+
+  if (raw.recurrence === 'daily' || raw.recurrence === 'weekly') {
+    return { recurrence: raw.recurrence }
+  }
+  if (raw.recurrence === 'every_14') {
+    return { recurrence: 'every_14', recurrence_days: 14 }
+  }
+  if (raw.recurrence === 'custom') {
+    return { recurrence: 'custom', recurrence_days: days ?? 30 }
+  }
+
+  // Migrate legacy review → recurrence
+  if (raw.review === 'monthly') return { recurrence: 'custom', recurrence_days: 30 }
+  return { recurrence: 'weekly' }
+}
+
+export function formatOutcomeGoalRecurrence(goal: Pick<OutcomeGoal, 'recurrence' | 'recurrence_days'>): string {
+  if (goal.recurrence === 'daily') return 'Daily'
+  if (goal.recurrence === 'weekly') return 'Weekly'
+  if (goal.recurrence === 'every_14') return 'Every 14 days'
+  const days = goal.recurrence_days && goal.recurrence_days > 0 ? goal.recurrence_days : 30
+  return `Every ${days} days`
 }
 
 export function normalizeOutcomeGoalLink(raw: unknown): OutcomeGoalLink | null {
@@ -82,6 +131,7 @@ export function normalizeOutcomeGoal(raw: unknown): OutcomeGoal | null {
     .map(normalizeOutcomeGoalLink)
     .filter((link): link is OutcomeGoalLink => link != null)
   const now = new Date().toISOString()
+  const { recurrence, recurrence_days } = normalizeRecurrence(obj)
   return {
     id: typeof obj.id === 'string' && obj.id ? obj.id : newId(),
     title,
@@ -89,7 +139,8 @@ export function normalizeOutcomeGoal(raw: unknown): OutcomeGoal | null {
       typeof obj.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.deadline)
         ? obj.deadline
         : undefined,
-    review: normalizeReview(obj.review),
+    recurrence,
+    recurrence_days,
     is_active: obj.is_active !== false,
     links,
     created_at: typeof obj.created_at === 'string' ? obj.created_at : now,
@@ -147,11 +198,20 @@ export function deleteOutcomeGoal(id: string): void {
 
 export function createEmptyOutcomeGoal(partial?: Partial<OutcomeGoal>): OutcomeGoal {
   const now = new Date().toISOString()
+  const recurrence = partial?.recurrence ?? 'weekly'
   return {
     id: newId(),
     title: partial?.title?.trim() || 'New goal',
     deadline: partial?.deadline,
-    review: partial?.review ?? 'weekly',
+    recurrence,
+    recurrence_days:
+      recurrence === 'every_14'
+        ? 14
+        : recurrence === 'custom'
+          ? partial?.recurrence_days && partial.recurrence_days > 0
+            ? Math.round(partial.recurrence_days)
+            : 30
+          : undefined,
     is_active: partial?.is_active ?? true,
     links: partial?.links ?? [],
     created_at: partial?.created_at ?? now,
@@ -204,7 +264,7 @@ export function migrateOutcomeGoalsFromHybridGoals(hybridGoals: Goal[]): boolean
       id: newId(),
       title: goal.name,
       deadline: goal.period_end_date,
-      review: 'weekly',
+      recurrence: 'weekly',
       is_active: true,
       links: [
         createOutcomeGoalLink({
@@ -291,6 +351,27 @@ export function resolveLinkCurrentValue(
   const dates = periodDates(link, asOf, weekStartsOn, deadline)
   const byDate = logsByDate(logs)
   const habitId = habitIdFromKey(link.metric_key)
+  const sleepId = sleepMetricIdFromLibraryKey(link.metric_key)
+
+  if (sleepId) {
+    const metric = getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
+    if (!metric) return 0
+    if (link.period === 'daily') {
+      return getSleepMetricValue(byDate.get(dates[0]), metric) ?? 0
+    }
+    if (link.period === 'by_deadline' || isClockSleepMetric(metric)) {
+      const asOfStr = formatDate(asOf)
+      const sorted = [...logs]
+        .filter((log) => log.date <= asOfStr)
+        .sort((a, b) => b.date.localeCompare(a.date))
+      for (const log of sorted) {
+        const value = getSleepMetricValue(log, metric)
+        if (value != null) return value
+      }
+      return 0
+    }
+    return dates.reduce((sum, date) => sum + (getSleepMetricValue(byDate.get(date), metric) ?? 0), 0)
+  }
 
   if (habitId) {
     return dates.reduce((sum, date) => {
@@ -359,11 +440,24 @@ export function computeLinkProgress(
           ),
         )
       : 0
+  const sleepId = sleepMetricIdFromLibraryKey(link.metric_key)
+  const sleepMetric = sleepId
+    ? getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
+    : undefined
   const hybrid = hybridGoals.find((goal) => goal.metric_key === link.metric_key && goal.is_active)
-  const unit = hybrid?.unit || defaultUnitForMetric(link.metric_key)
-  const label = hybrid?.name || metricLabel(link.metric_key)
+  const unit =
+    (sleepMetric ? sleepMetricDisplayUnit(sleepMetric) : null) ||
+    hybrid?.unit ||
+    defaultUnitForMetric(link.metric_key)
+  const label = sleepMetric?.label || hybrid?.name || metricLabel(link.metric_key)
   const cmp =
     link.comparator === 'lte' ? '≤' : link.comparator === 'eq' ? '=' : '≥'
+  const currentLabel = sleepMetric
+    ? formatSleepMetricDisplay(sleepMetric, current)
+    : formatMetricAmount(current, unit, link.metric_key)
+  const targetLabel = sleepMetric
+    ? formatSleepMetricDisplay(sleepMetric, target)
+    : formatGoalTargetLabel(target, unit, link.metric_key)
   return {
     link,
     label,
@@ -372,7 +466,7 @@ export function computeLinkProgress(
     target,
     hit,
     percent: link.comparator === 'lte' ? (hit ? 100 : Math.min(99, percent)) : percent,
-    display: `${formatMetricAmount(current, unit, link.metric_key)} / ${formatGoalTargetLabel(target, unit, link.metric_key)} (${cmp})`,
+    display: `${currentLabel} / ${targetLabel} (${cmp})`,
   }
 }
 
@@ -392,59 +486,133 @@ export function computeOutcomeGoalProgress(
   asOf: Date = new Date(),
   weekStartsOn: 0 | 1 = 1,
 ): OutcomeGoalProgress {
-  const outcomes = goal.links
-    .filter((link) => link.role === 'outcome')
-    .map((link) =>
-      computeLinkProgress(link, logs, workouts, hybridGoals, asOf, weekStartsOn, goal.deadline),
-    )
-  const processes = goal.links
-    .filter((link) => link.role === 'process')
-    .map((link) =>
-      computeLinkProgress(link, logs, workouts, hybridGoals, asOf, weekStartsOn, goal.deadline),
-    )
-  const primary = outcomes[0] ?? processes[0] ?? null
-  const onTrack =
-    outcomes.length > 0
-      ? outcomes.every((entry) => entry.hit) &&
-        (processes.length === 0 || processes.filter((entry) => entry.hit).length >= Math.ceil(processes.length / 2))
-      : processes.length > 0
-        ? processes.every((entry) => entry.hit)
-        : false
+  const metrics = goal.links.map((link) =>
+    computeLinkProgress(link, logs, workouts, hybridGoals, asOf, weekStartsOn, goal.deadline),
+  )
+  const primary = metrics[0] ?? null
+  const onTrack = metrics.length > 0 && metrics.every((entry) => entry.hit)
 
-  return { goal, primary, outcomes, processes, onTrack }
+  return {
+    goal,
+    primary,
+    outcomes: metrics,
+    processes: metrics.slice(1),
+    onTrack,
+  }
 }
 
-export function listMetricOptionsForGoals(hybridGoals: Goal[]): {
+export interface GoalMetricOption {
   key: MetricKey
   label: string
   unit: string
-}[] {
-  const options: { key: MetricKey; label: string; unit: string }[] = []
+  categoryId: string
+  categoryLabel: string
+}
+
+function libraryCategoryLabel(categoryId: string): string {
+  const resolved = resolveLibraryCategoryId(categoryId)
+  const fromLibrary = getMetricLibraryCategories().find((c) => c.id === resolved)
+  if (fromLibrary) return fromLibrary.label
+  return KIND_CATEGORY_LABELS[resolved] ?? resolved
+}
+
+export function defaultPeriodForMetric(metricKey: MetricKey): OutcomeGoalLinkPeriod {
+  if (sleepMetricIdFromLibraryKey(metricKey)) return 'daily'
+  if (metricKey === 'weight') return 'by_deadline'
+  if (metricKey === 'focus') return 'daily'
+  return 'weekly'
+}
+
+export function defaultTargetForMetric(metricKey: MetricKey): number {
+  const sleepId = sleepMetricIdFromLibraryKey(metricKey)
+  if (sleepId) {
+    const metric = getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
+    if (!metric) return 1
+    if (metric.id === 'sleep_duration' || metric.id === 'in_bed') return 7 * 60
+    if (isClockSleepMetric(metric)) return 23 * 60
+    if (metric.unit === 'score10') return 7
+    if (metric.unit === 'percent') return 80
+  }
+  if (metricKey === 'focus') {
+    const focus = getFocusSettings()
+    if (focus.focusGoalUnit === 'hours') return Math.max(1, focus.focusGoalAmount) * 60
+    return Math.max(1, focus.focusGoalAmount)
+  }
+  return 1
+}
+
+function isFocusMetricAvailable(hybridGoals: Goal[]): boolean {
+  if (hybridGoals.some((g) => g.is_active && g.metric_key === 'focus')) return true
+  if (getFocusSettings().focusGoalEnabled) return true
+  return getEnabledMetricsSections().includes('focus')
+}
+
+export function listMetricOptionsForGoals(hybridGoals: Goal[]): GoalMetricOption[] {
+  const options: GoalMetricOption[] = []
   const seen = new Set<string>()
 
-  const push = (key: MetricKey, label: string, unit: string) => {
+  const push = (key: MetricKey, label: string, unit: string, categoryId?: string | null) => {
     if (seen.has(key)) return
     seen.add(key)
-    options.push({ key, label, unit })
-  }
-
-  for (const goal of hybridGoals.filter((g) => g.is_active)) {
-    push(goal.metric_key, goal.name || metricLabel(goal.metric_key), goal.unit || defaultUnitForMetric(goal.metric_key))
-  }
-
-  for (const builtin of ['sleep', 'weight', 'focus', 'steps', 'screen_time'] as MetricKey[]) {
-    push(builtin, metricLabel(builtin), defaultUnitForMetric(builtin))
-  }
-
-  for (const type of getWorkoutTypes()) {
-    push(workoutMetricKey(type.id), type.label, type.unit || 'min')
+    const resolved = resolveLibraryCategoryId(categoryId)
+    options.push({
+      key,
+      label,
+      unit,
+      categoryId: resolved,
+      categoryLabel: libraryCategoryLabel(resolved),
+    })
   }
 
   for (const habit of getHabitTypes()) {
-    push(`habit_${habit.id}` as MetricKey, habit.label, habit.duration_unit || 'days')
+    push(
+      `habit_${habit.id}` as MetricKey,
+      habit.label,
+      habit.duration_unit || 'days',
+      habit.category_id,
+    )
   }
 
-  return options.sort((a, b) => a.label.localeCompare(b.label))
+  const sleepConfig = getSleepMetricsConfig()
+  const sleepMetrics = getEnabledSleepMetrics(sleepConfig)
+  for (const metric of sleepMetrics) {
+    push(
+      sleepLibraryMetricKey(metric.id),
+      metric.label,
+      sleepMetricDisplayUnit(metric),
+      sleepConfig.categories?.[metric.id],
+    )
+  }
+
+  for (const type of getWorkoutTypes()) {
+    push(workoutMetricKey(type.id), type.label, type.unit || 'min', type.category_id)
+  }
+
+  if (isFocusMetricAvailable(hybridGoals)) {
+    const focusGoal = hybridGoals.find((g) => g.is_active && g.metric_key === 'focus')
+    push(
+      'focus',
+      focusGoal?.name || 'Focus',
+      focusGoal?.unit || 'min',
+      focusGoal?.category_id ?? 'focus',
+    )
+  }
+
+  for (const goal of hybridGoals.filter((g) => g.is_active)) {
+    if (goal.metric_key === 'sleep' && sleepMetrics.length > 0) continue
+    if (goal.metric_key === 'focus') continue
+    push(
+      goal.metric_key,
+      goal.name || metricLabel(goal.metric_key),
+      goal.unit || defaultUnitForMetric(goal.metric_key),
+      goal.category_id,
+    )
+  }
+
+  return options.sort(
+    (a, b) =>
+      a.categoryLabel.localeCompare(b.categoryLabel) || a.label.localeCompare(b.label),
+  )
 }
 
 export function formatDeadlineLabel(deadline?: string): string | null {

@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom'
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Sun } from 'lucide-react'
+import { useMissedLogPending } from '@/components/layout/MissedLogGate'
 import { MorningLogModal } from '@/components/today/MorningLogModal'
 import { Button } from '@/components/ui/Button'
 import { useAuth, useDailyLog } from '@/hooks/useData'
@@ -32,6 +33,7 @@ export function MorningLogGate(_props: MorningLogGateProps) {
   const today = formatDate(new Date())
   const yesterday = getMorningLogYesterdayDate(today)
   const { log, workouts, loading, syncFromStore } = useDailyLog(today)
+  const missedLogPending = useMissedLogPending()
 
   const [showModal, setShowModal] = useState(false)
   const [goals, setGoals] = useState<Goal[]>([])
@@ -100,6 +102,7 @@ export function MorningLogGate(_props: MorningLogGateProps) {
   const morningLogPending =
     pathname !== '/settings' &&
     !beforeMorningLogStart &&
+    !missedLogPending &&
     settings.requireMorningLog &&
     goalsReady &&
     yesterdayReady &&

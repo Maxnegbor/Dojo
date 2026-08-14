@@ -13,11 +13,11 @@ export function OverviewGoalsSection({ progressList }: OverviewGoalsSectionProps
       <div className="rounded-xl border border-dashed border-zinc-800 px-4 py-5 text-center">
         <p className="text-sm text-zinc-400">No goals yet</p>
         <p className="mt-1 text-xs text-zinc-600">
-          Define outcomes on the{' '}
+          Set a goal on the{' '}
           <Link to="/goals" className="text-[var(--accent-300)] hover:underline">
             Goals
           </Link>{' '}
-          page — Metrics stay for measurement only.
+          page and connect a metric to measure it.
         </p>
       </div>
     )
@@ -38,7 +38,7 @@ export function OverviewGoalsSection({ progressList }: OverviewGoalsSectionProps
         </Link>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {progressList.map(({ goal, primary, processes, onTrack }) => (
+        {progressList.map(({ goal, outcomes, onTrack }) => (
           <Link
             key={goal.id}
             to="/goals"
@@ -60,14 +60,9 @@ export function OverviewGoalsSection({ progressList }: OverviewGoalsSectionProps
                 {onTrack ? 'On track' : 'Off track'}
               </span>
             </div>
-            {primary && (
-              <p className="mt-1 text-base font-semibold tabular-nums text-zinc-200">
-                {primary.display.replace(/ \(.*\)$/, '')}
-              </p>
-            )}
-            {processes.length > 0 && (
+            {outcomes.length > 0 && (
               <ul className="mt-2 space-y-0.5">
-                {processes.slice(0, 3).map((entry) => (
+                {outcomes.slice(0, 4).map((entry) => (
                   <li
                     key={entry.link.id}
                     className="flex items-center gap-1.5 text-[11px] text-zinc-400"

@@ -30,6 +30,7 @@ export type MetricKey =
   | 'focus'
   | `workout_${string}`
   | `habit_${string}`
+  | `sleep:${string}`
   | `custom:${string}`
 
 export type HabitKey = string
@@ -114,21 +115,22 @@ export interface Goal {
   is_active: boolean
   /** User-defined grouping for goals on Metrics / Overview. */
   category_id?: string | null
-  /**
-   * Where daily metrics are collected: Home card, morning log, or evening shutdown.
-   * Ignored when log_period is weekly. Defaults to home.
-   */
+  /** @deprecated Ask-in was removed. Morning log is configured in Settings. */
   log_when?: 'home' | 'morning' | 'shutdown'
-  /** When log_when is morning: which calendar day the value applies to. */
+  /** @deprecated Use morning log “yesterday” toggle in Settings. */
   morning_day?: 'today' | 'yesterday'
   /** @deprecated Derived from log_period === 'daily' */
   show_in_daily_log?: boolean
   created_at: string
 }
 
-/** How often an outcome goal is reviewed. */
+/** How often an outcome goal repeats / resets. */
+export type OutcomeGoalRecurrence = 'daily' | 'weekly' | 'every_14' | 'custom'
+
+/** @deprecated Migrated to OutcomeGoalRecurrence. */
 export type OutcomeGoalReview = 'weekly' | 'monthly'
 
+/** @deprecated Links no longer distinguish outcome vs process. Kept for stored data. */
 export type OutcomeGoalLinkRole = 'outcome' | 'process'
 
 export type OutcomeGoalComparator = 'gte' | 'lte' | 'eq'
@@ -139,6 +141,7 @@ export type OutcomeGoalLinkPeriod = 'daily' | 'weekly' | 'by_deadline'
 export interface OutcomeGoalLink {
   id: string
   metric_key: MetricKey
+  /** @deprecated Ignored in the UI; stored links still include a role. */
   role: OutcomeGoalLinkRole
   target_value: number
   comparator: OutcomeGoalComparator
@@ -153,7 +156,12 @@ export interface OutcomeGoal {
   id: string
   title: string
   deadline?: string
-  review: OutcomeGoalReview
+  /** How often this goal recurs. */
+  recurrence: OutcomeGoalRecurrence
+  /** Day count when recurrence is `custom` (every_14 always uses 14). */
+  recurrence_days?: number
+  /** @deprecated Migrated into recurrence. */
+  review?: OutcomeGoalReview
   is_active: boolean
   links: OutcomeGoalLink[]
   created_at: string
@@ -372,7 +380,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   morningLogChecklist: [],
   requireMorningLog: false,
   dailyShutdownChecklist: [],
-  dailyShutdownSteps: ['wrap-up', 'habits', 'todoist', 'schedule'],
+  dailyShutdownSteps: ['wrap-up', 'todoist', 'schedule'],
   requireShutdown: false,
   shutdownRequireAt: 'schedule_end',
   shutdownCustomTime: '21:00',

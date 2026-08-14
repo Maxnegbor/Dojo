@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
-import { CalendarCheck, CalendarDays, Moon, Sun } from 'lucide-react'
+import { CalendarCheck, CalendarDays, ClipboardList, Moon, Sun } from 'lucide-react'
 import { HomePulseCard } from '@/components/pulse/HomePulseCard'
 import { PulseRadiantBurst } from '@/components/pulse/PulseRadiantBurst'
 import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
-import { NotesAndReminders } from '@/components/today/NotesAndReminders'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
-import { DailyLogForm, getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
-import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
+import { getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
+import { HomeLogModal } from '@/components/today/HomeLogModal'
 import { DailyChecklistModal } from '@/components/today/DailyChecklistModal'
 import { MorningLogModal, type MorningLogSavePayload } from '@/components/today/MorningLogModal'
 import { ShutdownModal } from '@/components/today/ShutdownModal'
@@ -19,7 +18,6 @@ import { WeeklyGoalRevealModal } from '@/components/today/WeeklyGoalRevealModal'
 import { WeeklyPulseRevealModal } from '@/components/today/WeeklyPulseRevealModal'
 import { WeeklyShutdownModal } from '@/components/today/WeeklyShutdownModal'
 import { MonthCalendarModal } from '@/components/today/MonthCalendarModal'
-import { MissedLogModal } from '@/components/today/MissedLogModal'
 import { HabitRampFailureModal } from '@/components/today/HabitRampFailureModal'
 import { useAuth, useDailyLog } from '@/hooks/useData'
 import { useDailyLogDraftRevision } from '@/hooks/useDailyLogDraftRevision'
@@ -40,9 +38,8 @@ import {
 } from '@/lib/dailyShutdownRequire'
 import { flushDraftToStore, getDraft, mergeLogWithDraftForDate, setDraft } from '@/lib/dailyLogDraft'
 import { getHabitStreaksForDate } from '@/lib/habitStreaks'
-import { rolloverStaleReminders } from '@/lib/reminderRollover'
-import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { normalizeDailyShutdownSteps } from '@/lib/dailyShutdownSteps'
+import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habitTypes'
 import { computeDayPulse, PULSE_HEADER_SCALE, pulseCorePx } from '@/lib/pulse'
 import { buildPulseContributors } from '@/lib/pulseBreakdown'
@@ -88,7 +85,7 @@ import {
 import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import type { DailyLog, Goal, Reminder, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
+import type { DailyLog, Goal, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import {
   buildWeeklyShutdownSummaries,
   buildWeeklyUntargetedStats,
@@ -103,17 +100,10 @@ import {
   type WeeklyHabitReviewSummary,
 } from '@/lib/weeklyShutdown'
 import { isWeeklyShutdownAnyDay } from '@/lib/devMode'
-import { normalizeHabits } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { useSettings } from '@/context/SettingsContext'
-import { addDaysToDateString, cn, formatDate, getWeekDates } from '@/lib/utils'
-import {
-  buildMissedLogDays,
-  enumerateDatesInclusive,
-  getMissedLogScanStart,
-  getYesterdayDate,
-  type MissedLogDay,
-} from '@/lib/dailyLog'
+import { addDaysToDateString, cn, formatDate } from '@/lib/utils'
+import { getYesterdayDate } from '@/lib/dailyLog'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { cleanupStaleGoals } from '@/lib/goalCleanup'
 import { buildWeeklyPulseReview, type WeeklyPulseReview } from '@/lib/weeklyPulseReview'
@@ -124,23 +114,21 @@ export function TodayPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [viewDate, setViewDate] = useState(formatDate(new Date()))
-  const { log, workouts, loading, updateLog, refresh, syncFromStore, addWorkout, removeWorkout } = useDailyLog(viewDate)
+  const { log, workouts, loading, updateLog, refresh, syncFromStore, removeWorkout } = useDailyLog(viewDate)
   const { userId } = useAuth()
 
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
   const [tomorrowBlocks, setTomorrowBlocks] = useState<ScheduleBlock[]>([])
-  const [reminders, setReminders] = useState<Reminder[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [streakLogs, setStreakLogs] = useState<DailyLog[]>([])
-  const [showMissedModal, setShowMissedModal] = useState(false)
   const [showCalendar, setShowCalendar] = useState(false)
   const [showShutdown, setShowShutdown] = useState(false)
   const [showMorningLog, setShowMorningLog] = useState(false)
+  const [showHomeLog, setShowHomeLog] = useState(false)
   const [morningLogDone, setMorningLogDone] = useState(() => isMorningLogSubmitted(viewDate))
   const [showShutdownChecklist, setShowShutdownChecklist] = useState(false)
   const [yesterdayLog, setYesterdayLog] = useState<DailyLog | null>(null)
   const [yesterdayWorkouts, setYesterdayWorkouts] = useState<Workout[]>([])
-  const [missedDays, setMissedDays] = useState<MissedLogDay[]>([])
   const [showWeeklyShutdown, setShowWeeklyShutdown] = useState(false)
   const [showWeeklyPulse, setShowWeeklyPulse] = useState(false)
   const [showWeeklyReveal, setShowWeeklyReveal] = useState(false)
@@ -151,7 +139,6 @@ export function TodayPage() {
   const [weeklyWeekDates, setWeeklyWeekDates] = useState<string[]>([])
   const [weeklyWeekLogs, setWeeklyWeekLogs] = useState<DailyLog[]>([])
   const [weeklyWeekWorkouts, setWeeklyWeekWorkouts] = useState<Workout[]>([])
-  const [weekWorkouts, setWeekWorkouts] = useState<Workout[]>([])
   const [rampFailurePrompts, setRampFailurePrompts] = useState<HabitRampFailurePrompt[]>([])
   const [rampPromptIndex, setRampPromptIndex] = useState(0)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
@@ -172,12 +159,13 @@ export function TodayPage() {
     const habits = getDailyLogHabitTypes()
     const formula = getPulseFormulaForDate(pulseConfig, viewDate)
     const effectiveLog = log ? mergeLogWithDraftForDate(log, viewDate, workouts) : undefined
+    const dayWorkouts = workouts.filter((w) => w.date === viewDate)
     return computeDayPulse(
       viewDate,
       effectiveLog,
       habits,
       goals,
-      workouts,
+      dayWorkouts,
       formula,
       sleepMetricsConfig,
     )
@@ -186,11 +174,12 @@ export function TodayPage() {
   const pulseContributors = useMemo(() => {
     const formula = getPulseFormulaForDate(pulseConfig, viewDate)
     const effectiveLog = log ? mergeLogWithDraftForDate(log, viewDate, workouts) : undefined
+    const dayWorkouts = workouts.filter((w) => w.date === viewDate)
     return buildPulseContributors({
       date: viewDate,
       log: effectiveLog,
       goals,
-      workouts,
+      workouts: dayWorkouts,
       formula,
       sleepMetricsConfig,
     })
@@ -314,60 +303,25 @@ export function TodayPage() {
   const tomorrowDate = addDaysToDateString(viewDate, 1)
   const yesterday = getYesterdayDate()
 
-  const removeMissedDay = useCallback((date: string) => {
-    setMissedDays((prev) => {
-      const next = prev.filter((d) => d.date !== date)
-      if (next.length === 0) setShowMissedModal(false)
-      return next
-    })
-  }, [])
-
-  const checkMissedLog = useCallback(async () => {
+  const loadYesterdayLog = useCallback(async () => {
     if (!userId) return
-
-    const until = getYesterdayDate()
-    const start = getMissedLogScanStart(settings.memberSinceDate, until)
-
-    let logs: DailyLog[] = []
     if (isSupabaseConfigured) {
-      const { fetchDailyLogs } = await import('@/lib/supabase')
+      const { getOrCreateDailyLog } = await import('@/lib/supabase')
       try {
-        logs = await fetchDailyLogs(userId, start, until)
+        setYesterdayLog(await getOrCreateDailyLog(userId, yesterday))
       } catch {
-        /* ignore */
+        setYesterdayLog(null)
       }
     } else {
-      logs = localStore.getDailyLogs(start, until)
+      localStore.setUserId(userId)
+      setYesterdayLog(localStore.getOrCreateDailyLog(yesterday))
     }
+  }, [userId, yesterday])
 
-    const logsByDate = new Map<string, DailyLog | null>()
-    for (const entry of logs) {
-      logsByDate.set(entry.date, entry)
-    }
-
-    for (const date of enumerateDatesInclusive(start, until)) {
-      const base = logsByDate.get(date) ?? null
-      const draft = getDraft(date)
-      const effective =
-        base && draft
-          ? {
-              ...base,
-              ...draft,
-              habits: normalizeHabits({ ...base.habits, ...draft.habits }),
-            }
-          : base
-      logsByDate.set(date, effective)
-    }
-
-    setYesterdayLog(logsByDate.get(yesterday) ?? null)
-
-    const missed = buildMissedLogDays(logsByDate, goals, settings.memberSinceDate)
-    setMissedDays(missed)
-    setShowMissedModal(missed.length > 0)
-  }, [userId, yesterday, goals, settings.memberSinceDate])
-
-  useEndOfDaySave({ userId, onFlushed: () => { refresh(); checkMissedLog() } })
-  useEffect(() => { checkMissedLog() }, [checkMissedLog])
+  useEndOfDaySave({ userId, onFlushed: () => { refresh(); void loadYesterdayLog() } })
+  useEffect(() => {
+    void loadYesterdayLog()
+  }, [loadYesterdayLog])
 
   const checkRampFailures = useCallback(() => {
     if (!isActiveDay) return
@@ -416,40 +370,13 @@ export function TodayPage() {
     advanceRampPrompt()
   }
 
-  const refreshWeekWorkouts = useCallback(async () => {
-    if (!userId || !isActiveDay) {
-      setWeekWorkouts([])
-      return
-    }
-    const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
-    const start = weekDates[0]
-    const end = weekDates[weekDates.length - 1]
-    if (!start || !end) {
-      setWeekWorkouts([])
-      return
-    }
-    if (isSupabaseConfigured) {
-      const { fetchWorkouts } = await import('@/lib/supabase')
-      setWeekWorkouts(await fetchWorkouts(userId, start, end))
-    } else {
-      localStore.setUserId(userId)
-      setWeekWorkouts(localStore.getWorkouts(start, end))
-    }
-  }, [userId, viewDate, settings.weekStartsOn, isActiveDay])
-
   const loadData = useCallback(async () => {
     if (!userId) return
-    const today = formatDate(new Date())
     const streakStart = formatDate(addDays(parseISO(viewDate), -400))
 
-    if (isActiveDay && viewDate === today) {
-      await rolloverStaleReminders(userId, today)
-    }
-
     if (isSupabaseConfigured) {
-      const { fetchScheduleBlocks, fetchReminders, fetchGoals, fetchDailyLogs, upsertGoal } = await import('@/lib/supabase')
+      const { fetchScheduleBlocks, fetchGoals, fetchDailyLogs, upsertGoal } = await import('@/lib/supabase')
       setBlocks((await fetchScheduleBlocks(userId, viewDate)).map(normalizeScheduleBlock))
-      setReminders((await fetchReminders(userId)).map((r) => ({ ...r, kind: r.kind ?? 'task' })))
       const { goals: cleaned, toRetire } = cleanupStaleGoals(await fetchGoals(userId))
       setGoals(cleaned)
       for (const duplicate of toRetire) {
@@ -458,7 +385,6 @@ export function TodayPage() {
       setStreakLogs(await fetchDailyLogs(userId, streakStart, viewDate))
     } else {
       setBlocks(localStore.getScheduleBlocks(viewDate).map(normalizeScheduleBlock))
-      setReminders(localStore.getReminders().map((r) => ({ ...r, kind: r.kind ?? 'task' })))
       const { goals: cleaned, toRetire } = cleanupStaleGoals(localStore.getGoals())
       setGoals(cleaned)
       for (const duplicate of toRetire) {
@@ -466,9 +392,7 @@ export function TodayPage() {
       }
       setStreakLogs(localStore.getDailyLogs(streakStart, viewDate))
     }
-
-    await refreshWeekWorkouts()
-  }, [userId, viewDate, isActiveDay, refreshWeekWorkouts])
+  }, [userId, viewDate])
 
   const refreshStreakLogs = useCallback(async () => {
     if (!userId) return
@@ -683,54 +607,8 @@ export function TodayPage() {
     }
   }
 
-  const addReminder = async (item: Reminder) => {
-    if (isSupabaseConfigured) {
-      const { upsertReminder } = await import('@/lib/supabase')
-      await upsertReminder(item)
-    } else localStore.upsertReminder(item)
-    setReminders((prev) => [...prev, item])
-  }
-
-  const removeReminder = async (id: string) => {
-    if (isSupabaseConfigured) {
-      const { deleteReminder } = await import('@/lib/supabase')
-      await deleteReminder(id)
-    } else localStore.deleteReminder(id)
-    setReminders((prev) => prev.filter((r) => r.id !== id))
-  }
-
-  const updateReminder = async (item: Reminder) => {
-    if (isSupabaseConfigured) {
-      const { upsertReminder } = await import('@/lib/supabase')
-      await upsertReminder(item)
-    } else localStore.upsertReminder(item)
-    setReminders((prev) => {
-      const idx = prev.findIndex((r) => r.id === item.id)
-      if (idx >= 0) {
-        const next = [...prev]
-        next[idx] = item
-        return next
-      }
-      return [...prev, item]
-    })
-  }
-
-  const applyShutdownDeferrals = async (ids: string[]) => {
-    for (const id of ids) {
-      const item = reminders.find((r) => r.id === id)
-      if (!item) continue
-      await updateReminder({
-        ...item,
-        due_date: tomorrowDate,
-        rescheduled_from: viewDate,
-      })
-    }
-  }
-
-  const completeShutdown = async (deferredIds: string[]) => {
+  const completeShutdown = async () => {
     if (!userId || !log) return
-
-    await applyShutdownDeferrals(deferredIds)
 
     const draft = getDailyLogDraftForDate(log, workouts)
     if (draft) setDraft(viewDate, draft)
@@ -916,18 +794,6 @@ export function TodayPage() {
     setWeeklyWeekWorkouts([])
   }
 
-  const saveMissedLog = async (date: string, updates: Parameters<typeof updateLog>[0]) => {
-    if (!userId) return
-    if (isSupabaseConfigured) {
-      const { getOrCreateDailyLog, updateDailyLog } = await import('@/lib/supabase')
-      const dayLog = await getOrCreateDailyLog(userId, date)
-      await updateDailyLog(dayLog.id, updates)
-    } else {
-      localStore.updateDailyLog(date, updates)
-    }
-    removeMissedDay(date)
-  }
-
   if (!userId || (loading && !log)) {
     return <div className="flex flex-1 items-center justify-center text-zinc-500">Loading…</div>
   }
@@ -1027,6 +893,15 @@ export function TodayPage() {
           )}
         </div>
         <aside className="relative z-30 flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overscroll-contain scrollbar-hidden lg:h-full">
+          {log && userId && (
+            <Button
+              className="relative z-30 w-full py-3 text-sm font-semibold"
+              onClick={() => setShowHomeLog(true)}
+            >
+              <ClipboardList size={16} />
+              Log
+            </Button>
+          )}
           {weeklyShutdownAvailable && (
             <button
               type="button"
@@ -1076,50 +951,8 @@ export function TodayPage() {
             }}
             onVolumeLogged={() => {
               syncFromStore()
-              void refreshWeekWorkouts()
             }}
           />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-start">
-            <div className="flex min-w-0 flex-col gap-3">
-              {isActiveDay && (
-                <DailyLogForm
-                  log={log}
-                  goals={goals}
-                  workouts={workouts}
-                  streakLogs={streakLogs}
-                  userId={userId}
-                  habitsOnly
-                  onSaved={() => {
-                    syncFromStore()
-                    void refreshStreakLogs()
-                  }}
-                />
-              )}
-              {isActiveDay && (
-                <WorkoutLogCard
-                  date={viewDate}
-                  goals={goals}
-                  weekWorkouts={weekWorkouts}
-                  workouts={workouts}
-                  disabled={!userId}
-                  onAddWorkout={async (category, minutes) => {
-                    await addWorkout(category, minutes)
-                    await refreshWeekWorkouts()
-                  }}
-                />
-              )}
-            </div>
-            <div className="min-w-0">
-              <NotesAndReminders
-                items={reminders}
-                viewDate={viewDate}
-                userId={userId}
-                onAdd={addReminder}
-                onUpdate={updateReminder}
-                onRemove={removeReminder}
-              />
-            </div>
-          </div>
           <div className="min-w-0 xl:hidden">
             <TodoistTasksCard viewDate={viewDate} />
           </div>
@@ -1154,6 +987,25 @@ export function TodayPage() {
           habitSummaries={weeklyHabits}
           weekLabel={weekDateRangeLabel(weeklyWeekDates)}
           onClose={finishWeeklyShutdown}
+        />
+      )}
+
+      {showHomeLog && userId && (
+        <HomeLogModal
+          date={viewDate}
+          log={log}
+          goals={goals}
+          workouts={workouts}
+          streakLogs={streakLogs}
+          sleepMetricsConfig={sleepMetricsConfig}
+          weekStartsOn={settings.weekStartsOn}
+          userId={userId}
+          onClose={() => setShowHomeLog(false)}
+          onSaved={() => {
+            syncFromStore()
+            void refresh()
+            void refreshStreakLogs()
+          }}
         />
       )}
 
@@ -1192,7 +1044,6 @@ export function TodayPage() {
           streakLogs={streakLogs}
           viewDate={viewDate}
           tomorrowDate={tomorrowDate}
-          reminders={reminders}
           userId={userId}
           todayBlocks={blocks}
           tomorrowBlocks={tomorrowBlocks}
@@ -1207,10 +1058,6 @@ export function TodayPage() {
             notifyShutdownFlowClosed()
           }}
           onComplete={completeShutdown}
-          onCompleteReminder={removeReminder}
-          onAddReminder={addReminder}
-          onUpdateReminder={updateReminder}
-          onRemoveReminder={removeReminder}
           onTomorrowScheduleChange={() => {
             void loadTomorrowBlocks().then(setTomorrowBlocks)
           }}
@@ -1222,17 +1069,7 @@ export function TodayPage() {
         />
       )}
 
-      {showMissedModal && missedDays.length > 0 && (
-        <MissedLogModal
-          days={missedDays}
-          goals={goals}
-          onSave={saveMissedLog}
-          onDismissDay={removeMissedDay}
-          onClose={() => setShowMissedModal(false)}
-        />
-      )}
-
-      {activeRampPrompt && !showMissedModal && (
+      {activeRampPrompt && (
         <HabitRampFailureModal
           prompt={activeRampPrompt}
           onDecrease={handleRampStepDown}

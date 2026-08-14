@@ -9,11 +9,11 @@ export interface WorkoutTypeDefinition {
   color: string
   /** Tracking unit for logged amounts (stored in workouts.duration_minutes). */
   unit: string
-  /** daily = sessions via Ask in; weekly = total at weekly shutdown. */
+  /** daily = Home Log + shutdown if missing; weekly = total at weekly shutdown. */
   log_period?: 'daily' | 'weekly'
-  /** Where daily sessions are logged. Ignored when log_period is weekly. */
+  /** @deprecated Ask-in was removed. Morning log is configured in Settings. */
   log_when?: WorkoutLogWhen
-  /** When log_when is morning: which calendar day the session applies to. */
+  /** @deprecated Use morning log “yesterday” toggle in Settings. */
   morning_day?: WorkoutMorningDay
   /**
    * Optional plan subcategories (e.g. Strength → Push / Pull / Legs).
@@ -57,9 +57,9 @@ export const WORKOUT_UNIT_OPTIONS = [
 export const DEFAULT_WORKOUT_UNIT = 'min'
 
 export const DEFAULT_WORKOUT_TYPES: WorkoutTypeDefinition[] = [
-  { id: 'hiit', label: 'HIIT', color: '#ef4444', unit: 'min', log_when: 'home' },
-  { id: 'zone2', label: 'Zone 2', color: '#3b82f6', unit: 'min', log_when: 'home' },
-  { id: 'strength', label: 'Strength', color: '#eab308', unit: 'min', log_when: 'home' },
+  { id: 'hiit', label: 'HIIT', color: '#ef4444', unit: 'min' },
+  { id: 'zone2', label: 'Zone 2', color: '#3b82f6', unit: 'min' },
+  { id: 'strength', label: 'Strength', color: '#eab308', unit: 'min' },
 ]
 
 export function slugifyWorkoutId(label: string): string {
@@ -114,7 +114,7 @@ function normalizeWorkoutType(
 ): WorkoutTypeDefinition {
   const log_period = t.log_period === 'weekly' ? 'weekly' : 'daily'
   const log_when =
-    log_period === 'weekly' ? undefined : normalizeWorkoutLogWhen(t.log_when)
+    log_period === 'weekly' || !t.log_when ? undefined : normalizeWorkoutLogWhen(t.log_when)
   const subtypes = normalizeWorkoutSubtypes(t.subtypes)
   return {
     id: slugifyWorkoutId(t.id || t.label || 'workout'),
@@ -145,9 +145,7 @@ export function workoutMorningDay(type: WorkoutTypeDefinition): WorkoutMorningDa
 }
 
 export function getHomeLogWorkoutTypes(): WorkoutTypeDefinition[] {
-  return getWorkoutTypes().filter(
-    (type) => workoutLogPeriod(type) === 'daily' && workoutLogWhen(type) === 'home',
-  )
+  return getDailyLogWorkoutTypes()
 }
 
 export function getMorningLogWorkoutTypes(): WorkoutTypeDefinition[] {
@@ -160,6 +158,10 @@ export function getShutdownLogWorkoutTypes(): WorkoutTypeDefinition[] {
   return getWorkoutTypes().filter(
     (type) => workoutLogPeriod(type) === 'daily' && workoutLogWhen(type) === 'shutdown',
   )
+}
+
+export function getDailyLogWorkoutTypes(): WorkoutTypeDefinition[] {
+  return getWorkoutTypes().filter((type) => workoutLogPeriod(type) === 'daily')
 }
 
 export function getWeeklyLogWorkoutTypes(): WorkoutTypeDefinition[] {

@@ -1,23 +1,21 @@
-import { getLogValueForGoal } from '@/lib/dailyLog'
-import { getDailyLogHabitTypes, type HabitTypeDefinition } from '@/lib/habitTypes'
-import { hasTarget } from '@/lib/goals'
+import { computePulseMetricRate, getPulseDayMetricValue } from '@/lib/pulse'
 import {
-  computeExerciseRate,
-  getPulseCustomMetricGoals,
-  pulseCustomMetricLabel,
+  formatPulseOrGroupLabel,
+  listPulseMetricOptions,
+  pulseMetricOptionLabel,
+  resolvePulseMetricTarget,
   type PulseFormula,
+  type PulseMetricOption,
 } from '@/lib/pulseConfig'
 import {
-  computeSleepPulseRate,
   formatSleepMetricDisplay,
-  getPulseSleepMetrics,
-  getSleepMetricTarget,
+  getSleepMetricDefinition,
   getSleepMetricValue,
+  sleepMetricIdFromLibraryKey,
   type SleepMetricsConfig,
 } from '@/lib/sleepMetrics'
 import { formatDuration } from '@/lib/utils'
-import { getWorkoutTypes } from '@/lib/workoutTypes'
-import type { DailyLog, Goal, Workout } from '@/types'
+import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
 import { normalizeHabits } from '@/types'
 
 export interface PulseContributor {
@@ -25,13 +23,24 @@ export interface PulseContributor {
   label: string
   /** Raw metric progress, e.g. "3 / 5" or "7.0 / 8 hrs". */
   detail: string
-  /** Optional secondary lines (e.g. each workout type). */
+  /** Optional secondary lines (e.g. OR group members). */
   subdetails?: string[]
   /** Completion rate 0–100 used by the pulse formula. */
   rate: number
   /** How many points this adds to the 0–100 pulse score. */
   scoreEarned: number
-  /** Max points this category can add to the pulse score at 100%. */
+  /** Max points this slot can add to the pulse score at 100%. */
+  scoreMax: number
+  categoryId: string
+  categoryLabel: string
+  kind: 'metric' | 'or-group'
+}
+
+export interface PulseContributorCategory {
+  id: string
+  label: string
+  rows: PulseContributor[]
+  scoreEarned: number
   scoreMax: number
 }
 
@@ -63,7 +72,12 @@ function formatMetricPair(
   unit: string,
   metricKey?: string,
 ): string {
-  if (metricKey === 'focus' || unit === 'min' || unit === 'minutes') {
+  if (
+    metricKey === 'focus' ||
+    metricKey?.startsWith('workout_') ||
+    unit === 'min' ||
+    unit === 'minutes'
+  ) {
     return `${formatDuration(value)} / ${formatDuration(target)}`
   }
   const fmt = (n: number) => {
@@ -73,120 +87,78 @@ function formatMetricPair(
   return `${fmt(value)} / ${fmt(target)} ${unit}`.trim()
 }
 
-function formatSleepDetail(
-  log: DailyLog | undefined,
-  sleepMetricsConfig: SleepMetricsConfig,
-  legacyHours: number | null,
-): { detail: string; subdetails: string[] } {
-  const pulseMetrics = getPulseSleepMetrics(sleepMetricsConfig)
-  const subdetails: string[] = []
+function formatMetricDetail(input: {
+  metricKey: MetricKey
+  date: string
+  log: DailyLog | undefined
+  goals: Goal[]
+  workouts: Workout[]
+  formula: PulseFormula
+  sleepMetricsConfig: SleepMetricsConfig
+  unit: string
+}): string {
+  const { metricKey, date, log, goals, workouts, formula, sleepMetricsConfig, unit } = input
 
-  const formatDurationTarget = (targetMinutes: number) => {
-    const hrs = targetMinutes / 60
-    return `${hrs.toFixed(Number.isInteger(hrs) ? 0 : 1)} hrs`
+  if (metricKey.startsWith('habit_')) {
+    const habitId = metricKey.slice('habit_'.length)
+    const done = Boolean(normalizeHabits(log?.habits)[habitId])
+    return done ? 'Done' : 'Not done'
   }
 
-  for (const metric of pulseMetrics) {
+  const sleepId = sleepMetricIdFromLibraryKey(metricKey)
+  if (sleepId) {
+    const metric = getSleepMetricDefinition(sleepMetricsConfig, sleepId)
+    if (!metric) return 'Not logged'
     const value = getSleepMetricValue(log, metric)
-    let target = getSleepMetricTarget(sleepMetricsConfig, metric.id)
-    if (
-      target == null &&
-      legacyHours != null &&
-      legacyHours > 0 &&
-      (metric.id === 'sleep_duration' || metric.id === 'in_bed')
-    ) {
-      target = legacyHours * 60
-    }
-
+    const target = resolvePulseMetricTarget(metricKey, goals, formula, sleepMetricsConfig)
     if (value == null) {
-      if (target != null) {
-        subdetails.push(
-          `${metric.label} · — / ${
-            metric.id === 'sleep_duration' || metric.id === 'in_bed'
-              ? formatDurationTarget(target)
-              : formatSleepMetricDisplay(metric, target)
-          }`,
-        )
-      } else {
-        subdetails.push(`${metric.label} · not logged`)
+      if (target == null) return 'Not logged'
+      if (metric.id === 'sleep_duration' || metric.id === 'in_bed') {
+        return `— / ${formatHoursPair(0, target).split(' / ')[1]}`
       }
-      continue
+      return `— / ${formatSleepMetricDisplay(metric, target)}`
     }
-
     if (
       (metric.id === 'sleep_duration' || metric.id === 'in_bed') &&
       target != null &&
       target > 0
     ) {
-      subdetails.push(`${metric.label} · ${formatHoursPair(value, target)}`)
-    } else if (target != null && target > 0) {
-      subdetails.push(
-        `${metric.label} · ${formatSleepMetricDisplay(metric, value)} / ${formatSleepMetricDisplay(metric, target)}`,
-      )
-    } else {
-      subdetails.push(
-        `${metric.label} · ${formatSleepMetricDisplay(metric, value)}${
-          metric.id === 'sleep_duration' || metric.id === 'in_bed' ? ' · no target' : ''
-        }`,
-      )
+      return formatHoursPair(value, target)
     }
-  }
-
-  if (subdetails.length === 1) {
-    return { detail: subdetails[0]!.replace(/^[^·]+ · /, ''), subdetails: [] }
-  }
-  if (subdetails.length > 0) {
-    return { detail: `${pulseMetrics.length} metrics`, subdetails }
-  }
-
-  // No pulse sleep metrics configured — still surface the sleep goal slot.
-  if (legacyHours != null && legacyHours > 0) {
-    const minutes = log?.sleep_hours != null ? log.sleep_hours * 60 : null
-    if (minutes == null) {
-      return { detail: `— / ${formatDurationTarget(legacyHours * 60)}`, subdetails: [] }
+    if (target != null && target > 0) {
+      return `${formatSleepMetricDisplay(metric, value)} / ${formatSleepMetricDisplay(metric, target)}`
     }
-    return { detail: formatHoursPair(minutes, legacyHours * 60), subdetails: [] }
+    return formatSleepMetricDisplay(metric, value)
   }
 
-  return { detail: 'Not logged', subdetails: [] }
+  if (metricKey === 'focus') {
+    const mins = log?.focus_minutes ?? 0
+    const target = resolvePulseMetricTarget(metricKey, goals, formula, sleepMetricsConfig)
+    if (target == null || target <= 0) return `${formatDuration(mins)} · no target`
+    return formatMetricPair(mins, target, 'min', 'focus')
+  }
+
+  // Always today (or view day) vs daily Pulse target — never week-to-date vs daily.
+  const value = getPulseDayMetricValue(metricKey, date, log, workouts)
+  const target = resolvePulseMetricTarget(metricKey, goals, formula, sleepMetricsConfig)
+  if (target == null || target <= 0) {
+    if (value <= 0) return 'Not logged'
+    return `${formatMetricPair(value, value, unit, metricKey).replace(/ \/ .*$/, '')} · no target`
+  }
+  return formatMetricPair(value, target, unit, metricKey)
 }
 
-function formatExerciseDetail(
-  date: string,
-  workouts: Workout[],
-  thresholds: Record<string, number>,
-  rate: number,
-): { detail: string; subdetails: string[] } {
-  const types = getWorkoutTypes()
-  const dayWorkouts = workouts.filter((w) => w.date === date)
-  const categories = Object.keys(thresholds).filter((id) => (thresholds[id] ?? 0) > 0)
-  const subdetails: string[] = []
-
-  for (const category of categories) {
-    const logged = dayWorkouts
-      .filter((w) => w.category === category)
-      .reduce((sum, w) => sum + w.duration_minutes, 0)
-    if (logged <= 0) continue
-    const label =
-      types.find((t) => t.id === category)?.label ?? category.replace(/_/g, ' ')
-    subdetails.push(`${label} · ${Math.round(logged)} min logged`)
-  }
-
-  const detail =
-    rate >= 100
-      ? 'Daily exercise met'
-      : rate > 0
-        ? `${Math.round(rate)}% toward daily exercise`
-        : categories.length > 0
-          ? 'No sessions logged yet'
-          : 'No workout targets'
-
-  return { detail, subdetails }
+function categoryForKeys(
+  keys: MetricKey[],
+  optionsByKey: Map<string, PulseMetricOption>,
+): { id: string; label: string } {
+  const first = optionsByKey.get(keys[0] ?? '')
+  if (first) return { id: first.categoryId, label: first.categoryLabel }
+  return { id: 'ungrouped', label: 'Ungrouped' }
 }
 
 /**
- * Contributors aligned with how `computeDayPulse` builds the 0–100 score:
- * weighted average of category rates → each row’s scoreEarned sums toward that score.
+ * Contributors aligned with how `computeDayPulse` builds the 0–100 score.
  */
 export function buildPulseContributors(input: {
   date: string
@@ -195,13 +167,12 @@ export function buildPulseContributors(input: {
   workouts: Workout[]
   formula: PulseFormula | null
   sleepMetricsConfig: SleepMetricsConfig
-  habits?: HabitTypeDefinition[]
 }): PulseContributor[] {
   const { date, log, goals, workouts, formula, sleepMetricsConfig } = input
   if (!formula) return []
 
-  const habits = input.habits ?? getDailyLogHabitTypes()
-  const { weights } = formula
+  const options = listPulseMetricOptions(goals)
+  const optionsByKey = new Map(options.map((option) => [option.key as string, option]))
   const metricWeights = formula.metricWeights ?? {}
 
   type Draft = {
@@ -211,99 +182,88 @@ export function buildPulseContributors(input: {
     subdetails?: string[]
     rate: number
     weight: number
+    categoryId: string
+    categoryLabel: string
+    kind: 'metric' | 'or-group'
   }
   const drafts: Draft[] = []
 
-  if (weights.habits > 0 && habits.length > 0) {
-    const h = normalizeHabits(log?.habits)
-    const done = habits.filter((habit) => h[habit.id]).length
-    drafts.push({
-      id: 'habits',
-      label: 'Habits',
-      detail: `${done} / ${habits.length} done`,
-      rate: (done / habits.length) * 100,
-      weight: weights.habits,
-    })
-  }
-
-  if (weights.focus > 0) {
-    const focusGoal = goals.find((g) => g.metric_key === 'focus' && hasTarget(g))
-    if (focusGoal) {
-      const mins = log?.focus_minutes ?? 0
-      const target = focusGoal.target_value ?? 1
-      drafts.push({
-        id: 'focus',
-        label: 'Focus',
-        detail: formatMetricPair(mins, target, 'min', 'focus'),
-        rate: Math.min(100, (mins / target) * 100),
-        weight: weights.focus,
-      })
-    }
-  }
-
-  if (weights.sleep > 0) {
-    const sleepGoal = goals.find((g) => g.metric_key === 'sleep' && hasTarget(g))
-    const legacyHours = sleepGoal?.target_value ?? null
-    const pulseMetrics = getPulseSleepMetrics(sleepMetricsConfig)
-    // Always show Sleep when it's weighted in Pulse — even with nothing logged.
-    const rate =
-      pulseMetrics.length > 0
-        ? computeSleepPulseRate(log, sleepMetricsConfig, legacyHours)
-        : legacyHours != null && legacyHours > 0 && log?.sleep_hours != null
-          ? Math.min(100, (log.sleep_hours / legacyHours) * 100)
-          : 0
-    const { detail, subdetails } = formatSleepDetail(log, sleepMetricsConfig, legacyHours)
-    drafts.push({
-      id: 'sleep',
-      label: 'Sleep',
-      detail,
-      subdetails: subdetails.length > 0 ? subdetails : undefined,
-      rate,
-      weight: weights.sleep,
-    })
-  }
-
-  if (weights.exercise > 0) {
-    const hasWorkoutGoal = goals.some(
-      (g) => g.is_active && g.metric_key.startsWith('workout_') && hasTarget(g),
-    )
-    if (hasWorkoutGoal) {
-      const rate = computeExerciseRate(date, workouts, formula.exerciseDailyMinutes)
-      const { detail, subdetails } = formatExerciseDetail(
-        date,
-        workouts,
-        formula.exerciseDailyMinutes,
-        rate,
-      )
-      drafts.push({
-        id: 'exercise',
-        label: 'Exercise',
-        detail,
-        subdetails: subdetails.length > 0 ? subdetails : undefined,
-        rate,
-        weight: weights.exercise,
-      })
-    }
-  }
-
-  const customGoalsByKey = new Map(
-    getPulseCustomMetricGoals(goals).map((g) => [g.metric_key as string, g]),
-  )
   for (const [key, weight] of Object.entries(metricWeights)) {
     if (weight <= 0) continue
-    const goal = customGoalsByKey.get(key)
-    if (!goal) continue
-    const target = goal.target_value ?? 0
-    const value = log ? (getLogValueForGoal(log, goal) ?? 0) : 0
+    if ((formula.orGroups ?? []).some((g) => g.metricKeys.includes(key as MetricKey))) continue
+    const option = optionsByKey.get(key)
+    const rate = computePulseMetricRate({
+      metricKey: key as MetricKey,
+      date,
+      log,
+      goals,
+      workouts,
+      formula,
+      sleepMetricsConfig,
+    })
     drafts.push({
       id: key,
-      label: pulseCustomMetricLabel(goal),
-      detail:
-        target > 0
-          ? formatMetricPair(value, target, goal.unit || '', goal.metric_key)
-          : 'No target',
-      rate: target > 0 ? Math.min(100, (value / target) * 100) : 0,
+      label: pulseMetricOptionLabel(key, options, goals),
+      detail: formatMetricDetail({
+        metricKey: key as MetricKey,
+        date,
+        log,
+        goals,
+        workouts,
+        formula,
+        sleepMetricsConfig,
+        unit: option?.unit ?? '',
+      }),
+      rate,
       weight,
+      categoryId: option?.categoryId ?? 'ungrouped',
+      categoryLabel: option?.categoryLabel ?? 'Ungrouped',
+      kind: 'metric',
+    })
+  }
+
+  for (const group of formula.orGroups ?? []) {
+    if (group.weight <= 0 || group.metricKeys.length === 0) continue
+    const memberDetails: string[] = []
+    const memberRates: number[] = []
+    for (const metricKey of group.metricKeys) {
+      const option = optionsByKey.get(metricKey)
+      const rate = computePulseMetricRate({
+        metricKey,
+        date,
+        log,
+        goals,
+        workouts,
+        formula,
+        sleepMetricsConfig,
+      })
+      memberRates.push(rate)
+      const detail = formatMetricDetail({
+        metricKey,
+        date,
+        log,
+        goals,
+        workouts,
+        formula,
+        sleepMetricsConfig,
+        unit: option?.unit ?? '',
+      })
+      memberDetails.push(
+        `${pulseMetricOptionLabel(metricKey, options, goals)} · ${detail}`,
+      )
+    }
+    const rate = Math.max(0, ...memberRates)
+    const category = categoryForKeys(group.metricKeys, optionsByKey)
+    drafts.push({
+      id: `or:${group.id}`,
+      label: formatPulseOrGroupLabel(group, options, goals),
+      detail: rate >= 100 ? 'Either/or met' : 'Hit either metric',
+      subdetails: memberDetails,
+      rate,
+      weight: group.weight,
+      categoryId: category.id,
+      categoryLabel: category.label,
+      kind: 'or-group',
     })
   }
 
@@ -318,6 +278,39 @@ export function buildPulseContributors(input: {
       rate: row.rate,
       scoreEarned: earned,
       scoreMax: max,
+      categoryId: row.categoryId,
+      categoryLabel: row.categoryLabel,
+      kind: row.kind,
     }
   })
+}
+
+/** Group contributors by Metrics library category for the breakdown UI. */
+export function groupPulseContributorsByCategory(
+  contributors: PulseContributor[],
+): PulseContributorCategory[] {
+  const groups: PulseContributorCategory[] = []
+  const index = new Map<string, number>()
+  for (const row of contributors) {
+    const key = row.categoryId || 'ungrouped'
+    let i = index.get(key)
+    if (i == null) {
+      i = groups.length
+      index.set(key, i)
+      groups.push({
+        id: key,
+        label: row.categoryLabel || 'Ungrouped',
+        rows: [],
+        scoreEarned: 0,
+        scoreMax: 0,
+      })
+    }
+    groups[i].rows.push(row)
+    groups[i].scoreEarned = formatScorePts(groups[i].scoreEarned + row.scoreEarned)
+    groups[i].scoreMax = formatScorePts(groups[i].scoreMax + row.scoreMax)
+  }
+  for (const group of groups) {
+    group.rows.sort((a, b) => a.label.localeCompare(b.label))
+  }
+  return groups.sort((a, b) => a.label.localeCompare(b.label))
 }
