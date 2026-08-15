@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { isToday, parseISO } from 'date-fns'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Pencil, Plus, Trash2, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { ExerciseWeekEditModal } from '@/components/today/ExerciseWeekEditModal'
 import { useSettings } from '@/context/SettingsContext'
 import {
   addPlannedWorkout,
+  beginPlannedWorkoutDrag,
+  endPlannedWorkoutDrag,
   EXERCISE_PLAN_CHANGED,
   getPlannedWorkoutLogAmount,
   getPlannedWorkoutsForDates,
   MIN_PLAN_SCHEDULE_MINUTES,
+  PLANNED_WORKOUT_DRAG_MIME,
   plannedWorkoutCanSync,
   removePlannedWorkout,
   type PlannedWorkout,
@@ -89,6 +93,7 @@ export function ExercisePlanCard({
   const [draftAmount, setDraftAmount] = useState('3')
   const [draftNotes, setDraftNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [weekEditOpen, setWeekEditOpen] = useState(false)
 
   useEffect(() => {
     setSelectedDate(viewDate)
@@ -265,12 +270,42 @@ export function ExercisePlanCard({
     </button>
   )
 
+  const editWeekButton = !singleDate ? (
+    <button
+      type="button"
+      onClick={() => {
+        setPickerOpen(false)
+        resetDraft()
+        setWeekEditOpen(true)
+      }}
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-zinc-700/80 bg-zinc-900/80 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+      aria-label="Edit week plan"
+    >
+      <Pencil size={11} />
+      Edit
+    </button>
+  ) : null
+
   return (
     <Card className={className}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold text-zinc-200">Exercise plan</h3>
-        {addButton}
+        <div className="flex items-center gap-1">
+          {editWeekButton}
+          {addButton}
+        </div>
       </div>
+      {weekEditOpen && (
+        <ExerciseWeekEditModal
+          viewDate={viewDate}
+          userId={userId}
+          onClose={() => setWeekEditOpen(false)}
+          onSaved={() => {
+            refresh()
+            onScheduleChange?.()
+          }}
+        />
+      )}
       <div className="space-y-2">
         {!singleDate && (
           <div className="flex items-stretch gap-0.5">
@@ -510,11 +545,28 @@ export function ExercisePlanCard({
               return (
                 <li
                   key={item.id}
+                  draggable={!item.completed}
+                  onDragStart={(e) => {
+                    if (item.completed) {
+                      e.preventDefault()
+                      return
+                    }
+                    beginPlannedWorkoutDrag(item)
+                    e.dataTransfer.setData(PLANNED_WORKOUT_DRAG_MIME, item.id)
+                    e.dataTransfer.effectAllowed = 'copyMove'
+                  }}
+                  onDragEnd={() => endPlannedWorkoutDrag()}
+                  title={
+                    item.completed
+                      ? undefined
+                      : 'Drag onto the schedule to place at that time'
+                  }
                   className={cn(
                     'flex items-center gap-1.5 rounded-md px-1.5 py-1',
                     item.completed
                       ? 'bg-[var(--accent-950)]/35'
-                      : 'bg-zinc-900/40',
+                      : 'cursor-grab bg-zinc-900/40 active:cursor-grabbing',
+                    !item.completed && !item.schedule_block_id && 'ring-1 ring-zinc-700/60',
                   )}
                 >
                   <span
@@ -538,7 +590,11 @@ export function ExercisePlanCard({
                     type="button"
                     aria-label={`Remove ${title}`}
                     className="rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
-                    onClick={() => void handleRemove(item.id)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void handleRemove(item.id)
+                    }}
                   >
                     <Trash2 size={11} />
                   </button>

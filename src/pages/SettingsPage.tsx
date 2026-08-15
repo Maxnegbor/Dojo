@@ -19,6 +19,7 @@ import { ScheduleColorsEditor } from '@/components/settings/ScheduleColorsEditor
 import { ScheduleTemplatesEditor } from '@/components/settings/ScheduleTemplatesEditor'
 import { ExerciseWeekPlanEditor } from '@/components/settings/ExerciseWeekPlanEditor'
 import { FocusLabelsEditor } from '@/components/settings/FocusLabelsEditor'
+import { HabitifyIntegrationEditor } from '@/components/settings/HabitifyIntegrationEditor'
 import { TodoistIntegrationEditor } from '@/components/settings/TodoistIntegrationEditor'
 import { WorkoutSubcategoriesEditor } from '@/components/settings/WorkoutSubcategoriesEditor'
 import { Button } from '@/components/ui/Button'
@@ -715,9 +716,14 @@ export function SettingsPage() {
   )
 
   const renderIntegrations = () => (
-    <Card>
-      <TodoistIntegrationEditor onSaved={flashSaved} />
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <TodoistIntegrationEditor onSaved={flashSaved} />
+      </Card>
+      <Card>
+        <HabitifyIntegrationEditor onSaved={flashSaved} />
+      </Card>
+    </div>
   )
 
   const renderData = () => (

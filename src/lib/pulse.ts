@@ -488,7 +488,7 @@ export const PULSE_CORE_PX = 96
 export const PULSE_COMPACT_SCALE = 0.5
 
 /** Inline pulse in the Home header. */
-export const PULSE_HEADER_SCALE = 1.0
+export const PULSE_HEADER_SCALE = 0.95
 /** Smaller meter on the Pulse page — less reserved glow space than the home header. */
 export const PULSE_PAGE_SCALE = 1.1
 

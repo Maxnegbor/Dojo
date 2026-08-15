@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
 import { CalendarCheck, CalendarDays, ClipboardList, Moon, Sun } from 'lucide-react'
 import { HomePulseCard } from '@/components/pulse/HomePulseCard'
-import { PulseRadiantBurst } from '@/components/pulse/PulseRadiantBurst'
 import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
+import { HabitifyHabitsCard } from '@/components/today/HabitifyHabitsCard'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
 import { getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
@@ -43,15 +43,6 @@ import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habitTypes'
 import { computeDayPulse, PULSE_HEADER_SCALE, pulseCorePx } from '@/lib/pulse'
 import { buildPulseContributors } from '@/lib/pulseBreakdown'
-import {
-  consumePulseRadiantTestPending,
-  hasPlayedPulseRadiantBurst,
-  markPulseRadiantBurstPlayed,
-  PULSE_RADIANT_TEST_REQUESTED,
-} from '@/lib/pulseRadiantBurst'
-import {
-  playPulseRadiantSlamSound,
-} from '@/lib/timerSound'
 import { getPulseFormulaForDate } from '@/lib/pulseConfig'
 import { getMorningLogYesterdayDate } from '@/lib/morningLogConfig'
 import { persistMorningLogPayload } from '@/lib/morningLogSave'
@@ -79,6 +70,7 @@ import {
 } from '@/lib/scheduleTemplates'
 import {
   applyWorkoutTypeToScheduleBlock,
+  placePlannedWorkoutOnSchedule,
   unlinkPlannedWorkoutByScheduleBlockId,
 } from '@/lib/exercisePlan'
 import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
@@ -141,9 +133,6 @@ export function TodayPage() {
   const [rampFailurePrompts, setRampFailurePrompts] = useState<HabitRampFailurePrompt[]>([])
   const [rampPromptIndex, setRampPromptIndex] = useState(0)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
-  /** Dev slam test only — never shown as a homepage preview panel. */
-  const [testPulseScore, setTestPulseScore] = useState<number | null>(null)
-  const [radiantTestActive, setRadiantTestActive] = useState(false)
   const { config: pulseConfig } = usePulseConfig()
   const { config: sleepMetricsConfig } = useSleepMetricsConfig()
   const draftRevision = useDailyLogDraftRevision(viewDate)
@@ -184,110 +173,9 @@ export function TodayPage() {
     })
   }, [viewDate, log, goals, workouts, pulseConfig, sleepMetricsConfig, draftRevision])
 
-  const headerPulseScore = testPulseScore ?? dayPulse.score
-  const headerPulseLayoutPx = pulseCorePx(PULSE_HEADER_SCALE) + 40
-  const pulseAnchorRef = useRef<HTMLDivElement>(null)
-  const [radiantSlamKey, setRadiantSlamKey] = useState(0)
-  const [pulseCelebrating, setPulseCelebrating] = useState(false)
+  const headerPulseScore = dayPulse.score
+  const headerPulseLayoutPx = pulseCorePx(PULSE_HEADER_SCALE) + 8
   const [pulseBreakdownOpen, setPulseBreakdownOpen] = useState(false)
-  const [radiantBurst, setRadiantBurst] = useState<{
-    key: number
-    x: number
-    y: number
-  } | null>(null)
-  const radiantBurstArmedRef = useRef(false)
-  const radiantBurstKeyRef = useRef(0)
-
-  const celebrateRadiant =
-    settings.showHomePulse &&
-    isActiveDay &&
-    (radiantTestActive || !hasPlayedPulseRadiantBurst(viewDate))
-
-  const playRadiantBurst = useCallback(() => {
-    const el = pulseAnchorRef.current
-    if (!el) {
-      radiantBurstArmedRef.current = false
-      return
-    }
-    const rect = el.getBoundingClientRect()
-    radiantBurstArmedRef.current = true
-    radiantBurstKeyRef.current += 1
-    setRadiantBurst({
-      key: radiantBurstKeyRef.current,
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    })
-  }, [])
-
-  const requestRadiantCelebration = useCallback(() => {
-    radiantBurstArmedRef.current = false
-    setRadiantSlamKey((key) => key + 1)
-  }, [])
-
-  const clearRadiantTest = useCallback(() => {
-    setTestPulseScore(null)
-    setRadiantTestActive(false)
-  }, [])
-
-  const runPulseRadiantTest = useCallback(() => {
-    if (!settings.devMode || !settings.showHomePulse || !isActiveDay) return
-    radiantBurstArmedRef.current = false
-    setRadiantTestActive(true)
-    const alreadyHundred = (testPulseScore ?? dayPulse.score) >= 100
-    setTestPulseScore(100)
-    if (alreadyHundred) requestRadiantCelebration()
-  }, [
-    dayPulse.score,
-    isActiveDay,
-    requestRadiantCelebration,
-    settings.devMode,
-    settings.showHomePulse,
-    testPulseScore,
-  ])
-
-  useEffect(() => {
-    if (!settings.devMode) {
-      clearRadiantTest()
-      return
-    }
-
-    const onTest = () => runPulseRadiantTest()
-    window.addEventListener(PULSE_RADIANT_TEST_REQUESTED, onTest)
-
-    if (consumePulseRadiantTestPending()) {
-      const frame = window.requestAnimationFrame(() => runPulseRadiantTest())
-      return () => {
-        window.cancelAnimationFrame(frame)
-        window.removeEventListener(PULSE_RADIANT_TEST_REQUESTED, onTest)
-      }
-    }
-
-    return () => window.removeEventListener(PULSE_RADIANT_TEST_REQUESTED, onTest)
-  }, [clearRadiantTest, runPulseRadiantTest, settings.devMode])
-
-  const handleRadiantImpact = useCallback(() => {
-    // Play before any early returns — same call site pattern as habit SFX.
-    playPulseRadiantSlamSound()
-
-    if (!settings.showHomePulse || !isActiveDay) return
-    if (radiantBurst || radiantBurstArmedRef.current) return
-
-    if (radiantTestActive) {
-      playRadiantBurst()
-      return
-    }
-    if (hasPlayedPulseRadiantBurst(viewDate)) return
-
-    playRadiantBurst()
-    markPulseRadiantBurstPlayed(viewDate)
-  }, [
-    isActiveDay,
-    playRadiantBurst,
-    radiantBurst,
-    radiantTestActive,
-    settings.showHomePulse,
-    viewDate,
-  ])
   const shutdownAvailable = useShutdownAvailable(viewDate)
   const pastScheduleEnd = usePastScheduleEnd(settings.timelineEndHour)
   const [pastShutdownRequire, setPastShutdownRequire] = useState(() =>
@@ -518,6 +406,18 @@ export function TodayPage() {
       setBlocks(localStore.getScheduleBlocks(viewDate).map(normalizeScheduleBlock))
     }
   }, [userId, viewDate])
+
+  const dropPlannedWorkout = async (planId: string, startMinutes: number) => {
+    if (!userId) return
+    await placePlannedWorkoutOnSchedule({
+      planId,
+      startMinutes,
+      userId,
+      timelineEndHour: settings.timelineEndHour,
+      date: viewDate,
+    })
+    await refreshScheduleBlocks()
+  }
 
   const saveTomorrowBlock = async (block: ScheduleBlock) => {
     const previous = tomorrowBlocks.find((b) => b.id === block.id)
@@ -799,20 +699,10 @@ export function TodayPage() {
 
   return (
       <div className="relative z-10 flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden sm:gap-3">
-      {radiantBurst && (
-        <PulseRadiantBurst
-          key={radiantBurst.key}
-          origin={{ x: radiantBurst.x, y: radiantBurst.y }}
-          onComplete={() => {
-            setRadiantBurst(null)
-            clearRadiantTest()
-          }}
-        />
-      )}
       <div
         className={cn(
-          'relative shrink-0 overflow-visible px-1 pt-3 pb-1 sm:px-2 sm:pt-4 sm:pb-1.5',
-          pulseCelebrating || pulseBreakdownOpen ? 'z-40' : 'z-20',
+          'relative shrink-0 overflow-visible px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
+          pulseBreakdownOpen ? 'z-40' : 'z-20',
         )}
       >
         <div
@@ -830,23 +720,15 @@ export function TodayPage() {
           <div
             className={cn(
               'pointer-events-none absolute inset-0 flex -translate-x-2 items-center justify-center overflow-visible',
-              pulseCelebrating || pulseBreakdownOpen ? 'z-40' : 'z-20',
+              pulseBreakdownOpen ? 'z-40' : 'z-20',
             )}
           >
             {settings.showHomePulse && (
-              <div ref={pulseAnchorRef} className="pointer-events-auto">
+              <div className="pointer-events-auto">
                 <HomePulseCard
                   score={headerPulseScore}
                   contributors={pulseContributors}
-                  celebrateRadiant={celebrateRadiant}
-                  onRadiantImpact={handleRadiantImpact}
-                  radiantSlamKey={radiantSlamKey}
-                  onCelebratingChange={setPulseCelebrating}
                   onBreakdownOpenChange={setPulseBreakdownOpen}
-                  meterClassName={cn(
-                    !pulseCelebrating &&
-                      '[mask-image:linear-gradient(to_bottom,black_0%,black_78%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_78%,transparent_100%)]',
-                  )}
                 />
               </div>
             )}
@@ -863,78 +745,9 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-4 overflow-hidden lg:grid-cols-2 lg:grid-rows-none lg:gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(17rem,22rem)]">
-        <div data-schedule-height-host className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-          {!showShutdown && (
-            <HourlyTimeline
-              blocks={blocks}
-              date={viewDate}
-              userId={userId}
-              isActiveDay={isActiveDay}
-              startHour={settings.timelineStartHour}
-              endHour={settings.timelineEndHour}
-              onUpdate={saveBlock}
-              onDelete={removeBlock}
-              onCreate={saveBlock}
-              onAssignExercise={assignExerciseBlock}
-              headerActions={
-                <ScheduleTemplateMenu
-                  iconOnly
-                  applying={applyingTemplate}
-                  onApply={applyTemplateToViewDate}
-                />
-              }
-            />
-          )}
-        </div>
-        <aside className="relative z-30 flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overscroll-contain scrollbar-hidden lg:h-full">
-          {log && userId && (
-            <Button
-              className="relative z-30 w-full py-3 text-sm font-semibold"
-              onClick={() => setShowHomeLog(true)}
-            >
-              <ClipboardList size={16} />
-              Log
-            </Button>
-          )}
-          {weeklyShutdownAvailable && (
-            <button
-              type="button"
-              onClick={prepareWeeklyShutdown}
-              className="today-btn-breathe-accent relative z-30 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-500)] px-4 py-3.5 text-sm font-bold text-black shadow-lg shadow-[var(--accent-500)]/35 ring-2 ring-[var(--accent-400)]/60 transition-transform hover:bg-[var(--accent-400)] active:scale-[0.98]"
-            >
-              <CalendarCheck size={18} strokeWidth={2.5} />
-              Weekly Shutdown
-            </button>
-          )}
-          {isActiveDay &&
-            ((!settings.requireMorningLog && !morningLogDone) || shutdownAvailable) && (
-            <div className="relative z-10 flex gap-2">
-              {!settings.requireMorningLog && !morningLogDone && (
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  aria-label="Morning Log"
-                  onClick={() => setShowMorningLog(true)}
-                >
-                  <Sun size={14} className="text-amber-400" />
-                  <span>Morning Log</span>
-                </Button>
-              )}
-              {shutdownAvailable && (
-                <Button
-                  variant="secondary"
-                  className={cn(
-                    'flex-1 transition-[flex-grow] duration-300 ease-out',
-                    shutdownBreathing && 'today-btn-breathe-violet',
-                  )}
-                  onClick={() => requestOpenShutdown()}
-                >
-                  <Moon size={14} className="text-violet-400" /> Shutdown
-                </Button>
-              )}
-            </div>
-          )}
+      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[minmax(13rem,17rem)_minmax(0,36rem)_minmax(13rem,17rem)] lg:grid-rows-none lg:justify-center lg:gap-4 xl:gap-5">
+        {/* Left: Exercise plan + Todoist */}
+        <aside className="relative z-30 order-3 flex min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full">
           <ExercisePlanCard
             viewDate={viewDate}
             userId={userId}
@@ -948,12 +761,99 @@ export function TodayPage() {
               syncFromStore()
             }}
           />
-          <div className="min-w-0 xl:hidden">
-            <TodoistTasksCard viewDate={viewDate} />
-          </div>
+          <TodoistTasksCard
+            viewDate={viewDate}
+            className="flex min-h-0 flex-1 flex-col"
+          />
         </aside>
-        <aside className="relative z-30 hidden min-h-0 min-w-0 flex-col overflow-y-auto overscroll-contain scrollbar-hidden xl:flex xl:h-full">
-          <TodoistTasksCard viewDate={viewDate} className="flex h-full min-h-0 flex-col" />
+
+        {/* Center: narrower schedule */}
+        <div
+          data-schedule-height-host
+          className="order-1 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[36rem] flex-col overflow-hidden lg:order-2"
+        >
+          {!showShutdown && (
+            <HourlyTimeline
+              blocks={blocks}
+              date={viewDate}
+              userId={userId}
+              isActiveDay={isActiveDay}
+              startHour={settings.timelineStartHour}
+              endHour={settings.timelineEndHour}
+              onUpdate={saveBlock}
+              onDelete={removeBlock}
+              onCreate={saveBlock}
+              onAssignExercise={assignExerciseBlock}
+              onDropPlannedWorkout={dropPlannedWorkout}
+              headerActions={
+                <ScheduleTemplateMenu
+                  iconOnly
+                  applying={applyingTemplate}
+                  onApply={applyTemplateToViewDate}
+                />
+              }
+            />
+          )}
+        </div>
+
+        {/* Right: Log / Shutdown + Habitify */}
+        <aside className="relative z-30 order-2 flex min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full">
+          {(log && userId) ||
+          weeklyShutdownAvailable ||
+          (isActiveDay &&
+            ((!settings.requireMorningLog && !morningLogDone) || shutdownAvailable)) ? (
+            <div className="flex flex-wrap gap-1.5">
+              {log && userId && (
+                <Button
+                  size="sm"
+                  className="relative z-30 min-w-0 flex-1"
+                  onClick={() => setShowHomeLog(true)}
+                >
+                  <ClipboardList size={14} />
+                  Log
+                </Button>
+              )}
+              {isActiveDay && !settings.requireMorningLog && !morningLogDone && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="relative z-30 min-w-0 flex-1"
+                  aria-label="Morning Log"
+                  onClick={() => setShowMorningLog(true)}
+                >
+                  <Sun size={14} className="text-amber-400" />
+                  Morning
+                </Button>
+              )}
+              {isActiveDay && shutdownAvailable && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className={cn(
+                    'relative z-30 min-w-0 flex-1',
+                    shutdownBreathing && 'today-btn-breathe-violet',
+                  )}
+                  onClick={() => requestOpenShutdown()}
+                >
+                  <Moon size={14} className="text-violet-400" /> Shutdown
+                </Button>
+              )}
+              {weeklyShutdownAvailable && (
+                <button
+                  type="button"
+                  onClick={prepareWeeklyShutdown}
+                  className="today-btn-breathe-accent relative z-30 inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent-500)] px-3 py-1.5 text-xs font-semibold text-black shadow-md shadow-[var(--accent-500)]/30 ring-1 ring-[var(--accent-400)]/50 transition-transform hover:bg-[var(--accent-400)] active:scale-[0.98]"
+                >
+                  <CalendarCheck size={14} strokeWidth={2.5} />
+                  Weekly
+                </button>
+              )}
+            </div>
+          ) : null}
+          <HabitifyHabitsCard
+            viewDate={viewDate}
+            className="flex min-h-0 flex-1 flex-col"
+          />
         </aside>
       </div>
 

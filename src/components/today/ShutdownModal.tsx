@@ -35,6 +35,11 @@ import {
   buildEditLogDaySleepUpdates,
   getSleepMetricValue,
 } from '@/lib/sleepMetrics'
+import {
+  EXERCISE_PLAN_CHANGED,
+  getUnplacedPlannedWorkoutsForDate,
+  placePlannedWorkoutOnSchedule,
+} from '@/lib/exercisePlan'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import {
@@ -184,6 +189,35 @@ export function ShutdownModal({
 
   const typedReminderReady =
     step !== 'typed-reminder' || typedReminderMatches(typedReminderText, typedReminderValue)
+
+  const [unplacedPlanCount, setUnplacedPlanCount] = useState(
+    () => getUnplacedPlannedWorkoutsForDate(tomorrowDate).length,
+  )
+
+  useEffect(() => {
+    const sync = () =>
+      setUnplacedPlanCount(getUnplacedPlannedWorkoutsForDate(tomorrowDate).length)
+    sync()
+    window.addEventListener(EXERCISE_PLAN_CHANGED, sync)
+    window.addEventListener('user-storage-ready', sync)
+    return () => {
+      window.removeEventListener(EXERCISE_PLAN_CHANGED, sync)
+      window.removeEventListener('user-storage-ready', sync)
+    }
+  }, [tomorrowDate])
+
+  const schedulePlansReady = step !== 'schedule' || unplacedPlanCount === 0
+
+  const dropPlannedWorkoutOnTomorrow = async (planId: string, startMinutes: number) => {
+    await placePlannedWorkoutOnSchedule({
+      planId,
+      startMinutes,
+      userId,
+      timelineEndHour: settings.timelineEndHour,
+      date: tomorrowDate,
+    })
+    onTomorrowScheduleChange?.()
+  }
   const stepIndex = Math.max(1, visibleSteps.indexOf(step) + 1)
   const stepCount = visibleSteps.length
   const stepPos = visibleSteps.indexOf(step)
@@ -235,6 +269,7 @@ export function ShutdownModal({
 
   const goNext = async () => {
     if (step === 'typed-reminder' && !typedReminderReady) return
+    if (step === 'schedule' && !schedulePlansReady) return
     if (isLastStep) {
       await handleDone()
       return
@@ -363,7 +398,7 @@ export function ShutdownModal({
             <div className="flex min-h-0 flex-1 flex-col gap-3">
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-zinc-500">
-                  Drag to create blocks · move and resize as needed
+                  Drag exercise plan onto the schedule · or delete plans you won’t do
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <ScheduleTemplateMenu
@@ -404,6 +439,7 @@ export function ShutdownModal({
                     onDelete={onDeleteTomorrowBlock}
                     onCreate={onCreateTomorrowBlock}
                     onAssignExercise={onAssignTomorrowExercise}
+                    onDropPlannedWorkout={dropPlannedWorkoutOnTomorrow}
                   />
                 </div>
 
@@ -477,6 +513,12 @@ export function ShutdownModal({
               Type the reminder exactly to finish
             </p>
           )}
+          {step === 'schedule' && !schedulePlansReady && (
+            <p className="mb-2 text-center text-[10px] text-zinc-500">
+              Place or delete {unplacedPlanCount} exercise plan
+              {unplacedPlanCount === 1 ? '' : 's'} before continuing
+            </p>
+          )}
           <div className="flex gap-2">
             {!isFirstStep && (
               <Button variant="secondary" className="flex-1" onClick={goBack} disabled={finishing}>
@@ -488,7 +530,8 @@ export function ShutdownModal({
               className={isFirstStep ? 'w-full' : 'flex-[2]'}
               disabled={
                 finishing ||
-                (step === 'typed-reminder' && !typedReminderReady)
+                (step === 'typed-reminder' && !typedReminderReady) ||
+                (step === 'schedule' && !schedulePlansReady)
               }
             >
               {finishing

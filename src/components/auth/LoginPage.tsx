@@ -35,7 +35,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-[#0a0a0f] px-4 py-8 text-zinc-100">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-[#06060b] px-4 py-8 text-zinc-100">
       <div className="mb-8 flex flex-col items-center gap-3 text-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent-600)] text-white">
           <DojoLogo size={28} />

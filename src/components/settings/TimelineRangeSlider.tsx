@@ -136,7 +136,7 @@ export function TimelineRangeSlider({
             'absolute top-1/2 z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full',
             'bg-[var(--accent-500)] shadow-[0_0_8px_var(--accent-glow)]',
             'transition-transform hover:scale-110',
-            dragging === 'start' && 'scale-110 ring-2 ring-[var(--accent-300)] ring-offset-2 ring-offset-[#0a0a0f]',
+            dragging === 'start' && 'scale-110 ring-2 ring-[var(--accent-300)] ring-offset-2 ring-offset-[#06060b]',
           )}
           style={{ left: `${startPct}%` }}
         />
@@ -157,7 +157,7 @@ export function TimelineRangeSlider({
             'absolute top-1/2 z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full',
             'bg-[var(--accent-500)] shadow-[0_0_8px_var(--accent-glow)]',
             'transition-transform hover:scale-110',
-            dragging === 'end' && 'scale-110 ring-2 ring-[var(--accent-300)] ring-offset-2 ring-offset-[#0a0a0f]',
+            dragging === 'end' && 'scale-110 ring-2 ring-[var(--accent-300)] ring-offset-2 ring-offset-[#06060b]',
           )}
           style={{ left: `${endPct}%` }}
         />

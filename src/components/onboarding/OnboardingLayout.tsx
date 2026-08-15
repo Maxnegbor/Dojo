@@ -31,7 +31,7 @@ export function OnboardingLayout({
   }, [])
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[#0a0a0f] text-zinc-100">
+    <div className="flex min-h-dvh flex-col bg-[#06060b] text-zinc-100">
       <header className="border-b border-zinc-800/80 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">

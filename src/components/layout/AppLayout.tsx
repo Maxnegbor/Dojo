@@ -225,12 +225,12 @@ export function AppLayout() {
   }
 
   return (
-    <div className="relative z-10 flex h-dvh overflow-hidden bg-[#0a0a0f] text-zinc-100">
+    <div className="relative z-10 flex h-dvh overflow-hidden bg-[#06060b] text-zinc-100">
       {!focusImmersive && (
       <aside className="relative z-30 w-14 shrink-0">
         <div
           className={cn(
-            'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-hidden border-r border-zinc-800/80 bg-[#0a0a0f]',
+            'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-hidden border-r border-zinc-800/80 bg-[#06060b]',
             'transition-[width] duration-200 ease-in-out',
             sidebarExpanded && `${SIDEBAR_EXPANDED_WIDTH_CLASS} shadow-[4px_0_24px_rgba(0,0,0,0.5)]`,
           )}
@@ -314,7 +314,7 @@ export function AppLayout() {
           className={cn(
             'relative z-10 flex min-h-0 flex-1 flex-col overflow-x-hidden scrollbar-hidden sm:px-8 lg:px-10',
             pathname === '/'
-              ? 'overflow-hidden px-6 pt-14 pb-6 sm:pt-16'
+              ? 'overflow-hidden px-6 pt-2 pb-4 sm:pt-3'
               : 'overflow-y-auto px-6 py-6',
             focusImmersive && 'px-4 sm:px-6 lg:px-8',
           )}

@@ -50,7 +50,7 @@ export function OnboardingGate() {
 
   if (!storageReady || !remoteChecked) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0f] text-sm text-zinc-500">
+      <div className="flex min-h-dvh items-center justify-center bg-[#06060b] text-sm text-zinc-500">
         Loading…
       </div>
     )

@@ -72,13 +72,13 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: #0a0a0f;
+  background: #06060b;
   color: #fafafa;
   -webkit-font-smoothing: antialiased;
 }
 
 html {
-  background: #0a0a0f;
+  background: #06060b;
 }
 
 input[type="number"]::-webkit-inner-spin-button,

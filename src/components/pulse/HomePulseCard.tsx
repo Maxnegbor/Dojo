@@ -16,13 +16,9 @@ interface HomePulseCardProps {
   contributors?: PulseContributor[]
   scale?: number
   className?: string
-  /** Applied to the meter only (e.g. fade mask) so the breakdown isn’t clipped. */
+  /** Applied to the meter only. */
   meterClassName?: string
   onDisplayScoreChange?: (score: number) => void
-  celebrateRadiant?: boolean
-  onRadiantImpact?: () => void
-  radiantSlamKey?: number
-  onCelebratingChange?: (celebrating: boolean) => void
   onBreakdownOpenChange?: (open: boolean) => void
 }
 
@@ -139,10 +135,6 @@ export function HomePulseCard({
   className,
   meterClassName,
   onDisplayScoreChange,
-  celebrateRadiant,
-  onRadiantImpact,
-  radiantSlamKey,
-  onCelebratingChange,
   onBreakdownOpenChange,
 }: HomePulseCardProps) {
   const [mounted, setMounted] = useState(false)
@@ -213,19 +205,12 @@ export function HomePulseCard({
       onFocus={handleEnter}
       onBlur={handleLeave}
     >
-      {/* Rings/glow are visual-only so they can’t steal clicks from Home buttons. */}
-      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <PulseMeter
-          score={score}
-          scale={scale}
-          className={meterClassName}
-          onDisplayScoreChange={onDisplayScoreChange}
-          celebrateRadiant={celebrateRadiant}
-          onRadiantImpact={onRadiantImpact}
-          radiantSlamKey={radiantSlamKey}
-          onCelebratingChange={onCelebratingChange}
-        />
-      </div>
+      <PulseMeter
+        score={score}
+        scale={scale}
+        className={meterClassName}
+        onDisplayScoreChange={onDisplayScoreChange}
+      />
 
       <NavLink
         to="/overview"

@@ -175,6 +175,76 @@ export function plannedWorkoutCanSync(item: PlannedWorkout): boolean {
   )
 }
 
+/** Duration used when dropping a plan onto the schedule. */
+export function resolvePlanScheduleDuration(item: PlannedWorkout): number {
+  const raw = item.duration_minutes
+  if (raw != null && Number.isFinite(raw) && raw > 0) {
+    return Math.max(MIN_PLAN_SCHEDULE_MINUTES, Math.round(raw))
+  }
+  return DEFAULT_PLAN_SCHEDULE_MINUTES
+}
+
+/** Incomplete plans that still need a schedule block (or deletion). */
+export function getUnplacedPlannedWorkoutsForDate(date: string): PlannedWorkout[] {
+  return getPlannedWorkoutsForDate(date).filter(
+    (item) => !item.completed && !item.schedule_block_id,
+  )
+}
+
+export const PLANNED_WORKOUT_DRAG_MIME = 'application/x-dojo-planned-workout'
+
+let activePlanDrag: { id: string; durationMinutes: number } | null = null
+
+export function beginPlannedWorkoutDrag(item: PlannedWorkout) {
+  activePlanDrag = {
+    id: item.id,
+    durationMinutes: resolvePlanScheduleDuration(item),
+  }
+}
+
+export function getActivePlannedWorkoutDrag(): {
+  id: string
+  durationMinutes: number
+} | null {
+  return activePlanDrag
+}
+
+export function endPlannedWorkoutDrag() {
+  activePlanDrag = null
+}
+
+/** Place (or move) a planned workout onto the timeline at the given start minute. */
+export async function placePlannedWorkoutOnSchedule(params: {
+  planId: string
+  startMinutes: number
+  userId: string
+  timelineEndHour?: number
+  /** Timeline day — updates the plan date when dropping across days. */
+  date?: string
+}): Promise<PlannedWorkout | null> {
+  const existing = readAll().find((item) => item.id === params.planId)
+  if (!existing) return null
+
+  const timelineEndHour = params.timelineEndHour ?? 24
+  const duration = resolvePlanScheduleDuration(existing)
+  const endCap = timelineEndHour * 60
+  const maxStart = Math.max(0, endCap - duration)
+  const startMin = Math.max(0, Math.min(maxStart, snapMinutes(params.startMinutes)))
+  const start_time = minutesToTime(startMin)
+
+  const unit = getWorkoutTypeUnit(existing.category)
+  const timed = isTimedWorkoutUnit(unit)
+  const patched =
+    updatePlannedWorkout(existing.id, {
+      date: params.date ?? existing.date,
+      start_time,
+      duration_minutes: duration,
+      amount: timed ? duration : existing.amount,
+    }) ?? existing
+
+  return syncPlannedWorkoutSchedule(patched, params.userId, timelineEndHour)
+}
+
 export function buildScheduleTimesForPlan(
   item: PlannedWorkout,
   timelineEndHour = 24,

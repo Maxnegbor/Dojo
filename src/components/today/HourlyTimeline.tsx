@@ -9,7 +9,12 @@ import {
   SCHEDULE_COLORS_CHANGED,
   type ScheduleColorPreset,
 } from '@/lib/scheduleColors'
-import { EXERCISE_PLAN_CHANGED, getPlannedWorkouts } from '@/lib/exercisePlan'
+import {
+  EXERCISE_PLAN_CHANGED,
+  getActivePlannedWorkoutDrag,
+  getPlannedWorkouts,
+  PLANNED_WORKOUT_DRAG_MIME,
+} from '@/lib/exercisePlan'
 import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
@@ -98,6 +103,8 @@ interface HourlyTimelineProps {
   onAssignExercise?: (block: ScheduleBlock, category: WorkoutCategory) => void
   /** Extra controls in the schedule card header (e.g. template menu). */
   headerActions?: ReactNode
+  /** Drop a planned workout from Exercise plan onto this timeline. */
+  onDropPlannedWorkout?: (planId: string, startMinutes: number) => void
 }
 
 function isDefaultGreyTitle(title: string) {
@@ -296,6 +303,7 @@ export function HourlyTimeline({
   onCreate,
   onAssignExercise,
   headerActions,
+  onDropPlannedWorkout,
 }: HourlyTimelineProps) {
   const { formatTime } = useSettings()
   const [colorPresets, setColorPresets] = useState(() => getScheduleColorPresets())
@@ -352,6 +360,10 @@ export function HourlyTimeline({
     endMin: number
   } | null>(null)
   const [creating, setCreating] = useState<{ start: number; end: number } | null>(null)
+  const [planDropPreview, setPlanDropPreview] = useState<{
+    startMin: number
+    endMin: number
+  } | null>(null)
   const [titleEdits, setTitleEdits] = useState<Record<string, string>>({})
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
   const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
@@ -825,6 +837,10 @@ export function HourlyTimeline({
       }
     })()
 
+  const planDropStyle = planDropPreview
+    ? minutesToStyle(planDropPreview.startMin, planDropPreview.endMin, startHour)
+    : null
+
   return (
     <div
       className={cn(
@@ -868,7 +884,7 @@ export function HourlyTimeline({
               <span className="block h-5" aria-hidden />
             )}
             <p className="text-[10px] text-zinc-600">
-              Drag grid to create · drag block body to move · drag edges to resize
+              Drag grid to create · drag exercise plan onto schedule · drag blocks to move
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -936,7 +952,10 @@ export function HourlyTimeline({
 
           <div
             ref={containerRef}
-            className="relative min-w-0 flex-1 select-none overflow-hidden"
+            className={cn(
+              'relative min-w-0 flex-1 select-none overflow-hidden',
+              onDropPlannedWorkout && planDropPreview && 'ring-1 ring-inset ring-[var(--accent-500)]/40',
+            )}
             style={{
               height: contentHeight,
               minHeight: contentHeight,
@@ -949,6 +968,37 @@ export function HourlyTimeline({
                 start: snapToGrid(yToRawMinutes(e.clientY - rect.top)),
                 end: snapToGrid(yToRawMinutes(e.clientY - rect.top)),
               })
+            }}
+            onDragOver={(e) => {
+              if (!onDropPlannedWorkout) return
+              if (![...e.dataTransfer.types].includes(PLANNED_WORKOUT_DRAG_MIME)) return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'copy'
+              if (!containerRef.current) return
+              const rect = containerRef.current.getBoundingClientRect()
+              const startMin = snapToGrid(yToRawMinutes(e.clientY - rect.top))
+              const active = getActivePlannedWorkoutDrag()
+              const duration = active?.durationMinutes ?? 60
+              const endMin = Math.min(endMinutes, startMin + duration)
+              setPlanDropPreview({ startMin, endMin: Math.max(startMin + GRID_MINUTES, endMin) })
+            }}
+            onDragLeave={(e) => {
+              if (!onDropPlannedWorkout) return
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return
+              setPlanDropPreview(null)
+            }}
+            onDrop={(e) => {
+              if (!onDropPlannedWorkout) return
+              e.preventDefault()
+              setPlanDropPreview(null)
+              const planId =
+                e.dataTransfer.getData(PLANNED_WORKOUT_DRAG_MIME) ||
+                getActivePlannedWorkoutDrag()?.id ||
+                ''
+              if (!planId || !containerRef.current) return
+              const rect = containerRef.current.getBoundingClientRect()
+              const startMin = snapToGrid(yToRawMinutes(e.clientY - rect.top))
+              onDropPlannedWorkout(planId, startMin)
             }}
           >
             <div
@@ -994,6 +1044,24 @@ export function HourlyTimeline({
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {planDropStyle && planDropPreview && (
+            <div
+              className="pointer-events-none absolute left-0 right-1 z-[3] flex items-center justify-center rounded-lg border-2 border-dashed border-red-400/70 bg-red-500/15"
+              style={{ top: planDropStyle.top, height: planDropStyle.height }}
+            >
+              <div className="flex flex-col items-center gap-0.5 px-2 text-center">
+                <span className="text-sm font-semibold tabular-nums text-red-200">
+                  {formatDuration(planDropStyle.durationMins)}
+                </span>
+                <span className="text-[10px] tabular-nums text-red-200/75">
+                  {formatBlockTime(minutesToTime(planDropPreview.startMin))}
+                  {' – '}
+                  {formatBlockTime(minutesToTime(planDropPreview.endMin))}
+                </span>
+              </div>
             </div>
           )}
 

@@ -1,9 +1,11 @@
 import {
   addPlannedWorkout,
   getPlannedWorkouts,
+  getPlannedWorkoutsForDates,
   removePlannedWorkout,
   syncPlannedWorkoutSchedule,
   updatePlannedWorkout,
+  type PlannedWorkout,
 } from '@/lib/exercisePlan'
 import {
   getWorkoutTypeLabel,
@@ -16,6 +18,7 @@ import { generateId, formatDate } from '@/lib/utils'
 import { parseISO } from 'date-fns'
 
 const STORAGE_KEY = 'personal-os-exercise-week-template'
+const OVERRIDE_STORAGE_KEY = 'personal-os-exercise-week-overrides'
 export const EXERCISE_WEEK_TEMPLATE_CHANGED = 'personal-os-exercise-week-template-changed'
 
 /** JS weekday: 0 = Sunday … 6 = Saturday. */
@@ -114,6 +117,55 @@ export function saveExerciseWeekTemplate(template: ExerciseWeekTemplate): Exerci
   return next
 }
 
+export function weekKeyForDates(weekDates: string[]): string {
+  return weekDates[0] ?? ''
+}
+
+function readWeekOverrides(): Record<string, ExerciseWeekSlot[]> {
+  try {
+    const raw = storageGetItem(OVERRIDE_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (!parsed || typeof parsed !== 'object') return {}
+    const out: Record<string, ExerciseWeekSlot[]> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!key || !Array.isArray(value)) continue
+      const slots = value
+        .map((slot) => normalizeSlot((slot ?? {}) as Partial<ExerciseWeekSlot>))
+        .filter((slot): slot is ExerciseWeekSlot => slot != null)
+      out[key] = slots
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+export function getExerciseWeekOverride(weekDates: string[]): ExerciseWeekSlot[] | null {
+  const key = weekKeyForDates(weekDates)
+  if (!key) return null
+  const slots = readWeekOverrides()[key]
+  return slots ? [...slots] : null
+}
+
+export function setExerciseWeekOverride(
+  weekDates: string[],
+  slots: ExerciseWeekSlot[] | null,
+): void {
+  const key = weekKeyForDates(weekDates)
+  if (!key) return
+  const all = readWeekOverrides()
+  if (slots == null) {
+    delete all[key]
+  } else {
+    all[key] = slots
+      .map((slot) => normalizeSlot(slot))
+      .filter((slot): slot is ExerciseWeekSlot => slot != null)
+  }
+  storageSetItem(OVERRIDE_STORAGE_KEY, JSON.stringify(all))
+  window.dispatchEvent(new Event(EXERCISE_WEEK_TEMPLATE_CHANGED))
+}
+
 export function createExerciseWeekSlot(
   patch: Partial<Omit<ExerciseWeekSlot, 'id'>> & { weekday: WeekdayIndex; category: string },
 ): ExerciseWeekSlot {
@@ -179,6 +231,7 @@ function dateForWeekdayInWeek(weekDates: string[], weekday: WeekdayIndex): strin
 /**
  * Materialize the recurring template onto the given week dates.
  * Skips completed instances; updates incomplete template-linked plans; creates missing ones.
+ * If this week has a one-off override, that wins over the permanent template.
  */
 export async function applyExerciseWeekTemplateToDates(params: {
   weekDates: string[]
@@ -186,26 +239,61 @@ export async function applyExerciseWeekTemplateToDates(params: {
   timelineEndHour?: number
   template?: ExerciseWeekTemplate
 }): Promise<boolean> {
+  const override = getExerciseWeekOverride(params.weekDates)
+  if (override) {
+    await materializeSlotsOntoWeek({
+      weekDates: params.weekDates,
+      slots: override,
+      userId: params.userId,
+      timelineEndHour: params.timelineEndHour,
+      linkTemplateSlots: false,
+      removeOrphanTemplatePlans: false,
+      allowPastDates: true,
+    })
+    return true
+  }
+
   const template = params.template ?? getExerciseWeekTemplate()
   if (!template.enabled || template.slots.length === 0) return false
 
+  return materializeSlotsOntoWeek({
+    weekDates: params.weekDates,
+    slots: template.slots,
+    userId: params.userId,
+    timelineEndHour: params.timelineEndHour,
+    linkTemplateSlots: true,
+    removeOrphanTemplatePlans: true,
+    allowPastDates: false,
+  })
+}
+
+async function materializeSlotsOntoWeek(params: {
+  weekDates: string[]
+  slots: ExerciseWeekSlot[]
+  userId?: string | null
+  timelineEndHour?: number
+  linkTemplateSlots: boolean
+  removeOrphanTemplatePlans: boolean
+  allowPastDates: boolean
+}): Promise<boolean> {
   const today = formatDate(new Date())
   const existing = getPlannedWorkouts()
-  const slotIds = new Set(template.slots.map((slot) => slot.id))
+  const slotIds = new Set(params.slots.map((slot) => slot.id))
   let changed = false
 
-  // Remove incomplete future/current template instances whose slot was deleted.
-  for (const item of existing) {
-    if (!item.template_slot_id) continue
-    if (slotIds.has(item.template_slot_id)) continue
-    if (!params.weekDates.includes(item.date)) continue
-    if (item.completed) continue
-    if (item.date < today) continue
-    await removePlannedWorkout(item.id)
-    changed = true
+  if (params.removeOrphanTemplatePlans) {
+    for (const item of existing) {
+      if (!item.template_slot_id) continue
+      if (slotIds.has(item.template_slot_id)) continue
+      if (!params.weekDates.includes(item.date)) continue
+      if (item.completed) continue
+      if (item.date < today) continue
+      await removePlannedWorkout(item.id)
+      changed = true
+    }
   }
 
-  for (const slot of template.slots) {
+  for (const slot of params.slots) {
     const date = dateForWeekdayInWeek(params.weekDates, slot.weekday)
     if (!date) continue
 
@@ -218,9 +306,11 @@ export async function applyExerciseWeekTemplateToDates(params: {
       if (amount == null && duration_minutes != null) amount = duration_minutes
     }
 
-    const match = getPlannedWorkouts().find(
-      (item) => item.template_slot_id === slot.id && item.date === date,
-    )
+    const match = params.linkTemplateSlots
+      ? getPlannedWorkouts().find(
+          (item) => item.template_slot_id === slot.id && item.date === date,
+        )
+      : null
 
     if (match?.completed) continue
 
@@ -254,8 +344,20 @@ export async function applyExerciseWeekTemplateToDates(params: {
       continue
     }
 
-    // Don't backfill past days — only today onward.
-    if (date < today) continue
+    if (!params.allowPastDates && date < today) continue
+
+    // For overrides, avoid duplicating if an incomplete plan already exists for this slot shape.
+    if (!params.linkTemplateSlots) {
+      const already = getPlannedWorkouts().some(
+        (item) =>
+          item.date === date &&
+          !item.completed &&
+          item.category === slot.category &&
+          (item.subtype ?? null) === (slot.subtype ?? null) &&
+          item.start_time === slot.start_time,
+      )
+      if (already) continue
+    }
 
     await addPlannedWorkout({
       date,
@@ -265,12 +367,105 @@ export async function applyExerciseWeekTemplateToDates(params: {
       duration_minutes,
       amount,
       notes: slot.notes,
-      template_slot_id: slot.id,
-      userId: params.userId ?? undefined,
+      template_slot_id: params.linkTemplateSlots ? slot.id : null,
+      userId: date >= today ? (params.userId ?? undefined) : undefined,
       timelineEndHour: params.timelineEndHour,
     })
     changed = true
   }
 
   return changed
+}
+
+/** Snapshot this week's planned workouts into editable week-template slots. */
+export function plannedWorkoutsToWeekSlots(
+  weekDates: string[],
+  planned: PlannedWorkout[] = getPlannedWorkoutsForDates(weekDates),
+): ExerciseWeekSlot[] {
+  const dateToWeekday = new Map<string, WeekdayIndex>()
+  for (const date of weekDates) {
+    dateToWeekday.set(date, parseISO(`${date}T12:00:00`).getDay() as WeekdayIndex)
+  }
+
+  const slots: ExerciseWeekSlot[] = []
+  for (const item of planned) {
+    const weekday = dateToWeekday.get(item.date)
+    if (weekday == null) continue
+    slots.push(
+      createExerciseWeekSlot({
+        weekday,
+        category: item.category,
+        subtype: item.subtype,
+        start_time: item.start_time,
+        duration_minutes: item.duration_minutes ?? 45,
+        amount: item.amount,
+        notes: item.notes,
+      }),
+    )
+  }
+  return slots.sort(
+    (a, b) => a.weekday - b.weekday || (a.start_time ?? '').localeCompare(b.start_time ?? ''),
+  )
+}
+
+/**
+ * Replace incomplete planned workouts for this week with the given slots.
+ * Does not change the permanent weekly template.
+ */
+export async function applyExerciseSlotsToWeekOnly(params: {
+  weekDates: string[]
+  slots: ExerciseWeekSlot[]
+  userId?: string | null
+  timelineEndHour?: number
+}): Promise<void> {
+  const weekSet = new Set(params.weekDates)
+
+  for (const item of getPlannedWorkouts()) {
+    if (!weekSet.has(item.date)) continue
+    if (item.completed) continue
+    await removePlannedWorkout(item.id)
+  }
+
+  setExerciseWeekOverride(params.weekDates, params.slots)
+
+  await materializeSlotsOntoWeek({
+    weekDates: params.weekDates,
+    slots: params.slots,
+    userId: params.userId,
+    timelineEndHour: params.timelineEndHour,
+    linkTemplateSlots: false,
+    removeOrphanTemplatePlans: false,
+    allowPastDates: true,
+  })
+}
+
+/** Save slots as the permanent weekly template and apply to the given week. */
+export async function savePermanentExerciseWeekPlan(params: {
+  weekDates: string[]
+  slots: ExerciseWeekSlot[]
+  userId?: string | null
+  timelineEndHour?: number
+}): Promise<void> {
+  setExerciseWeekOverride(params.weekDates, null)
+  const template = saveExerciseWeekTemplate({
+    enabled: true,
+    slots: params.slots,
+  })
+
+  const weekSet = new Set(params.weekDates)
+  for (const item of getPlannedWorkouts()) {
+    if (!weekSet.has(item.date)) continue
+    if (item.completed) continue
+    await removePlannedWorkout(item.id)
+  }
+
+  await materializeSlotsOntoWeek({
+    weekDates: params.weekDates,
+    slots: template.slots,
+    userId: params.userId,
+    timelineEndHour: params.timelineEndHour,
+    linkTemplateSlots: true,
+    removeOrphanTemplatePlans: false,
+    allowPastDates: true,
+  })
 }
