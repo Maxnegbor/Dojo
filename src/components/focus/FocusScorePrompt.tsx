@@ -17,7 +17,7 @@ interface FocusScorePromptProps {
   onSkip: () => void
 }
 
-export function FocusScorePrompt({ payload, onSubmit, onSkip }: FocusScorePromptProps) {
+export function FocusScorePrompt({ onSubmit, onSkip }: FocusScorePromptProps) {
   const [score, setScore] = useState(5)
 
   return createPortal(
@@ -39,9 +39,6 @@ export function FocusScorePrompt({ payload, onSubmit, onSkip }: FocusScorePrompt
             </div>
             <div>
               <h2 className="text-lg font-bold text-zinc-100">How focused were you?</h2>
-              <p className="text-xs text-zinc-400">
-                Rate this {payload.minutes}m session · 1 low · 10 locked in
-              </p>
             </div>
           </div>
 

@@ -241,7 +241,7 @@ export async function applyExerciseWeekTemplateToDates(params: {
 }): Promise<boolean> {
   const override = getExerciseWeekOverride(params.weekDates)
   if (override) {
-    await materializeSlotsOntoWeek({
+    return materializeSlotsOntoWeek({
       weekDates: params.weekDates,
       slots: override,
       userId: params.userId,
@@ -250,7 +250,6 @@ export async function applyExerciseWeekTemplateToDates(params: {
       removeOrphanTemplatePlans: false,
       allowPastDates: true,
     })
-    return true
   }
 
   const template = params.template ?? getExerciseWeekTemplate()
@@ -315,10 +314,13 @@ async function materializeSlotsOntoWeek(params: {
     if (match?.completed) continue
 
     if (match) {
+      // Keep a time the user already placed on the schedule. Duration-only
+      // template slots use start_time: null and must not un-place them.
+      const nextStartTime = slot.start_time ?? match.start_time
       const same =
         match.category === slot.category &&
         (match.subtype ?? null) === (slot.subtype ?? null) &&
-        match.start_time === slot.start_time &&
+        match.start_time === nextStartTime &&
         match.duration_minutes === duration_minutes &&
         match.amount === amount &&
         match.notes === (slot.notes ?? '')
@@ -328,7 +330,7 @@ async function materializeSlotsOntoWeek(params: {
         updatePlannedWorkout(match.id, {
           category: slot.category,
           subtype: slot.subtype,
-          start_time: slot.start_time,
+          start_time: nextStartTime,
           duration_minutes,
           amount,
           notes: slot.notes,
@@ -354,7 +356,7 @@ async function materializeSlotsOntoWeek(params: {
           !item.completed &&
           item.category === slot.category &&
           (item.subtype ?? null) === (slot.subtype ?? null) &&
-          item.start_time === slot.start_time,
+          (slot.start_time == null || item.start_time === slot.start_time),
       )
       if (already) continue
     }

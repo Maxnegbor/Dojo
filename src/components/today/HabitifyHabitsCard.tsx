@@ -24,14 +24,13 @@ export function HabitifyHabitsCard({ viewDate, className }: HabitifyHabitsCardPr
   return (
     <Card
       className={cn(
-        'min-w-0 overflow-visible',
-        collapsed ? 'self-start' : className,
+        'h-fit min-w-0 w-full shrink-0 overflow-visible',
+        className,
       )}
     >
       <HabitifyHabitsPanel
         viewDate={viewDate}
         collapsed={collapsed}
-        className={collapsed ? undefined : 'min-h-0 flex-1'}
         headerLeading={
           <button
             type="button"

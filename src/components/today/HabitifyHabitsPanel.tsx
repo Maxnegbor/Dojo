@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Check, ExternalLink, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { HabitStreakBadge } from '@/components/today/HabitStreakBadge'
 import {
   completeHabitifyHabit,
   fetchHabitifyJournal,
@@ -24,19 +25,6 @@ export interface HabitifyHabitsPanelProps {
   toolbarExtra?: ReactNode
   headerLeading?: ReactNode
   collapsed?: boolean
-}
-
-function statusLabel(status: HabitifyJournalEntry['status']): string {
-  switch (status) {
-    case 'completed':
-      return 'Done'
-    case 'skipped':
-      return 'Skipped'
-    case 'failed':
-      return 'Failed'
-    default:
-      return 'Open'
-  }
 }
 
 export function HabitifyHabitsPanel({
@@ -112,7 +100,13 @@ export function HabitifyHabitsPanel({
     setBusy(entry.id, true)
     setEntries((prev) =>
       prev.map((item) =>
-        item.id === entry.id ? { ...item, status: 'completed' as const } : item,
+        item.id === entry.id
+          ? {
+              ...item,
+              status: 'completed' as const,
+              streakLength: (item.streakLength ?? 0) + 1,
+            }
+          : item,
       ),
     )
     try {
@@ -132,7 +126,16 @@ export function HabitifyHabitsPanel({
     setBusy(entry.id, true)
     setEntries((prev) =>
       prev.map((item) =>
-        item.id === entry.id ? { ...item, status: 'inprogress' as const } : item,
+        item.id === entry.id
+          ? {
+              ...item,
+              status: 'inprogress' as const,
+              streakLength:
+                item.streakLength != null && item.streakLength > 0
+                  ? item.streakLength - 1
+                  : item.streakLength,
+            }
+          : item,
       ),
     )
     try {
@@ -209,11 +212,10 @@ export function HabitifyHabitsPanel({
     )
   }
 
-  const openCount = entries.filter((e) => e.status === 'inprogress').length
   const doneCount = entries.filter((e) => e.status === 'completed').length
 
   return (
-    <div className={cn('flex min-h-0 flex-col', className)}>
+    <div className={cn('flex h-fit flex-col', className)}>
       {header}
       {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
       {loading && entries.length === 0 ? (
@@ -227,12 +229,18 @@ export function HabitifyHabitsPanel({
         <>
           <p className="mb-2 text-[10px] tabular-nums text-zinc-500">
             {doneCount}/{entries.length} done
-            {openCount > 0 ? ` · ${openCount} open` : ''}
           </p>
-          <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-0.5">
+          <ul className="space-y-2 pr-0.5">
             {entries.map((entry) => {
               const done = entry.status === 'completed'
               const busy = busyIds.has(entry.id)
+              const streak = entry.streakLength ?? 0
+              const progressLabel =
+                entry.progressTarget != null && entry.progressTarget > 1
+                  ? `${entry.progressCurrent ?? 0}/${entry.progressTarget}${
+                      entry.progressUnit ? ` ${entry.progressUnit}` : ''
+                    }`
+                  : null
               return (
                 <li
                   key={entry.id}
@@ -251,46 +259,33 @@ export function HabitifyHabitsPanel({
                     }
                     aria-label={done ? `Undo ${entry.name}` : `Complete ${entry.name}`}
                     className={cn(
-                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all',
                       done
-                        ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300'
-                        : 'border-zinc-600 text-transparent hover:border-[var(--accent-400)] hover:text-[var(--accent-300)]',
+                        ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-300'
+                        : 'border-zinc-600 text-transparent hover:border-[var(--accent-500)] hover:bg-[var(--accent-500)]/15 hover:text-[var(--accent-400)]',
                       busy && 'opacity-50',
                     )}
                   >
                     {busy ? (
                       <Loader2 size={11} className="animate-spin text-zinc-400" />
-                    ) : done ? (
-                      <Check size={12} />
                     ) : (
-                      <Check size={12} />
+                      <Check size={11} strokeWidth={2.5} />
                     )}
                   </button>
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: entry.colorHex || 'var(--accent-500)' }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className={cn(
-                        'truncate text-xs font-medium',
-                        done ? 'text-zinc-500 line-through' : 'text-zinc-100',
-                      )}
-                    >
-                      {entry.name}
-                    </p>
-                    <p className="text-[10px] text-zinc-600">
-                      {statusLabel(entry.status)}
-                      {entry.streakLength != null && entry.streakLength > 0
-                        ? ` · ${entry.streakLength}d streak`
-                        : ''}
-                      {entry.progressTarget != null && entry.progressTarget > 1
-                        ? ` · ${entry.progressCurrent ?? 0}/${entry.progressTarget}${
-                            entry.progressUnit ? ` ${entry.progressUnit}` : ''
-                          }`
-                        : ''}
-                    </p>
-                  </div>
+                  <p
+                    className={cn(
+                      'min-w-0 flex-1 truncate text-xs font-medium',
+                      done ? 'text-zinc-500 line-through' : 'text-zinc-100',
+                    )}
+                  >
+                    {entry.name}
+                  </p>
+                  {progressLabel && (
+                    <span className="shrink-0 text-[10px] tabular-nums text-[var(--accent-400)]">
+                      {progressLabel}
+                    </span>
+                  )}
+                  <HabitStreakBadge streak={streak} variant="circle" />
                   {done && (
                     <button
                       type="button"

@@ -77,14 +77,19 @@ export function FocusTimerPage() {
   const settingsRef = useRef(settings)
   const phaseRef = useRef(phase)
   const cycleRef = useRef(cycle)
-  const activeBreakMinutesRef = useRef(activeBreakMinutes)
+  const remainingRef = useRef(remaining)
   const selectedLabelIdRef = useRef(selectedLabelId)
+  const advancingRef = useRef(false)
 
   settingsRef.current = settings
   phaseRef.current = phase
   cycleRef.current = cycle
-  activeBreakMinutesRef.current = activeBreakMinutes
   selectedLabelIdRef.current = selectedLabelId
+
+  const setPhaseRemaining = useCallback((seconds: number) => {
+    remainingRef.current = seconds
+    setRemaining(seconds)
+  }, [])
 
   const selectLabel = useCallback((labelId: string | null) => {
     setSelectedLabelId(labelId)
@@ -129,7 +134,7 @@ export function FocusTimerPage() {
     setPhase('focus')
     setCycle(1)
     setActiveBreakMinutes(settings.breakMinutes)
-    setRemaining(settings.focusMinutes * 60)
+    setPhaseRemaining(settings.focusMinutes * 60)
   }, [
     settings.focusMinutes,
     settings.breakMinutes,
@@ -140,6 +145,7 @@ export function FocusTimerPage() {
     settings.longBreakMinutes,
     running,
     sessionStarted,
+    setPhaseRemaining,
   ])
 
   const sessionEndAt = useMemo(() => {
@@ -223,13 +229,20 @@ export function FocusTimerPage() {
         playFocusTimerFinishSound()
         setCycle(c + 1)
         setPhase('focus')
-        setRemaining(s.focusMinutes * 60)
+        setPhaseRemaining(s.focusMinutes * 60)
       } else {
-        playFocusTimerFinishSound()
         const breakMinutes = getBreakMinutesAfterFocus(s, c)
+        if (breakMinutes <= 0) {
+          playFocusTimerFinishSound({ sessionComplete: true })
+          setPhase('done')
+          setRunning(false)
+          setSessionStarted(false)
+          return
+        }
+        playFocusTimerFinishSound()
         setActiveBreakMinutes(breakMinutes)
         setPhase('break')
-        setRemaining(breakMinutes * 60)
+        setPhaseRemaining(breakMinutes * 60)
       }
     } else {
       if (c >= s.iterations) {
@@ -242,30 +255,32 @@ export function FocusTimerPage() {
       if (userPrefs.timerSoundEnabled) playTimerChime()
       setCycle(c + 1)
       setPhase('focus')
-      setRemaining(s.focusMinutes * 60)
+      setPhaseRemaining(s.focusMinutes * 60)
     }
     phaseStartRef.current = Date.now()
-  }, [logFocusMinutes, maybePromptFocusScore, userPrefs.timerSoundEnabled])
+  }, [logFocusMinutes, maybePromptFocusScore, setPhaseRemaining, userPrefs.timerSoundEnabled])
 
   useEffect(() => {
     if (!running || phase === 'done') return
 
     const id = window.setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          advancePhase()
-          const nextPhase = phaseRef.current
-          const nextSettings = settingsRef.current
-          return nextPhase === 'focus'
-            ? nextSettings.focusMinutes * 60
-            : activeBreakMinutesRef.current * 60
-        }
-        return r - 1
+      if (advancingRef.current) return
+
+      const next = remainingRef.current - 1
+      if (next > 0) {
+        setPhaseRemaining(next)
+        return
+      }
+
+      advancingRef.current = true
+      setPhaseRemaining(0)
+      void advancePhase().finally(() => {
+        advancingRef.current = false
       })
     }, 1000)
 
     return () => clearInterval(id)
-  }, [running, phase, advancePhase])
+  }, [running, phase, advancePhase, setPhaseRemaining])
 
   useEffect(() => {
     if (running && phase !== 'done') {
@@ -298,12 +313,12 @@ export function FocusTimerPage() {
       }
       setCycle(cycle + 1)
       setPhase('focus')
-      setRemaining(settings.focusMinutes * 60)
+      setPhaseRemaining(settings.focusMinutes * 60)
     } else {
       const breakMinutes = getBreakMinutesAfterFocus(settings, cycle)
       setActiveBreakMinutes(breakMinutes)
       setPhase('break')
-      setRemaining(breakMinutes * 60)
+      setPhaseRemaining(breakMinutes * 60)
     }
 
     setRunning(false)
@@ -323,7 +338,7 @@ export function FocusTimerPage() {
 
     setCycle(cycle + 1)
     setPhase('focus')
-    setRemaining(settings.focusMinutes * 60)
+    setPhaseRemaining(settings.focusMinutes * 60)
     setRunning(false)
     setSessionStarted(true)
     phaseStartRef.current = Date.now()
@@ -337,12 +352,13 @@ export function FocusTimerPage() {
   }
 
   const reset = () => {
+    advancingRef.current = false
     setRunning(false)
     setSessionStarted(false)
     setPhase('focus')
     setCycle(1)
     setActiveBreakMinutes(settings.breakMinutes)
-    setRemaining(settings.focusMinutes * 60)
+    setPhaseRemaining(settings.focusMinutes * 60)
   }
 
   const onLongBreak = phase === 'break' && isLongBreakAfterFocus(settings, cycle)
@@ -564,7 +580,7 @@ export function FocusTimerPage() {
               onChange={(focusMinutes) => {
                 updateTimerSettings({ focusMinutes })
                 if (!running && !sessionStarted) {
-                  setRemaining(focusMinutes * 60)
+                  setPhaseRemaining(focusMinutes * 60)
                 }
               }}
             />

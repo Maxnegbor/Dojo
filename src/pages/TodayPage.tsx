@@ -745,12 +745,13 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[minmax(13rem,17rem)_minmax(0,36rem)_minmax(13rem,17rem)] lg:grid-rows-none lg:justify-center lg:gap-4 xl:gap-5">
+      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5">
         {/* Left: Exercise plan + Todoist */}
-        <aside className="relative z-30 order-3 flex min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full">
+        <aside className="relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end">
           <ExercisePlanCard
             viewDate={viewDate}
             userId={userId}
+            className="w-full"
             onScheduleChange={() => {
               void refreshScheduleBlocks()
             }}
@@ -763,14 +764,14 @@ export function TodayPage() {
           />
           <TodoistTasksCard
             viewDate={viewDate}
-            className="flex min-h-0 flex-1 flex-col"
+            className="flex min-h-0 w-full flex-1 flex-col"
           />
         </aside>
 
-        {/* Center: narrower schedule */}
+        {/* Center: schedule */}
         <div
           data-schedule-height-host
-          className="order-1 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[36rem] flex-col overflow-hidden lg:order-2"
+          className="order-1 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden lg:order-2"
         >
           {!showShutdown && (
             <HourlyTimeline
@@ -797,7 +798,7 @@ export function TodayPage() {
         </div>
 
         {/* Right: Log / Shutdown + Habitify */}
-        <aside className="relative z-30 order-2 flex min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full">
+        <aside className="relative z-30 order-2 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start">
           {(log && userId) ||
           weeklyShutdownAvailable ||
           (isActiveDay &&
@@ -852,7 +853,7 @@ export function TodayPage() {
           ) : null}
           <HabitifyHabitsCard
             viewDate={viewDate}
-            className="flex min-h-0 flex-1 flex-col"
+            className="w-full"
           />
         </aside>
       </div>

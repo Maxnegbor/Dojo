@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isToday, parseISO } from 'date-fns'
 import { Pencil, Plus, Trash2, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -113,6 +113,9 @@ export function ExercisePlanCard({
     setPlanned(getPlannedWorkoutsForDates(weekDates))
   }, [weekDates])
 
+  const onScheduleChangeRef = useRef(onScheduleChange)
+  onScheduleChangeRef.current = onScheduleChange
+
   useEffect(() => {
     let cancelled = false
     const syncWeek = async () => {
@@ -123,13 +126,13 @@ export function ExercisePlanCard({
       })
       if (cancelled) return
       refresh()
-      if (changed) onScheduleChange?.()
+      if (changed) onScheduleChangeRef.current?.()
     }
     void syncWeek()
     return () => {
       cancelled = true
     }
-  }, [weekDates, userId, settings.timelineEndHour, refresh, onScheduleChange])
+  }, [weekDates, userId, settings.timelineEndHour, refresh])
 
   useEffect(() => {
     const onPlanChange = () => refresh()
@@ -140,7 +143,7 @@ export function ExercisePlanCard({
         timelineEndHour: settings.timelineEndHour,
       }).then((changed) => {
         refresh()
-        if (changed) onScheduleChange?.()
+        if (changed) onScheduleChangeRef.current?.()
       })
     }
     window.addEventListener(EXERCISE_PLAN_CHANGED, onPlanChange)
@@ -151,7 +154,7 @@ export function ExercisePlanCard({
       window.removeEventListener(EXERCISE_WEEK_TEMPLATE_CHANGED, onTemplateChange)
       window.removeEventListener('user-storage-ready', onPlanChange)
     }
-  }, [weekDates, userId, settings.timelineEndHour, refresh, onScheduleChange])
+  }, [weekDates, userId, settings.timelineEndHour, refresh])
 
   const byDate = useMemo(() => {
     const map = new Map<string, PlannedWorkout[]>()

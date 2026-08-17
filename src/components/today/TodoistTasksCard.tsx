@@ -24,8 +24,8 @@ export function TodoistTasksCard({ viewDate, className }: TodoistTasksCardProps)
   return (
     <Card
       className={cn(
-        'min-w-0 overflow-visible',
-        collapsed ? 'self-start' : className,
+        'min-w-0 w-full overflow-visible',
+        !collapsed && className,
       )}
     >
       <TodoistTasksPanel

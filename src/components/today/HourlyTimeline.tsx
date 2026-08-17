@@ -969,7 +969,7 @@ export function HourlyTimeline({
                 end: snapToGrid(yToRawMinutes(e.clientY - rect.top)),
               })
             }}
-            onDragOver={(e) => {
+            onDragOverCapture={(e) => {
               if (!onDropPlannedWorkout) return
               if (![...e.dataTransfer.types].includes(PLANNED_WORKOUT_DRAG_MIME)) return
               e.preventDefault()
@@ -987,9 +987,10 @@ export function HourlyTimeline({
               if (e.currentTarget.contains(e.relatedTarget as Node)) return
               setPlanDropPreview(null)
             }}
-            onDrop={(e) => {
+            onDropCapture={(e) => {
               if (!onDropPlannedWorkout) return
               e.preventDefault()
+              e.stopPropagation()
               setPlanDropPreview(null)
               const planId =
                 e.dataTransfer.getData(PLANNED_WORKOUT_DRAG_MIME) ||
