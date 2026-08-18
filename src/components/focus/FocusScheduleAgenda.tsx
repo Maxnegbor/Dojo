@@ -101,10 +101,7 @@ export function FocusScheduleAgenda({
       )}
     >
       <div className="shrink-0 border-b border-zinc-800/70 px-5 py-4">
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
-          Today
-        </p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight text-zinc-100">Schedule</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-100">Schedule</h2>
       </div>
 
       {blocks.length === 0 ? (
@@ -143,8 +140,10 @@ export function FocusScheduleAgenda({
               {blocks.map((block) => {
                 const startMin = parseTimeToMinutes(block.start_time)
                 const endMin = parseTimeToMinutes(block.end_time)
+                const durationMin = Math.max(1, endMin - startMin)
                 const isCurrent = nowMinutes >= startMin && nowMinutes < endMin
                 const isPast = nowMinutes >= endMin
+                const isShort = durationMin <= 30
                 const accent = isGreyBlock(block) ? GREY_BLOCK_HEX : block.color || GREY_BLOCK_HEX
                 const style = minutesToStyle(startMin, endMin, startHour)
 
@@ -162,20 +161,22 @@ export function FocusScheduleAgenda({
                       boxShadow: isCurrent ? '0 0 0 1px rgba(255,255,255,0.06)' : undefined,
                     }}
                   >
-                    <div className="min-w-0 flex-1 pt-1">
+                    <div className={cn('min-w-0 flex-1', isShort ? 'pt-0.5' : 'pt-1')}>
                       <p className={cn('truncate text-xs font-medium leading-tight', isCurrent ? 'text-zinc-50' : 'text-zinc-200')}>
                         {block.title}
                       </p>
-                      <p className="mt-0.5 text-[10px] tabular-nums text-zinc-400">
-                        {labelForTime(block.start_time, formatTime)}
-                        <span className="mx-1 text-zinc-600">–</span>
-                        {labelForTime(block.end_time, formatTime)}
-                        {isCurrent && (
-                          <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-[var(--accent-400)]">
-                            Now
-                          </span>
-                        )}
-                      </p>
+                      {!isShort && (
+                        <p className="mt-0.5 text-[10px] tabular-nums text-zinc-400">
+                          {labelForTime(block.start_time, formatTime)}
+                          <span className="mx-1 text-zinc-600">–</span>
+                          {labelForTime(block.end_time, formatTime)}
+                          {isCurrent && (
+                            <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-[var(--accent-400)]">
+                              Now
+                            </span>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )

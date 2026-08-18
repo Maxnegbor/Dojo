@@ -876,7 +876,16 @@ export function HourlyTimeline({
       >
         <div
           ref={headerRef}
-          className="flex shrink-0 items-start justify-between gap-3 rounded-t-xl border-b border-zinc-800/80 px-3 py-2"
+          className={cn(
+            'flex shrink-0 items-start justify-between gap-3 rounded-t-xl border-zinc-800/80 px-3 py-2',
+            'transition-[max-height,opacity,padding,border-color] duration-[1600ms] ease-in-out',
+            screensaver ? 'overflow-hidden border-b-transparent opacity-0' : 'border-b opacity-100',
+          )}
+          style={{
+            maxHeight: screensaver ? '0px' : '4.5rem',
+            paddingTop: screensaver ? '0px' : undefined,
+            paddingBottom: screensaver ? '0px' : undefined,
+          }}
         >
           <div className="min-w-0">
             {isActiveDay ? (
