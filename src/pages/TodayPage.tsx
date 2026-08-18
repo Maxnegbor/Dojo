@@ -93,6 +93,7 @@ import {
 import { isWeeklyShutdownAnyDay } from '@/lib/devMode'
 import { Button } from '@/components/ui/Button'
 import { useSettings } from '@/context/SettingsContext'
+import { useScreensaver } from '@/context/ScreensaverContext'
 import { addDaysToDateString, cn, formatDate } from '@/lib/utils'
 import { getYesterdayDate } from '@/lib/dailyLog'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
@@ -138,6 +139,7 @@ export function TodayPage() {
   const draftRevision = useDailyLogDraftRevision(viewDate)
 
   const isActiveDay = isToday(parseISO(viewDate))
+  const screensaver = useScreensaver()
 
   useEffect(() => {
     if (location.pathname !== '/') return
@@ -702,7 +704,9 @@ export function TodayPage() {
       <div
         className={cn(
           'relative shrink-0 overflow-visible px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
+          'transition-[opacity,filter] duration-[2000ms] ease-in-out',
           pulseBreakdownOpen ? 'z-40' : 'z-20',
+          screensaver && 'pointer-events-none opacity-0 blur-sm',
         )}
       >
         <div
@@ -745,9 +749,20 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5">
+      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-rows-none lg:gap-4 xl:gap-5"
+        style={{
+          gridTemplateColumns: screensaver
+            ? '0fr minmax(18rem,1fr) 0fr'
+            : '1fr minmax(18rem,36rem) 1fr',
+          transition: 'grid-template-columns 1200ms cubic-bezier(0.4,0,0.2,1)',
+        }}
+      >
         {/* Left: Exercise plan + Todoist */}
-        <aside className="relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end">
+        <aside className={cn(
+          'relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
+          'transition-[opacity,filter] duration-[1500ms] ease-in-out',
+          screensaver && 'pointer-events-none opacity-0 blur-sm',
+        )}>
           <ExercisePlanCard
             viewDate={viewDate}
             userId={userId}
@@ -786,6 +801,7 @@ export function TodayPage() {
               onCreate={saveBlock}
               onAssignExercise={assignExerciseBlock}
               onDropPlannedWorkout={dropPlannedWorkout}
+              screensaver={screensaver}
               headerActions={
                 <ScheduleTemplateMenu
                   iconOnly
@@ -798,7 +814,11 @@ export function TodayPage() {
         </div>
 
         {/* Right: Log / Shutdown + Habitify */}
-        <aside className="relative z-30 order-2 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start">
+        <aside className={cn(
+          'relative z-30 order-2 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
+          'transition-[opacity,filter] duration-[1500ms] ease-in-out',
+          screensaver && 'pointer-events-none opacity-0 blur-sm',
+        )}>
           {(log && userId) ||
           weeklyShutdownAvailable ||
           (isActiveDay &&

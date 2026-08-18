@@ -60,10 +60,10 @@ function ScheduleBlockTitleInput({
   const mirrorText = value || placeholder
 
   const mirrorClass =
-    'invisible col-start-1 row-start-1 whitespace-pre text-xs font-medium leading-tight'
+    'invisible col-start-1 row-start-1 whitespace-pre text-[1em] font-medium leading-tight'
 
   const inputClass =
-    'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text bg-transparent px-0 py-0 text-xs font-medium leading-tight text-zinc-100 outline-none focus:outline-none'
+    'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text bg-transparent px-0 py-0 text-[1em] font-medium leading-tight text-zinc-100 outline-none focus:outline-none'
 
   return (
     <div className="inline-grid w-fit max-w-full">
@@ -105,6 +105,8 @@ interface HourlyTimelineProps {
   headerActions?: ReactNode
   /** Drop a planned workout from Exercise plan onto this timeline. */
   onDropPlannedWorkout?: (planId: string, startMinutes: number) => void
+  /** When true, enlarge text for ambient/screensaver display. */
+  screensaver?: boolean
 }
 
 function isDefaultGreyTitle(title: string) {
@@ -112,9 +114,9 @@ function isDefaultGreyTitle(title: string) {
   return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
 }
 
-function blockNeedsWorkoutType(block: ScheduleBlock): boolean {
+function blockNeedsWorkoutType(block: ScheduleBlock, linkedBlockIds: Set<string>): boolean {
   if (!isWorkoutScheduleColor(block.activity_type)) return false
-  return !getPlannedWorkouts().some((item) => item.schedule_block_id === block.id)
+  return !linkedBlockIds.has(block.id)
 }
 
 function ScheduleBlockWorkoutTypePicker({
@@ -304,10 +306,13 @@ export function HourlyTimeline({
   onAssignExercise,
   headerActions,
   onDropPlannedWorkout,
+  screensaver = false,
 }: HourlyTimelineProps) {
   const { formatTime } = useSettings()
   const [colorPresets, setColorPresets] = useState(() => getScheduleColorPresets())
-  const [planRevision, setPlanRevision] = useState(0)
+  const [linkedBlockIds, setLinkedBlockIds] = useState<Set<string>>(
+    () => new Set(getPlannedWorkouts().map((p) => p.schedule_block_id).filter(Boolean) as string[]),
+  )
 
   useEffect(() => {
     const refresh = () => setColorPresets(getScheduleColorPresets())
@@ -320,7 +325,10 @@ export function HourlyTimeline({
   }, [])
 
   useEffect(() => {
-    const refresh = () => setPlanRevision((n) => n + 1)
+    const refresh = () =>
+      setLinkedBlockIds(
+        new Set(getPlannedWorkouts().map((p) => p.schedule_block_id).filter(Boolean) as string[]),
+      )
     window.addEventListener(EXERCISE_PLAN_CHANGED, refresh)
     window.addEventListener('user-storage-ready', refresh)
     return () => {
@@ -1161,6 +1169,10 @@ export function HourlyTimeline({
                     'min-w-0 flex-1',
                     isShortInline ? 'pr-9' : isCompact ? 'pt-1.5 pr-9' : 'pt-3 pr-10',
                   )}
+                  style={{
+                    fontSize: screensaver ? '1rem' : undefined,
+                    transition: 'font-size 1200ms cubic-bezier(0.4,0,0.2,1)',
+                  }}
                 >
                   {isShortInline ? (
                     <div className="flex items-center gap-1.5">
@@ -1175,7 +1187,7 @@ export function HourlyTimeline({
                           titleInputRefs.current[block.id] = el
                         }}
                       />
-                      <span className="pointer-events-none shrink-0 text-[10px] tabular-nums text-zinc-400">
+                      <span className="pointer-events-none shrink-0 tabular-nums text-zinc-400" style={{ fontSize: '0.8em' }}>
                         {formatBlockTime(displayStart)}–{formatBlockTime(displayEnd)}
                       </span>
                     </div>
@@ -1192,7 +1204,7 @@ export function HourlyTimeline({
                           titleInputRefs.current[block.id] = el
                         }}
                       />
-                      <p className="pointer-events-none text-[10px] tabular-nums text-zinc-400">
+                      <p className="pointer-events-none tabular-nums text-zinc-400" style={{ fontSize: '0.8em' }}>
                         {formatBlockTime(displayStart)} – {formatBlockTime(displayEnd)}
                       </p>
                     </>
@@ -1207,10 +1219,9 @@ export function HourlyTimeline({
                     />
                   )}
                   {onAssignExercise &&
-                    blockNeedsWorkoutType(block) &&
+                    blockNeedsWorkoutType(block, linkedBlockIds) &&
                     !isDefaultGreyTitle(blockTitleValue(block)) && (
                       <ScheduleBlockWorkoutTypePicker
-                        key={`${block.id}-${planRevision}`}
                         block={block}
                         compact={isCompact}
                         onAssignExercise={onAssignExercise}

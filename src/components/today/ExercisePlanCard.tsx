@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isToday, parseISO } from 'date-fns'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { ExerciseWeekEditModal } from '@/components/today/ExerciseWeekEditModal'
 import { useSettings } from '@/context/SettingsContext'
@@ -539,7 +539,6 @@ export function ExercisePlanCard({
                   : !timed && amountLabel
                     ? amountLabel
                     : null,
-                synced ? 'sched' : null,
                 item.completed ? 'logged' : null,
               ]
                 .filter(Boolean)
@@ -589,6 +588,9 @@ export function ExercisePlanCard({
                       <span className="font-normal text-zinc-500"> · {meta}</span>
                     ) : null}
                   </p>
+                  {synced && !item.completed && (
+                    <Check size={11} strokeWidth={2.5} className="shrink-0 text-zinc-500" />
+                  )}
                   <button
                     type="button"
                     aria-label={`Remove ${title}`}

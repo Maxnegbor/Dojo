@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils'
 import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
 import { useFocus } from '@/context/FocusContext'
 import { useSettings } from '@/context/SettingsContext'
+import { useIdleScreensaver } from '@/hooks/useIdleScreensaver'
+import { ScreensaverContext } from '@/context/ScreensaverContext'
 
 const NAV = [
   { to: '/', label: 'Home', icon: Sparkles },
@@ -170,6 +172,8 @@ export function AppLayout() {
   const { settings, updateSettings } = useSettings()
   const { focusImmersive, setFocusImmersive } = useFocus()
   const { pathname } = useLocation()
+  const isIdle = useIdleScreensaver()
+  const screensaver = isIdle && pathname === '/'
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const sidebarExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sidebarCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -227,7 +231,7 @@ export function AppLayout() {
   return (
     <div className="relative z-10 flex h-dvh overflow-hidden bg-[#06060b] text-zinc-100">
       {!focusImmersive && (
-      <aside className="relative z-30 w-14 shrink-0">
+      <aside className={cn('relative z-30 w-14 shrink-0 transition-opacity duration-[2000ms] ease-in-out', screensaver && 'opacity-0 pointer-events-none')}>
         <div
           className={cn(
             'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-hidden border-r border-zinc-800/80 bg-[#06060b]',
@@ -304,6 +308,7 @@ export function AppLayout() {
       </aside>
       )}
 
+      <ScreensaverContext value={screensaver}>
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           id="dojo-bg-effects"
@@ -333,6 +338,7 @@ export function AppLayout() {
           </div>
         </main>
       </div>
+      </ScreensaverContext>
     </div>
   )
 }
