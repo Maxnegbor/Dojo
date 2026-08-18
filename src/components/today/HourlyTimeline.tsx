@@ -1170,7 +1170,7 @@ export function HourlyTimeline({
                     isShortInline ? 'pr-9' : isCompact ? 'pt-1.5 pr-9' : 'pt-3 pr-10',
                   )}
                   style={{
-                    fontSize: screensaver ? '1rem' : undefined,
+                    fontSize: screensaver ? '1rem' : '0.75rem',
                     transition: 'font-size 1200ms cubic-bezier(0.4,0,0.2,1)',
                   }}
                 >

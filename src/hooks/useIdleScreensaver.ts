@@ -10,7 +10,7 @@ export function useIdleScreensaver(): boolean {
   useEffect(() => {
     const reset = () => {
       if (timerRef.current) clearTimeout(timerRef.current)
-      if (idle) setIdle(false)
+      setIdle(false)
       timerRef.current = setTimeout(() => setIdle(true), IDLE_MS)
     }
 
@@ -23,7 +23,7 @@ export function useIdleScreensaver(): boolean {
       if (timerRef.current) clearTimeout(timerRef.current)
       for (const ev of events) window.removeEventListener(ev, reset)
     }
-  }, [idle])
+  }, []) // run once — reset is stable via closure over timerRef
 
   return idle
 }
