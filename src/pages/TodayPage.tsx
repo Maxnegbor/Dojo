@@ -700,14 +700,25 @@ export function TodayPage() {
   }
 
   return (
-      <div className="relative z-10 flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden sm:gap-3">
+      <div
+        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+        style={{
+          gap: screensaver ? '0px' : undefined,
+          transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
+        }}
+      >
       <div
         className={cn(
-          'relative shrink-0 overflow-visible px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
-          'transition-[opacity,filter] duration-[2000ms] ease-in-out',
+          'relative shrink-0 overflow-hidden px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
+          'transition-[max-height,opacity,filter,padding] duration-[2000ms] ease-in-out',
           pulseBreakdownOpen ? 'z-40' : 'z-20',
-          screensaver && 'pointer-events-none opacity-0 blur-sm',
+          screensaver && 'pointer-events-none opacity-0 blur-[1px]',
         )}
+        style={{
+          maxHeight: screensaver ? '0px' : `${headerPulseLayoutPx + 24}px`,
+          paddingTop: screensaver ? '0px' : undefined,
+          paddingBottom: screensaver ? '0px' : undefined,
+        }}
       >
         <div
           className="relative flex items-center justify-between gap-2 overflow-visible"
@@ -749,19 +760,17 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-rows-none lg:gap-4 xl:gap-5"
+      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5"
         style={{
-          gridTemplateColumns: screensaver
-            ? '0fr minmax(18rem,1fr) 0fr'
-            : '1fr minmax(18rem,36rem) 1fr',
-          transition: 'grid-template-columns 1200ms cubic-bezier(0.4,0,0.2,1)',
+          transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
+          gap: screensaver ? '0px' : undefined,
         }}
       >
         {/* Left: Exercise plan + Todoist */}
         <aside className={cn(
           'relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
           'transition-[opacity,filter] duration-[1500ms] ease-in-out',
-          screensaver && 'pointer-events-none opacity-0 blur-sm',
+          screensaver && 'pointer-events-none opacity-0 blur-[1px]',
         )}>
           <ExercisePlanCard
             viewDate={viewDate}
@@ -786,7 +795,7 @@ export function TodayPage() {
         {/* Center: schedule */}
         <div
           data-schedule-height-host
-          className="order-1 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden lg:order-2"
+          className="order-1 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[36rem] flex-col overflow-hidden lg:order-2"
         >
           {!showShutdown && (
             <HourlyTimeline
@@ -817,7 +826,7 @@ export function TodayPage() {
         <aside className={cn(
           'relative z-30 order-2 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
           'transition-[opacity,filter] duration-[1500ms] ease-in-out',
-          screensaver && 'pointer-events-none opacity-0 blur-sm',
+          screensaver && 'pointer-events-none opacity-0 blur-[1px]',
         )}>
           {(log && userId) ||
           weeklyShutdownAvailable ||
