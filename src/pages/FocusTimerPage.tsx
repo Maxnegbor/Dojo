@@ -432,7 +432,7 @@ export function FocusTimerPage() {
             : 'justify-center',
         )}
       >
-        <div className="flex w-full max-w-[480px] flex-col gap-4 self-center lg:self-start">
+        <div className="flex w-full max-w-[480px] flex-col gap-4 self-center lg:shrink-0">
           <Card
             className={cn(
               'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6',
@@ -651,7 +651,7 @@ export function FocusTimerPage() {
           <FocusScheduleAgenda
             userId={userId}
             formatTime={formatTime}
-            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-80"
+            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-72 lg:shrink-0"
           />
         )}
       </div>

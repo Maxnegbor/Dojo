@@ -701,7 +701,7 @@ export function TodayPage() {
 
   return (
       <div
-        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-visible"
         style={{
           gap: screensaver ? '0px' : undefined,
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
@@ -709,8 +709,9 @@ export function TodayPage() {
       >
       <div
         className={cn(
-          'relative shrink-0 overflow-hidden px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
+          'relative shrink-0 px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
           'transition-[max-height,opacity,filter,padding] duration-[2000ms] ease-in-out',
+          screensaver ? 'overflow-hidden' : 'overflow-visible',
           pulseBreakdownOpen ? 'z-40' : 'z-20',
           screensaver && 'pointer-events-none opacity-0 blur-[1px]',
         )}
