@@ -204,7 +204,7 @@ export function TodoistTasksPanel({
 
       {error && <p className="mb-2 shrink-0 text-xs text-red-400">{error}</p>}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hidden">
+      <div className={cn('min-h-0 flex-1 overflow-y-auto scrollbar-hidden', !compact && 'overscroll-contain')}>
       <ul className="flex flex-col gap-1">
         {tasks.map((task) => {
           const overdue =

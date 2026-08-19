@@ -760,7 +760,7 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className="relative z-30 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5"
+      <div className={cn('relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5', pulseBreakdownOpen ? 'z-20' : 'z-30')}
         style={{
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
           gap: screensaver ? '0px' : undefined,
