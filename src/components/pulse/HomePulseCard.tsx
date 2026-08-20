@@ -198,7 +198,7 @@ export function HomePulseCard({
 
   return (
     <div
-      className={cn('relative', className)}
+      className={cn('relative rounded-full', className)}
       style={{ width: corePx, height: corePx }}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
@@ -220,19 +220,19 @@ export function HomePulseCard({
 
       <div
         className={cn(
-          'absolute left-1/2 top-[calc(100%+0.15rem)] z-40 -translate-x-1/2',
+          'absolute left-1/2 top-full z-40 -translate-x-1/2 pt-1',
           !mounted && 'pointer-events-none',
         )}
         aria-hidden={!mounted || closing}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
       >
         {mounted ? (
-          <div className="pt-1">
-            <PulseBreakdownPanel
-              contributors={contributors}
-              score={score}
-              closing={closing}
-            />
-          </div>
+          <PulseBreakdownPanel
+            contributors={contributors}
+            score={score}
+            closing={closing}
+          />
         ) : null}
       </div>
     </div>

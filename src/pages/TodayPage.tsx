@@ -8,6 +8,7 @@ import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { HabitifyHabitsCard } from '@/components/today/HabitifyHabitsCard'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
+import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
 import { getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
 import { HomeLogModal } from '@/components/today/HomeLogModal'
@@ -94,7 +95,7 @@ import { isWeeklyShutdownAnyDay } from '@/lib/devMode'
 import { Button } from '@/components/ui/Button'
 import { useSettings } from '@/context/SettingsContext'
 import { useScreensaver } from '@/context/ScreensaverContext'
-import { addDaysToDateString, cn, formatDate } from '@/lib/utils'
+import { addDaysToDateString, cn, formatDate, getWeekDates } from '@/lib/utils'
 import { getYesterdayDate } from '@/lib/dailyLog'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { cleanupStaleGoals } from '@/lib/goalCleanup'
@@ -106,12 +107,13 @@ export function TodayPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [viewDate, setViewDate] = useState(formatDate(new Date()))
-  const { log, workouts, loading, refresh, syncFromStore, removeWorkout } = useDailyLog(viewDate)
+  const { log, workouts, loading, refresh, syncFromStore, removeWorkout, addWorkout } = useDailyLog(viewDate)
   const { userId } = useAuth()
 
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
   const [tomorrowBlocks, setTomorrowBlocks] = useState<ScheduleBlock[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
+  const [weekWorkouts, setWeekWorkouts] = useState<Workout[]>([])
   const [streakLogs, setStreakLogs] = useState<DailyLog[]>([])
   const [showCalendar, setShowCalendar] = useState(false)
   const [showShutdown, setShowShutdown] = useState(false)
@@ -177,7 +179,6 @@ export function TodayPage() {
 
   const headerPulseScore = dayPulse.score
   const headerPulseLayoutPx = pulseCorePx(PULSE_HEADER_SCALE) + 8
-  const [pulseBreakdownOpen, setPulseBreakdownOpen] = useState(false)
   const shutdownAvailable = useShutdownAvailable(viewDate)
   const pastScheduleEnd = usePastScheduleEnd(settings.timelineEndHour)
   const [pastShutdownRequire, setPastShutdownRequire] = useState(() =>
@@ -262,9 +263,12 @@ export function TodayPage() {
   const loadData = useCallback(async () => {
     if (!userId) return
     const streakStart = formatDate(addDays(parseISO(viewDate), -400))
+    const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
+    const weekStart = weekDates[0]!
+    const weekEnd = weekDates[weekDates.length - 1]!
 
     if (isSupabaseConfigured) {
-      const { fetchScheduleBlocks, fetchGoals, fetchDailyLogs, upsertGoal } = await import('@/lib/supabase')
+      const { fetchScheduleBlocks, fetchGoals, fetchDailyLogs, fetchWorkouts, upsertGoal } = await import('@/lib/supabase')
       setBlocks((await fetchScheduleBlocks(userId, viewDate)).map(normalizeScheduleBlock))
       const { goals: cleaned, toRetire } = cleanupStaleGoals(await fetchGoals(userId))
       setGoals(cleaned)
@@ -272,6 +276,7 @@ export function TodayPage() {
         await upsertGoal(duplicate)
       }
       setStreakLogs(await fetchDailyLogs(userId, streakStart, viewDate))
+      setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
     } else {
       setBlocks(localStore.getScheduleBlocks(viewDate).map(normalizeScheduleBlock))
       const { goals: cleaned, toRetire } = cleanupStaleGoals(localStore.getGoals())
@@ -280,8 +285,9 @@ export function TodayPage() {
         localStore.upsertGoal(duplicate)
       }
       setStreakLogs(localStore.getDailyLogs(streakStart, viewDate))
+      setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
     }
-  }, [userId, viewDate])
+  }, [userId, viewDate, settings.weekStartsOn])
 
   const refreshStreakLogs = useCallback(async () => {
     if (!userId) return
@@ -712,7 +718,8 @@ export function TodayPage() {
           'relative shrink-0 px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
           'transition-[max-height,opacity,filter,padding] duration-[2000ms] ease-in-out',
           screensaver ? 'overflow-hidden' : 'overflow-visible',
-          pulseBreakdownOpen ? 'z-40' : 'z-20',
+          // Stay above the schedule grid so the lower half of the pulse stays hoverable.
+          'z-40',
           screensaver && 'pointer-events-none opacity-0 blur-[1px]',
         )}
         style={{
@@ -735,8 +742,7 @@ export function TodayPage() {
           </div>
           <div
             className={cn(
-              'pointer-events-none absolute inset-0 flex -translate-x-2 items-center justify-center overflow-visible',
-              pulseBreakdownOpen ? 'z-40' : 'z-20',
+              'pointer-events-none absolute inset-0 z-20 flex items-center justify-center overflow-visible',
             )}
           >
             {settings.showHomePulse && (
@@ -744,7 +750,6 @@ export function TodayPage() {
                 <HomePulseCard
                   score={headerPulseScore}
                   contributors={pulseContributors}
-                  onBreakdownOpenChange={setPulseBreakdownOpen}
                 />
               </div>
             )}
@@ -761,7 +766,7 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className={cn('relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5', pulseBreakdownOpen ? 'z-20' : 'z-30')}
+      <div className="relative z-20 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5"
         style={{
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
           gap: screensaver ? '0px' : undefined,
@@ -884,6 +889,26 @@ export function TodayPage() {
           <HabitifyHabitsCard
             viewDate={viewDate}
             className="w-full"
+          />
+          <WorkoutLogCard
+            date={viewDate}
+            goals={goals}
+            weekWorkouts={weekWorkouts}
+            workouts={workouts}
+            disabled={!userId || loading}
+            onAddWorkout={async (category, minutes) => {
+              await addWorkout(category, minutes)
+              const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
+              const weekStart = weekDates[0]!
+              const weekEnd = weekDates[weekDates.length - 1]!
+              if (isSupabaseConfigured) {
+                const { fetchWorkouts } = await import('@/lib/supabase')
+                if (userId) setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
+              } else {
+                setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
+              }
+              syncFromStore()
+            }}
           />
         </aside>
       </div>
