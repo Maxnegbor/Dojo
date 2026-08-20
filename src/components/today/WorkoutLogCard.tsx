@@ -4,8 +4,11 @@ import { Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useSettings } from '@/context/SettingsContext'
-import { getActiveGoalByMetricKey, hasTarget } from '@/lib/goals'
+import { getActiveGoalByMetricKey, hasTarget, normalizeGoal } from '@/lib/goals'
+import { goalTargetPeriod } from '@/lib/goalPeriod'
 import { getWeeklyWorkoutTotal } from '@/lib/metrics'
+import { OUTCOME_GOALS_CHANGED } from '@/lib/outcomeGoals'
+import { resolveWeeklyQuantityTarget } from '@/lib/pulseConfig'
 import {
   DEFAULT_WORKOUT_UNIT,
   getHomeLogWorkoutTypes,
@@ -13,7 +16,7 @@ import {
   workoutMetricKey,
 } from '@/lib/workoutTypes'
 import type { Goal, Workout, WorkoutCategory } from '@/types'
-import { cn, getWeekDates } from '@/lib/utils'
+import { cn, formatDuration, getWeekDates } from '@/lib/utils'
 
 interface WorkoutLogCardProps {
   date: string
@@ -22,6 +25,12 @@ interface WorkoutLogCardProps {
   workouts: Workout[]
   disabled?: boolean
   onAddWorkout: (category: WorkoutCategory, minutes: number) => Promise<void>
+}
+
+function formatVolume(amount: number, unit: string): string {
+  const timed = unit === 'min' || unit === 'mins' || unit === 'minutes'
+  if (timed) return formatDuration(amount)
+  return `${Math.round(amount * 100) / 100} ${unit}`
 }
 
 export function WorkoutLogCard({
@@ -36,17 +45,24 @@ export function WorkoutLogCard({
   const [workoutTypes, setWorkoutTypes] = useState(() => getHomeLogWorkoutTypes())
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [savingCategory, setSavingCategory] = useState<string | null>(null)
+  const [outcomeRevision, setOutcomeRevision] = useState(0)
 
   useEffect(() => {
-    const sync = () => setWorkoutTypes(getHomeLogWorkoutTypes())
-    window.addEventListener(WORKOUT_TYPES_CHANGED, sync)
-    window.addEventListener('user-storage-ready', sync)
+    const syncTypes = () => setWorkoutTypes(getHomeLogWorkoutTypes())
+    const syncOutcomes = () => setOutcomeRevision((n) => n + 1)
+    window.addEventListener(WORKOUT_TYPES_CHANGED, syncTypes)
+    window.addEventListener(OUTCOME_GOALS_CHANGED, syncOutcomes)
+    window.addEventListener('user-storage-ready', syncTypes)
+    window.addEventListener('user-storage-ready', syncOutcomes)
     return () => {
-      window.removeEventListener(WORKOUT_TYPES_CHANGED, sync)
-      window.removeEventListener('user-storage-ready', sync)
+      window.removeEventListener(WORKOUT_TYPES_CHANGED, syncTypes)
+      window.removeEventListener(OUTCOME_GOALS_CHANGED, syncOutcomes)
+      window.removeEventListener('user-storage-ready', syncTypes)
+      window.removeEventListener('user-storage-ready', syncOutcomes)
     }
   }, [])
 
+  // Recurring weekly volume uses Settings → weekStartsOn (default Monday → Sunday).
   const weekDates = useMemo(
     () => getWeekDates(parseISO(`${date}T12:00:00`), settings.weekStartsOn),
     [date, settings.weekStartsOn],
@@ -66,18 +82,32 @@ export function WorkoutLogCard({
   const weeklyGoalByType = useMemo(() => {
     const map = new Map<string, { logged: number; target: number; unit: string }>()
     for (const type of workoutTypes) {
-      const goal = getActiveGoalByMetricKey(goals, workoutMetricKey(type.id))
-      if (!goal || !hasTarget(goal)) continue
-      const target = Math.round(goal.target_value ?? 0)
-      if (target <= 0) continue
+      const metricKey = workoutMetricKey(type.id)
+      const unit = type.unit || DEFAULT_WORKOUT_UNIT
+
+      // Prefer outcome-goal weekly links (Goals page), then hybrid workout goals.
+      let target = resolveWeeklyQuantityTarget(metricKey, goals)
+      if (target == null) {
+        const hybrid = getActiveGoalByMetricKey(goals, metricKey)
+        if (hybrid && hasTarget(hybrid)) {
+          const normalized = normalizeGoal(hybrid)
+          if (goalTargetPeriod(normalized) === 'weekly') {
+            target = normalized.target_value
+          }
+        }
+      }
+
+      const rounded = target != null ? Math.round(target) : 0
+      if (rounded <= 0) continue
+
       map.set(type.id, {
         logged: getWeeklyWorkoutTotal(type.id, workoutsForWeek, weekDates),
-        target,
-        unit: goal.unit || type.unit || DEFAULT_WORKOUT_UNIT,
+        target: rounded,
+        unit,
       })
     }
     return map
-  }, [workoutTypes, goals, workoutsForWeek, weekDates])
+  }, [workoutTypes, goals, workoutsForWeek, weekDates, outcomeRevision])
 
   if (!settings.showWorkoutMetrics || workoutTypes.length === 0) {
     return null
@@ -148,7 +178,9 @@ export function WorkoutLogCard({
                     </span>
                     {hasWeeklyTarget ? (
                       <span className="block text-[10px] tabular-nums text-zinc-300/90">
-                        {weeklyGoal.logged} / {weeklyGoal.target} {weeklyGoal.unit || unit}
+                        {formatVolume(weeklyGoal.logged, weeklyGoal.unit || unit)}
+                        {' / '}
+                        {formatVolume(weeklyGoal.target, weeklyGoal.unit || unit)}
                       </span>
                     ) : null}
                   </div>
