@@ -228,9 +228,9 @@ export function WorkoutLogCard({
                           if (e.key === 'Enter') void logWorkout(type.id)
                         }}
                         className={cn(
-                          'w-full rounded-lg border border-zinc-700 bg-zinc-950/80 py-1.5 pl-2 pr-7 text-sm text-zinc-100',
+                          'w-full rounded-lg border border-zinc-700 bg-zinc-950 py-1.5 pl-2 pr-7 text-sm text-zinc-100',
                           'placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)]',
-                          'disabled:cursor-not-allowed disabled:opacity-60',
+                          'disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500',
                           '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
                         )}
                       />
@@ -244,7 +244,10 @@ export function WorkoutLogCard({
                       size="sm"
                       disabled={disabled || isSaving || !inputValue.trim()}
                       onClick={() => void logWorkout(type.id)}
-                      className="h-[34px] shrink-0 border-zinc-700 bg-zinc-950 hover:bg-zinc-900 px-2.5"
+                      className={cn(
+                        'h-[34px] shrink-0 border-zinc-700 bg-zinc-950 px-2.5 hover:bg-zinc-900',
+                        'disabled:pointer-events-none disabled:opacity-100 disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600',
+                      )}
                       aria-label={`Add ${type.label} ${unit}`}
                     >
                       <Plus size={14} />
