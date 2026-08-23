@@ -34,6 +34,7 @@ import {
   type HabitMorningDay,
 } from '@/lib/habitTypes'
 import { formatHabitCardSubtitle } from '@/lib/habitRamp'
+import { HABITIFY_CHANGED, isHabitifyConnected } from '@/lib/habitifyStore'
 import { clearFocusGoalInSettings } from '@/lib/focusGoalSync'
 import {
   METRIC_UNIT_OPTIONS,
@@ -84,6 +85,7 @@ import { enableMetricsSection } from '@/lib/metricsSections'
 import {
   createMetricCategory,
   getMetricLibraryCategories,
+  KIND_CATEGORY_FALLBACK,
   migrateMetricLibraryCategories,
   storedLibraryCategoryId,
   UNGROUPED_CATEGORY_ID,
@@ -361,10 +363,21 @@ export function MetricsEditor({
 
   const today = formatDate(new Date())
   const habits = useHabitTypes()
+  const [habitifyConnected, setHabitifyConnected] = useState(() => isHabitifyConnected())
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutTypeDefinition[]>(() => getWorkoutTypes())
   const [goalCategories, setGoalCategories] = useState<GoalCategoryDefinition[]>(() =>
     getMetricLibraryCategories(),
   )
+
+  useEffect(() => {
+    const sync = () => setHabitifyConnected(isHabitifyConnected())
+    window.addEventListener(HABITIFY_CHANGED, sync)
+    window.addEventListener('user-storage-ready', sync)
+    return () => {
+      window.removeEventListener(HABITIFY_CHANGED, sync)
+      window.removeEventListener('user-storage-ready', sync)
+    }
+  }, [])
   const [form, setForm] = useState<MetricFormState | null>(null)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [kindPickerOpen, setKindPickerOpen] = useState(false)
@@ -446,6 +459,10 @@ export function MetricsEditor({
   }
 
   const openAddHabit = (categoryId: string = kindPickerCategoryId) => {
+    if (isHabitifyConnected()) {
+      setKindPickerOpen(false)
+      return
+    }
     setKindPickerOpen(false)
     setForm(emptyForm('habit', 'add', categoryId))
   }
@@ -1588,7 +1605,13 @@ export function MetricsEditor({
   }
 
   const kindOptions = [
-    { id: 'habit' as const, label: 'Habit', description: 'Done or not done', icon: Repeat },
+    {
+      id: 'habit' as const,
+      label: 'Habit',
+      description: habitifyConnected ? 'Synced with Habitify' : 'Done or not done',
+      icon: Repeat,
+      hidden: habitifyConnected,
+    },
     { id: 'goal' as const, label: 'Number', description: 'Pages, hours, kg…', icon: Shapes },
     { id: 'workout' as const, label: 'Workout', description: 'Training sessions', icon: Dumbbell },
     { id: 'sleep' as const, label: 'Sleep field', description: 'Duration, bedtime, scores', icon: Moon },
@@ -1642,24 +1665,50 @@ export function MetricsEditor({
     </Card>
   )
 
-  const groupedCategories = goalCategories.filter((category) => {
-    if (category.id !== UNGROUPED_CATEGORY_ID) return true
-    return (
-      libraryItems.some((item) => item.categoryId === UNGROUPED_CATEGORY_ID) ||
-      goalCategories.length === 1
-    )
-  })
+  const groupedCategories = useMemo(() => {
+    const base = goalCategories.filter((category) => {
+      if (category.id !== UNGROUPED_CATEGORY_ID) return true
+      return (
+        libraryItems.some((item) => item.categoryId === UNGROUPED_CATEGORY_ID) ||
+        goalCategories.length === 1
+      )
+    })
+    if (
+      habitifyConnected &&
+      !base.some((category) => category.id === KIND_CATEGORY_FALLBACK.habit)
+    ) {
+      return [
+        { id: KIND_CATEGORY_FALLBACK.habit, label: 'Habits' },
+        ...base,
+      ]
+    }
+    return base
+  }, [goalCategories, libraryItems, habitifyConnected])
 
-  const metricsEmpty = libraryItems.length === 0
+  const metricsEmpty = libraryItems.length === 0 && !habitifyConnected
 
   const renderCategoryGrid = (categoryId: string) => {
     const items = libraryItems.filter((item) => item.categoryId === categoryId)
+    const isHabitsCategory = categoryId === KIND_CATEGORY_FALLBACK.habit
+    const showHabitifyNotice = habitifyConnected && isHabitsCategory
 
     return (
-      <div className="grid items-start gap-3 sm:grid-cols-2">
-        {items.map((item) => (
-          <div key={item.key}>{renderLibraryItem(item)}</div>
-        ))}
+      <div className="space-y-3">
+        {showHabitifyNotice ? (
+          <p className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-3 py-2.5 text-xs leading-relaxed text-zinc-400">
+            You can’t add habit metrics in Dojo while Habitify is connected — habits are synced and
+            linked with Habitify. Manage them there; they’ll show on Home.
+          </p>
+        ) : null}
+        {items.length > 0 ? (
+          <div className="grid items-start gap-3 sm:grid-cols-2">
+            {items.map((item) => (
+              <div key={item.key}>{renderLibraryItem(item)}</div>
+            ))}
+          </div>
+        ) : showHabitifyNotice ? null : (
+          <p className="text-xs text-zinc-600">No metrics in this category yet.</p>
+        )}
       </div>
     )
   }

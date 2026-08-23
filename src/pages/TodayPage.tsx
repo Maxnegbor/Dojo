@@ -892,12 +892,25 @@ export function TodayPage() {
           />
           <WorkoutLogCard
             date={viewDate}
+            userId={userId}
             goals={goals}
             weekWorkouts={weekWorkouts}
             workouts={workouts}
             disabled={!userId || loading}
             onAddWorkout={async (category, minutes) => {
               await addWorkout(category, minutes)
+              const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
+              const weekStart = weekDates[0]!
+              const weekEnd = weekDates[weekDates.length - 1]!
+              if (isSupabaseConfigured) {
+                const { fetchWorkouts } = await import('@/lib/supabase')
+                if (userId) setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
+              } else {
+                setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
+              }
+              syncFromStore()
+            }}
+            onWeekEdited={async () => {
               const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
               const weekStart = weekDates[0]!
               const weekEnd = weekDates[weekDates.length - 1]!

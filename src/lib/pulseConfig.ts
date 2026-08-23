@@ -379,23 +379,56 @@ export function formatPulseOrGroupLabel(
   return `${names.slice(0, -1).join(', ')}, or ${names[names.length - 1]}`
 }
 
+function normalizeWorkoutMatchToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
 /** Weekly quantity target from outcome links / hybrid goals (not Pulse daily override). */
 export function resolveWeeklyQuantityTarget(
   metricKey: MetricKey,
   hybridGoals: Goal[],
 ): number | null {
+  const isWorkout = metricKey.startsWith('workout_')
+  const workoutTypeId = isWorkout ? metricKey.slice('workout_'.length) : null
+  const workoutType = workoutTypeId
+    ? getWorkoutTypes().find((type) => type.id === workoutTypeId)
+    : null
+  const workoutLabelToken = workoutType
+    ? normalizeWorkoutMatchToken(workoutType.label)
+    : workoutTypeId
+      ? normalizeWorkoutMatchToken(workoutTypeId)
+      : null
+
   for (const goal of getActiveOutcomeGoals()) {
     const weekly = goal.links.find(
       (link) => link.metric_key === metricKey && link.period === 'weekly',
     )
     if (weekly && weekly.target_value > 0) return weekly.target_value
 
-    // Workouts on a weekly-recurring goal often store volume as the link target even
-    // when link.period was left on daily — treat that target as weekly volume.
-    if (metricKey.startsWith('workout_') && goal.recurrence === 'weekly') {
-      const link = goal.links.find((entry) => entry.metric_key === metricKey)
-      if (link && link.target_value > 0 && link.period !== 'by_deadline') {
-        return link.target_value
+    // Workout volume targets are treated as weekly even when link.period / recurrence
+    // were left on daily or a custom cadence (common for Exercise outcome goals).
+    if (isWorkout) {
+      const exact = goal.links.find(
+        (entry) =>
+          entry.metric_key === metricKey &&
+          entry.target_value > 0 &&
+          entry.period !== 'by_deadline',
+      )
+      if (exact) return exact.target_value
+
+      if (workoutLabelToken) {
+        const byLabel = goal.links.find((entry) => {
+          if (!entry.metric_key.startsWith('workout_') || entry.target_value <= 0) return false
+          if (entry.period === 'by_deadline') return false
+          const linkTypeId = entry.metric_key.slice('workout_'.length)
+          if (normalizeWorkoutMatchToken(linkTypeId) === normalizeWorkoutMatchToken(workoutTypeId!)) {
+            return true
+          }
+          const linkType = getWorkoutTypes().find((type) => type.id === linkTypeId)
+          const linkLabel = linkType?.label || metricLabel(entry.metric_key)
+          return normalizeWorkoutMatchToken(linkLabel) === workoutLabelToken
+        })
+        if (byLabel) return byLabel.target_value
       }
     }
   }
@@ -403,7 +436,20 @@ export function resolveWeeklyQuantityTarget(
   const hybridRaw = hybridGoals.find((g) => g.is_active && g.metric_key === metricKey)
   if (hybridRaw && hasTarget(hybridRaw) && (hybridRaw.target_value ?? 0) > 0) {
     const hybrid = normalizeGoal(hybridRaw)
-    if (goalTargetPeriod(hybrid) === 'weekly') return hybrid.target_value
+    if (goalTargetPeriod(hybrid) === 'weekly' || isWorkout) return hybrid.target_value
+  }
+
+  // Last resort: hybrid workout goal matched by label (renamed types / slug drift).
+  if (isWorkout && workoutLabelToken) {
+    for (const goal of hybridGoals) {
+      if (!goal.is_active || !goal.metric_key.startsWith('workout_') || !hasTarget(goal)) continue
+      const target = goal.target_value ?? 0
+      if (target <= 0) continue
+      const typeId = goal.metric_key.slice('workout_'.length)
+      const type = getWorkoutTypes().find((entry) => entry.id === typeId)
+      const label = type?.label || goal.name || typeId
+      if (normalizeWorkoutMatchToken(label) === workoutLabelToken) return target
+    }
   }
 
   return null

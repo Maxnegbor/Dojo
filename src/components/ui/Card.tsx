@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 interface CardProps {
   children?: ReactNode
   className?: string
-  title?: string
+  title?: ReactNode
   action?: ReactNode
   onClick?: () => void
   style?: CSSProperties
