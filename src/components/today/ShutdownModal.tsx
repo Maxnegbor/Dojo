@@ -48,6 +48,8 @@ import {
   typedReminderMatches,
 } from '@/lib/typedReminder'
 import { isTodoistConnected } from '@/lib/todoistStore'
+import { experimentsNeedingConfounderLog } from '@/lib/experiments'
+import { ExperimentConfoundersSection } from '@/components/experiments/ExperimentConfoundersSection'
 import type { DailyLog, DailyShutdownStepId, Goal, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import type { ScheduleTemplate } from '@/lib/scheduleTemplates'
 import { cn } from '@/lib/utils'
@@ -161,16 +163,24 @@ export function ShutdownModal({
   const typedReminderText = getTypedReminderText(settings, 'shutdown')
 
   const visibleSteps = useMemo((): ShutdownFlowStep[] => {
+    const needsExperiments = experimentsNeedingConfounderLog('shutdown', viewDate).length > 0
     const next: ShutdownFlowStep[] = configuredSteps.filter((id) => {
       if (id === 'habits') return false
       if (id === 'checklist') return checklistGroups.length > 0
       if (id === 'todoist') return isTodoistConnected()
+      if (id === 'experiments') return needsExperiments
       return true
     })
+    // Older saved step lists may omit experiments — still show when running.
+    if (needsExperiments && !next.includes('experiments')) {
+      const scheduleIdx = next.indexOf('schedule')
+      if (scheduleIdx >= 0) next.splice(scheduleIdx + 1, 0, 'experiments')
+      else next.push('experiments')
+    }
     const base = next.length > 0 ? next : (['wrap-up'] as ShutdownFlowStep[])
     if (requireTypedReminder) return [...base, 'typed-reminder']
     return base
-  }, [checklistGroups.length, configuredSteps, requireTypedReminder])
+  }, [checklistGroups.length, configuredSteps, requireTypedReminder, viewDate])
 
   const [step, setStep] = useState<ShutdownFlowStep>(() => visibleSteps[0] ?? 'wrap-up')
   const [checklistChecked, setChecklistChecked] = useState<Set<string>>(() => new Set())
@@ -496,6 +506,10 @@ export function ShutdownModal({
                 </div>
               ))}
             </div>
+          )}
+
+          {step === 'experiments' && (
+            <ExperimentConfoundersSection date={viewDate} surface="shutdown" />
           )}
 
           {step === 'typed-reminder' && (

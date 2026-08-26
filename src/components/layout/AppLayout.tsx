@@ -1,6 +1,6 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Brain, Flag, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
+import { Beaker, Brain, Flag, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MissedLogGate } from '@/components/layout/MissedLogGate'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
@@ -16,6 +16,7 @@ const NAV = [
   { to: '/', label: 'Home', icon: Sparkles },
   { to: '/focus', label: 'Focus', icon: Brain, setting: 'showFocusPage' as const },
   { to: '/goals', label: 'Goals', icon: Flag },
+  { to: '/experiments', label: 'Experiments', icon: Beaker },
   { to: '/metrics', label: 'Metrics', icon: Target },
   { to: '/overview', label: 'Overview', icon: LayoutDashboard },
 ]
@@ -104,7 +105,7 @@ function SidebarMainNav({
   }, [updateIndicator])
 
   return (
-    <nav ref={navRef} className="relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto py-2 scrollbar-hidden">
+    <nav ref={navRef} className="relative flex shrink-0 flex-col gap-0.5 py-2">
       {indicator && (
         <div
           aria-hidden
@@ -122,6 +123,7 @@ function SidebarMainNav({
           to={to}
           end={to === '/'}
           title={label}
+          aria-label={label}
           onClick={() => {
             if (to === '/') onHomeClick()
           }}
@@ -157,13 +159,6 @@ function sidebarLabelClass(expanded: boolean) {
     expanded
       ? 'max-w-none flex-1 opacity-100 duration-150'
       : 'max-w-0 flex-none opacity-0 duration-100',
-  )
-}
-
-function sidebarHeaderLabelClass(expanded: boolean) {
-  return cn(
-    'min-w-0 overflow-hidden transition-opacity',
-    expanded ? 'opacity-100 duration-150' : 'max-w-0 opacity-0 duration-100',
   )
 }
 
@@ -233,32 +228,13 @@ export function AppLayout() {
       <aside className={cn('relative z-30 w-14 shrink-0 transition-opacity duration-[2000ms] ease-in-out', screensaver && 'opacity-0 pointer-events-none')}>
         <div
           className={cn(
-            'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-hidden border-r border-zinc-800/80 bg-[#06060b]',
+            'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-x-hidden overflow-y-auto border-r border-zinc-800/80 bg-[#06060b]',
             'transition-[width] duration-200 ease-in-out',
             sidebarExpanded && `${SIDEBAR_EXPANDED_WIDTH_CLASS} shadow-[4px_0_24px_rgba(0,0,0,0.5)]`,
           )}
           onPointerEnter={handleSidebarPointerEnter}
           onPointerLeave={handleSidebarPointerLeave}
         >
-        <NavLink
-          to="/"
-          end
-          title="Home"
-          onClick={() => requestScheduleScrollToNow()}
-          className="flex shrink-0 items-center border-b border-zinc-800/80 py-4 transition-opacity hover:opacity-90"
-          aria-label="Go to Home"
-        >
-          <div className={SIDEBAR_ICON_SLOT}>
-            <div
-              className="h-9 w-9 rounded-lg bg-[var(--accent-600)]"
-              aria-hidden
-            />
-          </div>
-          <div className={sidebarHeaderLabelClass(sidebarExpanded)}>
-            <h1 className="text-sm font-bold tracking-tight text-zinc-100">Dojo</h1>
-          </div>
-        </NavLink>
-
         <SidebarMainNav
           items={navItems}
           pathname={pathname}
@@ -268,7 +244,7 @@ export function AppLayout() {
 
         <div
           className={cn(
-            'flex shrink-0 flex-col gap-2 border-t border-zinc-800/80 py-2',
+            'mt-auto flex shrink-0 flex-col gap-2 border-t border-zinc-800/80 py-2',
             sidebarExpanded && 'px-1.5',
           )}
         >

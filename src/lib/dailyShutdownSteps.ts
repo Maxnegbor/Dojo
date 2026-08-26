@@ -27,12 +27,18 @@ export const DAILY_SHUTDOWN_STEP_PRESETS: DailyShutdownStepPreset[] = [
     label: 'Checklist',
     description: 'Optional follow-up checkboxes from your shutdown checklist',
   },
+  {
+    id: 'experiments',
+    label: 'Experiments',
+    description: 'Tick confounders for running experiments (shown when needed)',
+  },
 ]
 
 export const DEFAULT_DAILY_SHUTDOWN_STEPS: DailyShutdownStepId[] = [
   'wrap-up',
   'todoist',
   'schedule',
+  'experiments',
 ]
 
 const PRESET_IDS = new Set<DailyShutdownStepId>(DAILY_SHUTDOWN_STEP_PRESETS.map((p) => p.id))

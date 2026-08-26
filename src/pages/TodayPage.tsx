@@ -9,6 +9,7 @@ import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { HabitifyHabitsCard } from '@/components/today/HabitifyHabitsCard'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
 import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
+import { ExperimentHomeCard } from '@/components/today/ExperimentHomeCard'
 import { getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
 import { HomeLogModal } from '@/components/today/HomeLogModal'
@@ -894,6 +895,12 @@ export function TodayPage() {
           <HabitifyHabitsCard
             viewDate={viewDate}
             className="w-full"
+          />
+          <ExperimentHomeCard
+            date={viewDate}
+            logs={streakLogs}
+            workouts={[...weekWorkouts, ...workouts]}
+            hybridGoals={goals}
           />
           <WorkoutLogCard
             date={viewDate}

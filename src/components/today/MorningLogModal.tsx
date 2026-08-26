@@ -10,8 +10,10 @@ import {
 } from '@/components/ui/DurationMetricInput'
 import { TypedReminderConfirm } from '@/components/today/TypedReminderConfirm'
 import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
+import { ExperimentConfoundersSection } from '@/components/experiments/ExperimentConfoundersSection'
 import { useSettings } from '@/context/SettingsContext'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
+import { experimentsNeedingConfounderLog } from '@/lib/experiments'
 import { computeMorningLogFields, formatMorningMinutes } from '@/lib/morningLog'
 import {
   getEnabledMorningLogMetrics,
@@ -42,7 +44,7 @@ import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import type { DailyCheckGroup, DailyLog, Goal, MorningLog, Workout } from '@/types'
 import { cn, formatUnknownError, parseLocalDate } from '@/lib/utils'
 
-type MorningLogStep = 'log' | 'todoist' | 'checklist' | 'reminder'
+type MorningLogStep = 'log' | 'todoist' | 'checklist' | 'experiments' | 'reminder'
 
 export interface MorningLogSavePayload {
   morningLog?: MorningLog | null
@@ -193,16 +195,18 @@ export function MorningLogModal({
   const hasChecklist = checklistGroups.length > 0
   const showTodoist = isTodoistConnected()
   const hasLogFields = loggableMetrics.length > 0 || enabledMorningMetrics.length > 0
+  const needsExperiments = experimentsNeedingConfounderLog('morning', date).length > 0
 
   const flowSteps = useMemo((): MorningLogStep[] => {
     const steps: MorningLogStep[] = []
     if (hasLogFields) steps.push('log')
     if (showTodoist) steps.push('todoist')
     if (hasChecklist) steps.push('checklist')
+    if (needsExperiments) steps.push('experiments')
     if (requireTypedReminder) steps.push('reminder')
     if (steps.length === 0) steps.push('log')
     return steps
-  }, [hasChecklist, hasLogFields, requireTypedReminder, showTodoist])
+  }, [hasChecklist, hasLogFields, needsExperiments, requireTypedReminder, showTodoist])
 
   const [step, setStep] = useState<MorningLogStep>(() => flowSteps[0])
 
@@ -293,9 +297,10 @@ export function MorningLogModal({
   const typedReminderReady =
     !requireTypedReminder || typedReminderMatches(typedReminderText, typedReminderValue)
 
-  const hasMoreAfterLog = showTodoist || hasChecklist || requireTypedReminder
-  const hasMoreAfterTodoist = hasChecklist || requireTypedReminder
-  const hasMoreAfterChecklist = requireTypedReminder
+  const hasMoreAfterLog = showTodoist || hasChecklist || needsExperiments || requireTypedReminder
+  const hasMoreAfterTodoist = hasChecklist || needsExperiments || requireTypedReminder
+  const hasMoreAfterChecklist = needsExperiments || requireTypedReminder
+  const hasMoreAfterExperiments = requireTypedReminder
 
   const toggleCheck = (id: string) => {
     setChecked((prev) => {
@@ -404,17 +409,25 @@ export function MorningLogModal({
     commitLogStepInputs()
     if (showTodoist) setStep('todoist')
     else if (hasChecklist) setStep('checklist')
+    else if (needsExperiments) setStep('experiments')
     else if (requireTypedReminder) setStep('reminder')
     else void handleFinish()
   }
 
   const goNextFromTodoist = () => {
     if (hasChecklist) setStep('checklist')
+    else if (needsExperiments) setStep('experiments')
     else if (requireTypedReminder) setStep('reminder')
     else void handleFinish()
   }
 
   const goNextFromChecklist = () => {
+    if (needsExperiments) setStep('experiments')
+    else if (requireTypedReminder) setStep('reminder')
+    else void handleFinish()
+  }
+
+  const goNextFromExperiments = () => {
     if (requireTypedReminder) setStep('reminder')
     else void handleFinish()
   }
@@ -426,7 +439,9 @@ export function MorningLogModal({
         ? 'Todoist'
         : step === 'checklist'
           ? 'Morning checklist'
-          : 'Reminder'
+          : step === 'experiments'
+            ? 'Experiments'
+            : 'Reminder'
   const stepSubtitle =
     step === 'log'
       ? format(parseLocalDate(date), 'EEEE MMMM do')
@@ -434,7 +449,9 @@ export function MorningLogModal({
         ? 'Tick off tasks or add anything for today'
         : step === 'checklist'
           ? 'Optional — tap what you’ve done'
-          : 'Type your reminder to finish'
+          : step === 'experiments'
+            ? 'Tick confounders that applied'
+            : 'Type your reminder to finish'
 
   const setMetricValue = (id: string, value: string) => {
     setMetricValues((prev) => ({ ...prev, [id]: value }))
@@ -629,6 +646,10 @@ export function MorningLogModal({
             </div>
           )}
 
+          {step === 'experiments' && (
+            <ExperimentConfoundersSection date={date} surface="morning" />
+          )}
+
           {step === 'reminder' && (
             <TypedReminderConfirm
               text={typedReminderText}
@@ -661,6 +682,11 @@ export function MorningLogModal({
           {step === 'checklist' && (
             <Button onClick={goNextFromChecklist} className="w-full" disabled={saving}>
               {saving ? 'Saving…' : hasMoreAfterChecklist ? 'Continue' : 'Finish morning log'}
+            </Button>
+          )}
+          {step === 'experiments' && (
+            <Button onClick={goNextFromExperiments} className="w-full" disabled={saving}>
+              {saving ? 'Saving…' : hasMoreAfterExperiments ? 'Continue' : 'Finish morning log'}
             </Button>
           )}
           {step === 'reminder' && (

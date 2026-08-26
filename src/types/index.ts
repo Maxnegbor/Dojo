@@ -175,6 +175,80 @@ export interface OutcomeGoal {
   updated_at: string
 }
 
+/** Lifestyle experiment protocol (scientific method). */
+export type ExperimentProtocol =
+  | 'randomized_crossover'
+  | 'randomized_ab'
+  | 'abab'
+  | 'before_after'
+  | 'repeated_crossover'
+
+export type ExperimentStatus = 'draft' | 'running' | 'completed'
+
+/** A = intervention, B = control / baseline. */
+export type ExperimentArm = 'A' | 'B'
+
+export interface ExperimentScheduleDay {
+  date: string
+  arm: ExperimentArm
+}
+
+export interface ExperimentAdherenceEntry {
+  date: string
+  followed: boolean
+}
+
+/** Named confounder to track day-by-day during an experiment. */
+export interface ExperimentConfounder {
+  id: string
+  label: string
+}
+
+/** Per-day ticks for confounders (id → present that day). */
+export interface ExperimentConfounderLog {
+  date: string
+  ticks: Record<string, boolean>
+}
+
+/** Where Dojo prompts for confounder ticks. */
+export type ExperimentConfounderLogSurface = 'home_log' | 'shutdown' | 'morning'
+
+export interface ExperimentDuration {
+  mode: 'observations' | 'end_date'
+  /** Day count when mode is observations. */
+  observations?: number
+  /** Inclusive YYYY-MM-DD when mode is end_date. */
+  end_date?: string
+}
+
+/**
+ * Self-experiment: question → protocol → generated day schedule → outcome metrics.
+ */
+export interface Experiment {
+  id: string
+  title: string
+  /** "Does ___ cause ___?" */
+  cause: string
+  effect: string
+  intervention: string
+  control: string
+  primary_metric_key: MetricKey
+  secondary_metric_keys: MetricKey[]
+  confounders: ExperimentConfounder[]
+  /** Day-level confounder ticks for controlling results. */
+  confounder_logs: ExperimentConfounderLog[]
+  /** Surfaces that show confounder checkboxes. Default: home_log + shutdown. */
+  confounder_log_surfaces: ExperimentConfounderLogSurface[]
+  protocol: ExperimentProtocol
+  duration: ExperimentDuration
+  start_date: string
+  status: ExperimentStatus
+  schedule: ExperimentScheduleDay[]
+  adherence: ExperimentAdherenceEntry[]
+  created_at: string
+  updated_at: string
+}
+
 export interface Reminder {
   id: string
   user_id: string
@@ -225,7 +299,13 @@ export type DailyCheckItem = WeeklyShutdownCheckItem
 export type DailyCheckGroup = WeeklyShutdownCheckGroup
 
 /** Built-in steps available for the daily shutdown flow. */
-export type DailyShutdownStepId = 'wrap-up' | 'habits' | 'todoist' | 'schedule' | 'checklist'
+export type DailyShutdownStepId =
+  | 'wrap-up'
+  | 'habits'
+  | 'todoist'
+  | 'schedule'
+  | 'checklist'
+  | 'experiments'
 
 export interface AppSettings {
   weekStartsOn: WeekStartDay

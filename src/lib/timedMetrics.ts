@@ -1,8 +1,15 @@
-import { formatDuration } from '@/lib/utils'
-
 export const TIMED_METRIC_UNIT = 'hrs:min'
 
-export const METRIC_UNIT_OPTIONS = ['hrs', 'min', TIMED_METRIC_UNIT, 'kg', 'steps', 'pages'] as const
+export const METRIC_UNIT_OPTIONS = [
+  'numeric',
+  'hrs',
+  'min',
+  TIMED_METRIC_UNIT,
+  'kg',
+  'steps',
+  'pages',
+  '%',
+] as const
 
 export function isTimedMetricUnit(unit: string): boolean {
   const normalized = unit.trim().toLowerCase().replace(/\s/g, '')
@@ -46,18 +53,32 @@ export function parseHrsMinToMinutes(input: string): number | null {
   return asInt
 }
 
+/** Stored minutes → consistent hours label (e.g. `1 hrs`, `2.5 hrs`). */
+export function formatMinutesAsHours(minutes: number): string {
+  const hrs = Math.max(0, minutes) / 60
+  const rounded = Math.round(hrs * 10) / 10
+  const label = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return `${label} hrs`
+}
+
+function isMinuteUnit(unit: string): boolean {
+  return unit === 'min' || unit === 'min/wk'
+}
+
 export function formatMetricAmount(value: number, unit: string, metricKey?: string): string {
   if (usesTimedMetricDisplay(unit, metricKey)) return minutesToHrsMinInput(value)
-  if (unit === 'min' || unit === 'min/wk') return formatDuration(value)
+  if (isMinuteUnit(unit)) return formatMinutesAsHours(value)
   if (unit === 'steps') return Math.round(value).toLocaleString()
   if (unit === 'hrs' || unit === 'hrs/night') return value > 0 ? value.toFixed(1) : '0'
+  if (unit === 'numeric') return Number.isInteger(value) ? String(value) : String(value)
   return `${value} ${unit}`
 }
 
 export function formatMetricAmountWithUnit(value: number, unit: string, metricKey?: string): string {
   const amount = formatMetricAmount(value, unit, metricKey)
   if (usesTimedMetricDisplay(unit, metricKey)) return amount
-  if (unit === 'min' || unit === 'min/wk') return amount
+  if (isMinuteUnit(unit)) return amount
+  if (unit === 'numeric') return amount
   if (unit === 'steps' || unit === 'hrs' || unit === 'hrs/night') return `${amount} ${unit}`
   return amount
 }
@@ -68,5 +89,7 @@ export function formatGoalTargetLabel(
   metricKey?: string,
 ): string {
   if (usesTimedMetricDisplay(unit, metricKey)) return formatMetricAmount(value, unit, metricKey)
+  if (isMinuteUnit(unit)) return formatMinutesAsHours(value)
+  if (unit === 'numeric') return formatMetricAmount(value, unit, metricKey)
   return `${value} ${unit}`
 }

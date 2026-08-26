@@ -293,12 +293,14 @@ export function migrateOutcomeGoalsFromHybridGoals(hybridGoals: Goal[]): boolean
 
     if (target_value == null || target_value <= 0) continue
 
-    const now = goal.created_at || new Date().toISOString()
+    // History starts when the outcome goal appears — don't inherit ancient hybrid timestamps.
+    const now = new Date().toISOString()
     const start_value =
       isWeightGoal(goal) && goal.goal_weight_start != null ? goal.goal_weight_start : null
     seeded.push({
       id: newId(),
       title: goal.name,
+      start_date: formatDate(new Date()),
       deadline: goal.period_end_date,
       recurrence: 'weekly',
       is_active: true,
@@ -863,12 +865,17 @@ export function listOutcomeGoalPeriods(
   count = 12,
 ): Array<{ start: string; end: string; isCurrent: boolean }> {
   const asOfStr = formatDate(asOf)
+  const goalStart = resolveOutcomeGoalStartDate(goal)
   const periods: Array<{ start: string; end: string; isCurrent: boolean }> = []
 
   if (goal.recurrence === 'weekly') {
+    // Week containing goal start is the first countable week (Mon–Sun), even mid-week starts.
+    const startWeek = getWeekDates(parseISO(`${goalStart}T12:00:00`), weekStartsOn)
+    const earliestWeekStart = startWeek[0]!
     const starts = getWeekStartsBefore(asOf, weekStartsOn, count)
     for (let i = starts.length - 1; i >= 0; i--) {
       const start = starts[i]!
+      if (start < earliestWeekStart) continue
       const week = getWeekDates(parseISO(`${start}T12:00:00`), weekStartsOn)
       const end = week[week.length - 1]!
       periods.push({ start, end, isCurrent: asOfStr >= start && asOfStr <= end })
@@ -879,6 +886,7 @@ export function listOutcomeGoalPeriods(
   if (goal.recurrence === 'daily') {
     for (let i = 0; i < count; i++) {
       const day = formatDate(addDays(asOf, -i))
+      if (day < goalStart) break
       periods.push({ start: day, end: day, isCurrent: i === 0 })
     }
     return periods
@@ -888,6 +896,8 @@ export function listOutcomeGoalPeriods(
   let end = asOfStr
   for (let i = 0; i < count; i++) {
     const start = formatDate(addDays(parseISO(`${end}T12:00:00`), -(span - 1)))
+    // Drop windows that end before the goal existed.
+    if (end < goalStart) break
     periods.push({ start, end, isCurrent: i === 0 })
     end = formatDate(addDays(parseISO(`${start}T12:00:00`), -1))
   }
