@@ -69,7 +69,7 @@ export function OverviewGoalsSection({ progressList }: OverviewGoalsSectionProps
                   >
                     <Check
                       size={11}
-                      className={entry.hit ? 'text-emerald-400' : 'text-zinc-600'}
+                      className={entry.onPace ? 'text-emerald-400' : 'text-zinc-600'}
                     />
                     <span className="truncate">
                       {entry.label}

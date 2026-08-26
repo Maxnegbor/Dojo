@@ -144,6 +144,11 @@ export interface OutcomeGoalLink {
   /** @deprecated Ignored in the UI; stored links still include a role. */
   role: OutcomeGoalLinkRole
   target_value: number
+  /**
+   * Optional baseline. When set, progress is measured from start → target
+   * instead of from 0 → target (e.g. weight bulk/cut).
+   */
+  start_value?: number | null
   comparator: OutcomeGoalComparator
   period: OutcomeGoalLinkPeriod
 }
@@ -155,6 +160,8 @@ export interface OutcomeGoalLink {
 export interface OutcomeGoal {
   id: string
   title: string
+  /** Optional goal window start (YYYY-MM-DD). When omitted, uses created date. */
+  start_date?: string
   deadline?: string
   /** How often this goal recurs. */
   recurrence: OutcomeGoalRecurrence

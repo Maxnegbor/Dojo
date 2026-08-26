@@ -1,7 +1,6 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Brain, Flag, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
-import { DojoLogo } from '@/components/ui/DojoLogo'
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MissedLogGate } from '@/components/layout/MissedLogGate'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
@@ -250,9 +249,10 @@ export function AppLayout() {
           aria-label="Go to Home"
         >
           <div className={SIDEBAR_ICON_SLOT}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-600)] text-white">
-              <DojoLogo size={20} />
-            </div>
+            <div
+              className="h-9 w-9 rounded-lg bg-[var(--accent-600)]"
+              aria-hidden
+            />
           </div>
           <div className={sidebarHeaderLabelClass(sidebarExpanded)}>
             <h1 className="text-sm font-bold tracking-tight text-zinc-100">Dojo</h1>
@@ -312,7 +312,11 @@ export function AppLayout() {
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           id="dojo-bg-effects"
-          className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+          className={cn(
+            'pointer-events-none absolute inset-0 z-0 overflow-hidden',
+            pathname === '/' && 'home-atmosphere',
+            pathname === '/' && screensaver && 'home-atmosphere--screensaver',
+          )}
           aria-hidden
         />
         <main

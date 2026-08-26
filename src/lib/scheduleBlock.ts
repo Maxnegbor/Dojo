@@ -146,19 +146,34 @@ export function cloneScheduleBlocksForDate(
   }))
 }
 
-/** Wipe `existing` on the target date, then persist `nextBlocks` (already dated). */
+/** Wipe `existing` on the target date, then persist `nextBlocks` (already dated).
+ * When `preservePlanLinkedForDate` is set, blocks linked to that day's exercise plan
+ * stay put (template / paste overlays around them).
+ */
 export async function replaceScheduleBlocksForDate(
   existing: ScheduleBlock[],
   nextBlocks: ScheduleBlock[],
+  options?: { preservePlanLinkedForDate?: string },
 ): Promise<ScheduleBlock[]> {
+  const preserveIds = new Set<string>()
+  if (options?.preservePlanLinkedForDate) {
+    const { getPlannedWorkoutsForDate } = await import('@/lib/exercisePlan')
+    for (const plan of getPlannedWorkoutsForDate(options.preservePlanLinkedForDate)) {
+      if (plan.schedule_block_id) preserveIds.add(plan.schedule_block_id)
+    }
+  }
+
+  const preserved = existing.filter((block) => preserveIds.has(block.id))
   for (const block of existing) {
+    if (preserveIds.has(block.id)) continue
     await removeScheduleBlock(block.id)
   }
-  const saved: ScheduleBlock[] = []
+
+  const saved: ScheduleBlock[] = [...preserved]
   for (const block of nextBlocks) {
     saved.push(await persistScheduleBlock(block))
   }
-  return saved
+  return saved.sort((a, b) => a.start_time.localeCompare(b.start_time))
 }
 
 export async function persistScheduleBlock(block: ScheduleBlock): Promise<ScheduleBlock> {

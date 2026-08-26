@@ -5,11 +5,11 @@ import { formatDeadlineLabel, formatOutcomeGoalRecurrence } from '@/lib/outcomeG
 
 interface OutcomeGoalCardProps {
   progress: OutcomeGoalProgress
-  onEdit: () => void
+  onOpen: () => void
   onDelete: () => void
 }
 
-export function OutcomeGoalCard({ progress, onEdit, onDelete }: OutcomeGoalCardProps) {
+export function OutcomeGoalCard({ progress, onOpen, onDelete }: OutcomeGoalCardProps) {
   const { goal, outcomes, onTrack } = progress
   const deadlineLabel = formatDeadlineLabel(goal.deadline)
   const recurrenceLabel = formatOutcomeGoalRecurrence(goal)
@@ -23,7 +23,7 @@ export function OutcomeGoalCard({ progress, onEdit, onDelete }: OutcomeGoalCardP
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left">
+        <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-zinc-100">{goal.title}</h3>
             <span
@@ -56,32 +56,38 @@ export function OutcomeGoalCard({ progress, onEdit, onDelete }: OutcomeGoalCardP
       </div>
 
       {metrics.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-zinc-800/80 pt-3">
-          {metrics.map((entry) => (
-            <li
-              key={entry.link.id}
-              className="flex items-center gap-2 text-xs text-zinc-300"
-            >
-              <span
-                className={cn(
-                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
-                  entry.hit
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : 'bg-zinc-800 text-zinc-600',
-                )}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="mt-3 w-full space-y-1 border-t border-zinc-800/80 pt-3 text-left"
+        >
+          <ul className="space-y-1">
+            {metrics.map((entry) => (
+              <li
+                key={entry.link.id}
+                className="flex items-center gap-2 text-xs text-zinc-300"
               >
-                <Check size={10} strokeWidth={3} />
-              </span>
-              <span className="min-w-0 flex-1 truncate">
-                {entry.label}
-                <span className="text-zinc-500">
-                  {' '}
-                  · {entry.display.replace(/ \(.*\)$/, '')}
+                <span
+                  className={cn(
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                    entry.onPace
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : 'bg-zinc-800 text-zinc-600',
+                  )}
+                >
+                  <Check size={10} strokeWidth={3} />
                 </span>
-              </span>
-            </li>
-          ))}
-        </ul>
+                <span className="min-w-0 flex-1 truncate">
+                  {entry.label}
+                  <span className="text-zinc-500">
+                    {' '}
+                    · {entry.display.replace(/ \(.*\)$/, '')}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </button>
       )}
     </article>
   )

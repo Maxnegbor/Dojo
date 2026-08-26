@@ -485,7 +485,9 @@ export function SettingsDeveloperDailyShutdown() {
             const { scheduleBlocksFromTemplate } = await import('@/lib/scheduleTemplates')
             const { replaceScheduleBlocksForDate } = await import('@/lib/scheduleBlock')
             const next = scheduleBlocksFromTemplate(template, tomorrow, userId)
-            const saved = await replaceScheduleBlocksForDate(previewTomorrowBlocks, next)
+            const saved = await replaceScheduleBlocksForDate(previewTomorrowBlocks, next, {
+              preservePlanLinkedForDate: tomorrow,
+            })
             setPreviewTomorrowBlocks(saved)
           }}
           onClose={closeShutdownPreview}

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { DojoLogo } from '@/components/ui/DojoLogo'
 import { Button } from '@/components/ui/Button'
 
 interface OnboardingLayoutProps {
@@ -35,9 +34,6 @@ export function OnboardingLayout({
       <header className="border-b border-zinc-800/80 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-600)] text-white">
-              <DojoLogo size={20} />
-            </div>
             <span className="text-sm font-semibold tracking-tight">Dojo</span>
           </div>
           <div className="flex items-center gap-2">

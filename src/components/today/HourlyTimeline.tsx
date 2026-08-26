@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Maximize2, Minimize2, Trash2, X } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 import { GREY_BLOCK_TITLE, type ScheduleBlock, type WorkoutCategory } from '@/types'
 import { createScheduleBlock, isGreyBlock, setScheduleBlockColor } from '@/lib/scheduleBlock'
 import {
@@ -377,7 +377,6 @@ export function HourlyTimeline({
   const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
   const titleInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [nowLine, setNowLine] = useState<number | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [maxViewportHeight, setMaxViewportHeight] = useState<number | null>(null)
 
   const scrollAreaHeight = Math.min(
@@ -386,8 +385,6 @@ export function HourlyTimeline({
   )
 
   useLayoutEffect(() => {
-    if (isFullscreen) return
-
     const scrollEl = scrollRef.current
     if (!scrollEl) return
 
@@ -424,7 +421,7 @@ export function HourlyTimeline({
       window.removeEventListener('resize', measure)
       window.visualViewport?.removeEventListener('resize', measure)
     }
-  }, [isFullscreen, startHour, endHour, contentHeight])
+  }, [startHour, endHour, contentHeight])
 
   useEffect(() => {
     if (!isActiveDay) {
@@ -532,31 +529,7 @@ export function HourlyTimeline({
       cancelAnimationFrame(raf)
       clearTimeout(t)
     }
-  }, [startHour, endHour, contentHeight, isFullscreen, scrollAreaHeight])
-
-  useEffect(() => {
-    if (!isFullscreen) return
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsFullscreen(false)
-    }
-
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.body.style.overflow = prevOverflow
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [isFullscreen])
-
-  useLayoutEffect(() => {
-    if (!isFullscreen) return
-    scrollToCurrentTimeWithRetry()
-    const t = window.setTimeout(scrollToCurrentTimeWithRetry, 100)
-    return () => clearTimeout(t)
-  }, [isFullscreen, scrollToCurrentTimeWithRetry])
+  }, [startHour, endHour, contentHeight, scrollAreaHeight])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -577,7 +550,7 @@ export function HourlyTimeline({
 
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [contentHeight, isFullscreen])
+  }, [contentHeight])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -597,7 +570,7 @@ export function HourlyTimeline({
       el.removeEventListener('scroll', onScroll)
       ro.disconnect()
     }
-  }, [startHour, endHour, contentHeight, isFullscreen])
+  }, [startHour, endHour, contentHeight])
 
   const scrollAnchorTop = useMemo(() => {
     if (!isActiveDay) return 0
@@ -850,29 +823,10 @@ export function HourlyTimeline({
     : null
 
   return (
-    <div
-      className={cn(
-        isFullscreen
-          ? 'fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6'
-          : 'flex h-full max-h-full min-h-0 flex-col pl-4',
-      )}
-    >
-      {isFullscreen && (
-        <button
-          type="button"
-          aria-label="Exit schedule fullscreen"
-          className="absolute inset-0 z-0 bg-black/55 backdrop-blur-md"
-          onClick={() => setIsFullscreen(false)}
-        />
-      )}
+    <div className="flex h-full max-h-full min-h-0 flex-col pl-4">
       <div
         ref={panelRef}
-        className={cn(
-          'relative isolate flex max-h-full min-h-0 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900',
-          !isFullscreen && 'h-full w-full -ml-4',
-          isFullscreen &&
-            'z-10 h-[min(100%,52rem)] w-full max-w-md shadow-2xl shadow-black/50 sm:max-w-lg',
-        )}
+        className="relative isolate flex h-full max-h-full min-h-0 w-full -ml-4 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900"
       >
         <div
           ref={headerRef}
@@ -904,27 +858,15 @@ export function HourlyTimeline({
               Drag grid to create · drag exercise plan onto schedule · drag blocks to move
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {headerActions}
-            <button
-              type="button"
-              onClick={() => setIsFullscreen((open) => !open)}
-              className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-              aria-label={isFullscreen ? 'Exit fullscreen' : 'Open schedule fullscreen'}
-            >
-              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </button>
-          </div>
+          {headerActions ? (
+            <div className="flex shrink-0 items-center gap-1">{headerActions}</div>
+          ) : null}
         </div>
 
       <div
         ref={scrollRef}
         className="scrollbar-hidden overflow-y-auto overscroll-contain rounded-b-xl"
-        style={
-          isFullscreen
-            ? { minHeight: 0, flex: 1 }
-            : { height: scrollAreaHeight, flexShrink: 0 }
-        }
+        style={{ height: scrollAreaHeight, flexShrink: 0 }}
       >
         <div
           className="relative flex"

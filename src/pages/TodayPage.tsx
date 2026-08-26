@@ -486,7 +486,9 @@ export function TodayPage() {
   ) => {
     if (!userId || template.blocks.length === 0) return
     const next = scheduleBlocksFromTemplate(template, targetDate, userId)
-    const saved = await replaceScheduleBlocksForDate(existing, next)
+    const saved = await replaceScheduleBlocksForDate(existing, next, {
+      preservePlanLinkedForDate: targetDate,
+    })
     setTarget(saved)
   }
 
@@ -707,7 +709,10 @@ export function TodayPage() {
 
   return (
       <div
-        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-visible"
+        className={cn(
+          'relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-visible home-stage',
+          screensaver && 'home-stage--screensaver',
+        )}
         style={{
           gap: screensaver ? '0px' : undefined,
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
@@ -757,10 +762,10 @@ export function TodayPage() {
           <div className="relative z-10 flex shrink-0 items-center gap-1.5 self-center">
             <button
               onClick={() => setShowCalendar(true)}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+              className="home-cal-btn rounded-full border border-zinc-800/70 bg-zinc-950/60 p-2 text-zinc-500 backdrop-blur-sm transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
               aria-label="Month overview"
             >
-              <CalendarDays size={18} />
+              <CalendarDays size={16} />
             </button>
           </div>
         </div>
@@ -774,9 +779,9 @@ export function TodayPage() {
       >
         {/* Left: Exercise plan + Todoist */}
         <aside className={cn(
-          'relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
-          'transition-[opacity,filter] duration-[1500ms] ease-in-out',
-          screensaver && 'pointer-events-none opacity-0 blur-[1px]',
+          'home-rail home-rail--left relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
+          'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
+          screensaver && 'pointer-events-none invisible !opacity-0',
         )}>
           <ExercisePlanCard
             viewDate={viewDate}
@@ -801,7 +806,7 @@ export function TodayPage() {
         {/* Center: schedule */}
         <div
           data-schedule-height-host
-          className="order-1 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[36rem] flex-col overflow-hidden lg:order-2"
+          className="home-canvas order-1 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[36rem] flex-col overflow-hidden lg:order-2"
         >
           {!showShutdown && (
             <HourlyTimeline
@@ -830,19 +835,19 @@ export function TodayPage() {
 
         {/* Right: Log / Shutdown + Habitify */}
         <aside className={cn(
-          'relative z-30 order-2 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
-          'transition-[opacity,filter] duration-[1500ms] ease-in-out',
-          screensaver && 'pointer-events-none opacity-0 blur-[1px]',
+          'home-rail home-rail--right relative z-30 order-2 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
+          'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
+          screensaver && 'pointer-events-none invisible !opacity-0',
         )}>
           {(log && userId) ||
           weeklyShutdownAvailable ||
           (isActiveDay &&
             ((!settings.requireMorningLog && !morningLogDone) || shutdownAvailable)) ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="home-action-tray flex flex-wrap gap-1.5 rounded-2xl border border-zinc-800/60 bg-zinc-950/40 p-1.5 backdrop-blur-sm">
               {log && userId && (
                 <Button
                   size="sm"
-                  className="relative z-30 min-w-0 flex-1"
+                  className="relative z-30 min-w-0 flex-1 rounded-xl"
                   onClick={() => setShowHomeLog(true)}
                 >
                   <ClipboardList size={14} />
@@ -853,7 +858,7 @@ export function TodayPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="relative z-30 min-w-0 flex-1"
+                  className="relative z-30 min-w-0 flex-1 rounded-xl border-zinc-700/60 bg-zinc-900/80"
                   aria-label="Morning Log"
                   onClick={() => setShowMorningLog(true)}
                 >
@@ -866,7 +871,7 @@ export function TodayPage() {
                   size="sm"
                   variant="secondary"
                   className={cn(
-                    'relative z-30 min-w-0 flex-1',
+                    'relative z-30 min-w-0 flex-1 rounded-xl border-zinc-700/60 bg-zinc-900/80',
                     shutdownBreathing && 'today-btn-breathe-violet',
                   )}
                   onClick={() => requestOpenShutdown()}
@@ -878,7 +883,7 @@ export function TodayPage() {
                 <button
                   type="button"
                   onClick={prepareWeeklyShutdown}
-                  className="today-btn-breathe-accent relative z-30 inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent-500)] px-3 py-1.5 text-xs font-semibold text-black shadow-md shadow-[var(--accent-500)]/30 ring-1 ring-[var(--accent-400)]/50 transition-transform hover:bg-[var(--accent-400)] active:scale-[0.98]"
+                  className="today-btn-breathe-accent relative z-30 inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--accent-500)] px-3 py-1.5 text-xs font-semibold text-black shadow-md shadow-[var(--accent-500)]/30 ring-1 ring-[var(--accent-400)]/50 transition-transform hover:bg-[var(--accent-400)] active:scale-[0.98]"
                 >
                   <CalendarCheck size={14} strokeWidth={2.5} />
                   Weekly

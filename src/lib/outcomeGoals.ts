@@ -1,4 +1,4 @@
-import { parseISO } from 'date-fns'
+import { addDays, parseISO } from 'date-fns'
 import {
   defaultUnitForMetric,
   hasTarget,
@@ -6,6 +6,7 @@ import {
   normalizeGoal,
 } from '@/lib/goals'
 import { getFocusSettings } from '@/lib/focusStore'
+import { getWeekStartsBefore } from '@/lib/goalTargetSnapshots'
 import { getHabitTypes } from '@/lib/habitTypes'
 import {
   KIND_CATEGORY_LABELS,
@@ -44,7 +45,8 @@ import type {
 } from '@/types'
 
 const STORAGE_KEY = 'personal-os-outcome-goals'
-const MIGRATION_KEY = 'personal-os-outcome-goals-migrated-v1'
+/** v2: merge missing hybrid targets even when some outcome goals already exist. */
+const MIGRATION_KEY = 'personal-os-outcome-goals-migrated-v2'
 export const OUTCOME_GOALS_CHANGED = 'personal-os-outcome-goals-changed'
 
 function newId(): string {
@@ -111,11 +113,22 @@ export function normalizeOutcomeGoalLink(raw: unknown): OutcomeGoalLink | null {
         ? Number(obj.target_value)
         : NaN
   if (!metric_key || !Number.isFinite(target_value) || target_value <= 0) return null
+
+  const startRaw =
+    typeof obj.start_value === 'number'
+      ? obj.start_value
+      : typeof obj.start_value === 'string'
+        ? Number(obj.start_value)
+        : null
+  const start_value =
+    startRaw != null && Number.isFinite(startRaw) ? startRaw : null
+
   return {
     id: typeof obj.id === 'string' && obj.id ? obj.id : newId(),
     metric_key,
     role: normalizeRole(obj.role),
     target_value,
+    start_value,
     comparator: normalizeComparator(obj.comparator),
     period: normalizeLinkPeriod(obj.period),
   }
@@ -135,6 +148,10 @@ export function normalizeOutcomeGoal(raw: unknown): OutcomeGoal | null {
   return {
     id: typeof obj.id === 'string' && obj.id ? obj.id : newId(),
     title,
+    start_date:
+      typeof obj.start_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.start_date)
+        ? obj.start_date
+        : undefined,
     deadline:
       typeof obj.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.deadline)
         ? obj.deadline
@@ -202,6 +219,7 @@ export function createEmptyOutcomeGoal(partial?: Partial<OutcomeGoal>): OutcomeG
   return {
     id: newId(),
     title: partial?.title?.trim() || 'New goal',
+    start_date: partial?.start_date,
     deadline: partial?.deadline,
     recurrence,
     recurrence_days:
@@ -227,28 +245,44 @@ export function createOutcomeGoalLink(
     metric_key: partial.metric_key,
     role: partial.role ?? 'outcome',
     target_value: partial.target_value ?? 1,
+    start_value:
+      partial.start_value != null && Number.isFinite(partial.start_value)
+        ? partial.start_value
+        : null,
     comparator: partial.comparator ?? 'gte',
     period: partial.period ?? 'weekly',
   }
 }
 
-/** Seed OutcomeGoals from hybrid Goal rows that have targets (once). */
+/**
+ * Ensure hybrid Goal rows with targets appear as OutcomeGoals on /goals.
+ * Merges missing metrics instead of one-shot empty skips.
+ * After the first successful pass, keeps syncing workout_* targets so exercise
+ * goals stay visible when created after migration (e.g. onboarding).
+ */
 export function migrateOutcomeGoalsFromHybridGoals(hybridGoals: Goal[]): boolean {
-  if (storageGetItem(MIGRATION_KEY) === '1') return false
-  if (getOutcomeGoals().length > 0) {
-    storageSetItem(MIGRATION_KEY, '1')
-    return false
-  }
+  const alreadyMigrated = storageGetItem(MIGRATION_KEY) === '1'
+  const coveredKeys = new Set(
+    getOutcomeGoals().flatMap((goal) => goal.links.map((link) => link.metric_key as string)),
+  )
 
   const seeded: OutcomeGoal[] = []
   for (const raw of hybridGoals) {
     const goal = normalizeGoal(raw)
     if (!goal.is_active || !hasTarget(goal)) continue
+    if (coveredKeys.has(goal.metric_key)) continue
+    // After initial migration, only keep healing exercise volume targets.
+    if (alreadyMigrated && !goal.metric_key.startsWith('workout_')) continue
 
     let target_value = goal.target_value
     let comparator: OutcomeGoalComparator = 'gte'
     let period: OutcomeGoalLinkPeriod =
       goal.log_period === 'weekly' || goal.target_period === 'weekly' ? 'weekly' : 'daily'
+
+    // Workout volume targets are weekly by default even when logging is daily.
+    if (goal.metric_key.startsWith('workout_') && goal.target_period !== 'daily') {
+      period = 'weekly'
+    }
 
     if (isWeightGoal(goal) && goal.goal_weight_target != null) {
       target_value = goal.goal_weight_target
@@ -260,6 +294,8 @@ export function migrateOutcomeGoalsFromHybridGoals(hybridGoals: Goal[]): boolean
     if (target_value == null || target_value <= 0) continue
 
     const now = goal.created_at || new Date().toISOString()
+    const start_value =
+      isWeightGoal(goal) && goal.goal_weight_start != null ? goal.goal_weight_start : null
     seeded.push({
       id: newId(),
       title: goal.name,
@@ -271,6 +307,7 @@ export function migrateOutcomeGoalsFromHybridGoals(hybridGoals: Goal[]): boolean
           metric_key: goal.metric_key,
           role: 'outcome',
           target_value,
+          start_value,
           comparator,
           period,
         }),
@@ -278,16 +315,24 @@ export function migrateOutcomeGoalsFromHybridGoals(hybridGoals: Goal[]): boolean
       created_at: now,
       updated_at: now,
     })
+    coveredKeys.add(goal.metric_key)
   }
 
-  if (seeded.length > 0) saveOutcomeGoals(seeded)
-  storageSetItem(MIGRATION_KEY, '1')
+  if (seeded.length > 0) {
+    saveOutcomeGoals([...getOutcomeGoals(), ...seeded])
+  }
+
+  // Only mark complete once we've actually seen hybrid goals (or finished seeding).
+  // Avoids locking migration when Auth runs before onboarding creates workout targets.
+  if (hybridGoals.length > 0 || seeded.length > 0) {
+    storageSetItem(MIGRATION_KEY, '1')
+  }
+
   return seeded.length > 0
 }
 
 export async function runOutcomeGoalsMigration(userId: string): Promise<void> {
   if (!userId) return
-  if (storageGetItem(MIGRATION_KEY) === '1') return
 
   const { isSupabaseConfigured } = await import('@/lib/supabase')
   let hybrid: Goal[] = []
@@ -410,9 +455,61 @@ export interface OutcomeLinkProgress {
   unit: string
   current: number
   target: number
+  /** Baseline when progress is measured start → target. */
+  start: number | null
+  /** True when the target comparison is already met. */
   hit: boolean
+  /**
+   * On pace vs time: percent ≥ time elapsed at last log (when a deadline exists).
+   * Falls back to `hit` when pace cannot be assessed.
+   */
+  onPace: boolean
   percent: number
   display: string
+}
+
+/** Resolve optional start baseline from the link, or weight hybrid start. */
+export function resolveLinkStartValue(
+  link: OutcomeGoalLink,
+  hybridGoals: Goal[],
+): number | null {
+  if (link.start_value != null && Number.isFinite(link.start_value)) return link.start_value
+  if (link.metric_key === 'weight') {
+    const hybrid = hybridGoals.find((goal) => goal.metric_key === 'weight' && goal.is_active)
+    if (hybrid?.goal_weight_start != null && Number.isFinite(hybrid.goal_weight_start)) {
+      return hybrid.goal_weight_start
+    }
+  }
+  return null
+}
+
+/** Progress 0–100 from start→target when a start is set; otherwise from 0→target. */
+export function computeLinkProgressPercent(
+  current: number,
+  target: number,
+  comparator: OutcomeGoalComparator,
+  start: number | null,
+): number {
+  if (!(target > 0) && start == null) return 0
+
+  if (start != null && Number.isFinite(start) && Math.abs(target - start) > 1e-9) {
+    const span = target - start
+    const traveled = current - start
+    // Works for bulk (start < target) and cut (start > target).
+    const raw = (traveled / span) * 100
+    return Math.min(100, Math.max(0, Math.round(raw)))
+  }
+
+  if (comparator === 'lte') {
+    if (!(target > 0)) return 0
+    return Math.min(
+      100,
+      Math.round(Math.max(0, 1 - Math.abs(current - target) / Math.max(target, 1)) * 100),
+    )
+  }
+
+  if (!(target > 0)) return 0
+  return Math.min(100, Math.round((current / target) * 100))
 }
 
 export function computeLinkProgress(
@@ -426,20 +523,9 @@ export function computeLinkProgress(
 ): OutcomeLinkProgress {
   const current = resolveLinkCurrentValue(link, logs, workouts, asOf, weekStartsOn, deadline)
   const target = link.target_value
+  const start = resolveLinkStartValue(link, hybridGoals)
   const hit = compareValues(current, target, link.comparator)
-  const percent =
-    target > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (link.comparator === 'lte'
-              ? target > 0
-                ? Math.max(0, 1 - Math.abs(current - target) / Math.max(target, 1)) * 100
-                : 0
-              : (current / target) * 100),
-          ),
-        )
-      : 0
+  const percent = computeLinkProgressPercent(current, target, link.comparator, start)
   const sleepId = sleepMetricIdFromLibraryKey(link.metric_key)
   const sleepMetric = sleepId
     ? getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
@@ -464,10 +550,76 @@ export function computeLinkProgress(
     unit,
     current,
     target,
+    start,
     hit,
-    percent: link.comparator === 'lte' ? (hit ? 100 : Math.min(99, percent)) : percent,
+    onPace: hit,
+    percent: link.comparator === 'lte' && start == null ? (hit ? 100 : Math.min(99, percent)) : percent,
     display: `${currentLabel} / ${targetLabel} (${cmp})`,
   }
+}
+
+/** True when this metric has a real reading on `date` (counts as a log for pace). */
+function linkHasReadingOnDate(
+  link: OutcomeGoalLink,
+  log: DailyLog | undefined,
+  workouts: Workout[],
+  date: string,
+): boolean {
+  const habitId = habitIdFromKey(link.metric_key)
+  if (habitId) return Boolean(log?.habits?.[habitId])
+
+  const sleepId = sleepMetricIdFromLibraryKey(link.metric_key)
+  if (sleepId) {
+    const metric = getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
+    if (!metric) return false
+    return getSleepMetricValue(log, metric) != null
+  }
+
+  if (link.metric_key === 'weight') {
+    return log?.weight != null && Number.isFinite(log.weight)
+  }
+
+  if (link.metric_key.startsWith('custom:')) {
+    const value = log?.custom_metrics?.[link.metric_key]
+    return value != null && Number.isFinite(value)
+  }
+
+  if (link.metric_key.startsWith('workout_')) {
+    return getMetricValue(link.metric_key, log, workouts, date) > 0
+  }
+
+  return getMetricValue(link.metric_key, log, workouts, date) > 0
+}
+
+/**
+ * Most recent date (≤ asOf) where any linked metric has a reading.
+ * Pace / on-track is frozen at this date until the next log.
+ */
+export function findLastOutcomeGoalLogDate(
+  goal: OutcomeGoal,
+  logs: DailyLog[],
+  workouts: Workout[],
+  asOf: Date = new Date(),
+): string | null {
+  if (goal.links.length === 0) return null
+  const asOfStr = formatDate(asOf)
+  const byDate = logsByDate(logs)
+  const dates = new Set<string>()
+  for (const log of logs) {
+    if (log.date <= asOfStr) dates.add(log.date)
+  }
+  for (const workout of workouts) {
+    const day = (workout.date ?? '').slice(0, 10)
+    if (day && day <= asOfStr) dates.add(day)
+  }
+  const sorted = [...dates].sort((a, b) => b.localeCompare(a))
+  for (const date of sorted) {
+    const log = byDate.get(date)
+    for (const link of goal.links) {
+      if (linkHasReadingOnDate(link, log, workouts, date)) return date
+    }
+  }
+  return null
 }
 
 export interface OutcomeGoalProgress {
@@ -476,6 +628,10 @@ export interface OutcomeGoalProgress {
   outcomes: OutcomeLinkProgress[]
   processes: OutcomeLinkProgress[]
   onTrack: boolean
+  /** Date the on-track pace was assessed against; null if no linked log yet. */
+  assessedAt: string | null
+  /** Time elapsed % (start → deadline) at `assessedAt`, when a deadline exists. */
+  timePercent: number | null
 }
 
 export function computeOutcomeGoalProgress(
@@ -486,18 +642,37 @@ export function computeOutcomeGoalProgress(
   asOf: Date = new Date(),
   weekStartsOn: 0 | 1 = 1,
 ): OutcomeGoalProgress {
-  const metrics = goal.links.map((link) =>
+  const raw = goal.links.map((link) =>
     computeLinkProgress(link, logs, workouts, hybridGoals, asOf, weekStartsOn, goal.deadline),
   )
-  const primary = metrics[0] ?? null
-  const onTrack = metrics.length > 0 && metrics.every((entry) => entry.hit)
+
+  const assessedAt = findLastOutcomeGoalLogDate(goal, logs, workouts, asOf)
+  const deadlineAtLog =
+    goal.deadline && assessedAt
+      ? computeOutcomeGoalDeadlineProgress(goal, parseISO(`${assessedAt}T12:00:00`))
+      : null
+  const timePercent = deadlineAtLog ? deadlineAtLog.elapsedPercent : null
+
+  const metrics = raw.map((entry) => {
+    const onPace =
+      timePercent != null ? entry.percent >= timePercent : entry.hit
+    return { ...entry, onPace }
+  })
+
+  const onTrack =
+    metrics.length > 0 &&
+    (goal.deadline
+      ? assessedAt != null && timePercent != null && metrics.every((entry) => entry.onPace)
+      : metrics.every((entry) => entry.hit))
 
   return {
     goal,
-    primary,
+    primary: metrics[0] ?? null,
     outcomes: metrics,
     processes: metrics.slice(1),
     onTrack,
+    assessedAt,
+    timePercent,
   }
 }
 
@@ -627,3 +802,198 @@ export function formatDeadlineLabel(deadline?: string): string | null {
     return deadline
   }
 }
+
+export interface OutcomeGoalPeriodSnapshot {
+  start: string
+  end: string
+  label: string
+  isCurrent: boolean
+  onTrack: boolean
+  outcomes: OutcomeLinkProgress[]
+  hitCount: number
+  metricCount: number
+}
+
+export interface OutcomeGoalDeadlineProgress {
+  start: string
+  end: string
+  totalDays: number
+  elapsedDays: number
+  remainingDays: number
+  elapsedPercent: number
+}
+
+export interface OutcomeGoalDetailStats {
+  periods: OutcomeGoalPeriodSnapshot[]
+  /** Completed (past) periods that were fully on track. */
+  hitCount: number
+  periodCount: number
+  hitRate: number
+  currentStreak: number
+  deadline: OutcomeGoalDeadlineProgress | null
+}
+
+function recurrenceSpanDays(goal: OutcomeGoal): number {
+  if (goal.recurrence === 'daily') return 1
+  if (goal.recurrence === 'weekly') return 7
+  if (goal.recurrence === 'every_14') return 14
+  return goal.recurrence_days && goal.recurrence_days > 0 ? Math.round(goal.recurrence_days) : 30
+}
+
+function formatPeriodLabel(start: string, end: string, recurrence: OutcomeGoalRecurrence): string {
+  const startDate = parseISO(`${start}T12:00:00`)
+  const endDate = parseISO(`${end}T12:00:00`)
+  if (recurrence === 'daily' || start === end) {
+    return startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+  const sameMonth = startDate.getMonth() === endDate.getMonth()
+  const startLabel = startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const endLabel = endDate.toLocaleDateString(undefined, {
+    month: sameMonth ? undefined : 'short',
+    day: 'numeric',
+  })
+  return `${startLabel} – ${endLabel}`
+}
+
+/** Newest-first recurrence windows for history (includes the current period). */
+export function listOutcomeGoalPeriods(
+  goal: OutcomeGoal,
+  asOf: Date,
+  weekStartsOn: 0 | 1,
+  count = 12,
+): Array<{ start: string; end: string; isCurrent: boolean }> {
+  const asOfStr = formatDate(asOf)
+  const periods: Array<{ start: string; end: string; isCurrent: boolean }> = []
+
+  if (goal.recurrence === 'weekly') {
+    const starts = getWeekStartsBefore(asOf, weekStartsOn, count)
+    for (let i = starts.length - 1; i >= 0; i--) {
+      const start = starts[i]!
+      const week = getWeekDates(parseISO(`${start}T12:00:00`), weekStartsOn)
+      const end = week[week.length - 1]!
+      periods.push({ start, end, isCurrent: asOfStr >= start && asOfStr <= end })
+    }
+    return periods
+  }
+
+  if (goal.recurrence === 'daily') {
+    for (let i = 0; i < count; i++) {
+      const day = formatDate(addDays(asOf, -i))
+      periods.push({ start: day, end: day, isCurrent: i === 0 })
+    }
+    return periods
+  }
+
+  const span = recurrenceSpanDays(goal)
+  let end = asOfStr
+  for (let i = 0; i < count; i++) {
+    const start = formatDate(addDays(parseISO(`${end}T12:00:00`), -(span - 1)))
+    periods.push({ start, end, isCurrent: i === 0 })
+    end = formatDate(addDays(parseISO(`${start}T12:00:00`), -1))
+  }
+  return periods
+}
+
+export function resolveOutcomeGoalStartDate(goal: OutcomeGoal): string {
+  if (goal.start_date && /^\d{4}-\d{2}-\d{2}$/.test(goal.start_date)) return goal.start_date
+  return goal.created_at.slice(0, 10)
+}
+
+export function computeOutcomeGoalDeadlineProgress(
+  goal: OutcomeGoal,
+  asOf: Date = new Date(),
+): OutcomeGoalDeadlineProgress | null {
+  if (!goal.deadline) return null
+  const start = resolveOutcomeGoalStartDate(goal)
+  const end = goal.deadline
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return null
+  if (end < start) return null
+
+  const asOfStr = formatDate(asOf)
+  const totalDays =
+    Math.round(
+      (parseISO(`${end}T12:00:00`).getTime() - parseISO(`${start}T12:00:00`).getTime()) /
+        86_400_000,
+    ) + 1
+  if (totalDays <= 0) return null
+
+  const clamped = asOfStr < start ? start : asOfStr > end ? end : asOfStr
+  const elapsedDays =
+    Math.round(
+      (parseISO(`${clamped}T12:00:00`).getTime() - parseISO(`${start}T12:00:00`).getTime()) /
+        86_400_000,
+    ) + 1
+  const remainingDays = Math.max(0, totalDays - elapsedDays)
+  const elapsedPercent = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100))
+
+  return {
+    start,
+    end,
+    totalDays,
+    elapsedDays: Math.min(totalDays, Math.max(0, elapsedDays)),
+    remainingDays,
+    elapsedPercent,
+  }
+}
+
+export function computeOutcomeGoalDetailStats(
+  goal: OutcomeGoal,
+  logs: DailyLog[],
+  workouts: Workout[],
+  hybridGoals: Goal[],
+  asOf: Date = new Date(),
+  weekStartsOn: 0 | 1 = 1,
+  periodCount = 12,
+): OutcomeGoalDetailStats {
+  const windows = listOutcomeGoalPeriods(goal, asOf, weekStartsOn, periodCount)
+  const periods: OutcomeGoalPeriodSnapshot[] = windows.map((window) => {
+    const asOfDate = parseISO(`${window.end}T12:00:00`)
+    const progress = computeOutcomeGoalProgress(
+      goal,
+      logs,
+      workouts,
+      hybridGoals,
+      asOfDate,
+      weekStartsOn,
+    )
+    const hitCount = progress.outcomes.filter((entry) => entry.onPace).length
+    return {
+      start: window.start,
+      end: window.end,
+      label: formatPeriodLabel(window.start, window.end, goal.recurrence),
+      isCurrent: window.isCurrent,
+      onTrack: progress.onTrack,
+      outcomes: progress.outcomes,
+      hitCount,
+      metricCount: progress.outcomes.length,
+    }
+  })
+
+  const completed = periods.filter((period) => !period.isCurrent)
+  const hitCount = completed.filter((period) => period.onTrack && period.metricCount > 0).length
+  const scored = completed.filter((period) => period.metricCount > 0)
+  const periodCountScored = scored.length
+  const hitRate =
+    periodCountScored > 0 ? Math.round((hitCount / periodCountScored) * 100) : 0
+
+  let currentStreak = 0
+  for (const period of periods) {
+    if (period.isCurrent) continue
+    if (period.metricCount === 0) continue
+    if (!period.onTrack) break
+    currentStreak++
+  }
+
+  const assessedAt = findLastOutcomeGoalLogDate(goal, logs, workouts, asOf)
+  const deadlineAsOf = assessedAt ? parseISO(`${assessedAt}T12:00:00`) : asOf
+
+  return {
+    periods,
+    hitCount,
+    periodCount: periodCountScored,
+    hitRate,
+    currentStreak,
+    deadline: computeOutcomeGoalDeadlineProgress(goal, deadlineAsOf),
+  }
+}
+

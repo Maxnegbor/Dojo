@@ -89,6 +89,7 @@ export function ExercisePlanCard({
   const [draftCategory, setDraftCategory] = useState<string | null>(null)
   const [draftSubtype, setDraftSubtype] = useState<string | null>(null)
   const [draftTime, setDraftTime] = useState('07:00')
+  const [includeTime, setIncludeTime] = useState(false)
   const [draftDuration, setDraftDuration] = useState('45')
   const [draftAmount, setDraftAmount] = useState('3')
   const [draftNotes, setDraftNotes] = useState('')
@@ -174,6 +175,7 @@ export function ExercisePlanCard({
     setDraftCategory(null)
     setDraftSubtype(null)
     setDraftTime('07:00')
+    setIncludeTime(false)
     setDraftDuration('45')
     setDraftAmount('3')
     setDraftNotes('')
@@ -213,7 +215,7 @@ export function ExercisePlanCard({
           date: selectedDate,
           category: draftCategory,
           subtype: draftSubtype,
-          start_time: draftTime || null,
+          start_time: includeTime ? draftTime || null : null,
           duration_minutes,
           amount: duration_minutes,
           notes: draftNotes,
@@ -227,7 +229,7 @@ export function ExercisePlanCard({
           date: selectedDate,
           category: draftCategory,
           subtype: draftSubtype,
-          start_time: draftTime || null,
+          start_time: includeTime ? draftTime || null : null,
           amount,
           notes: draftNotes,
           userId,
@@ -437,19 +439,50 @@ export function ExercisePlanCard({
 
             {draftCategory && (!needsSubtype || draftSubtype) && (
               <>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <label className="min-w-0">
-                    <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
-                      Time
-                    </span>
-                    <input
-                      type="time"
-                      step={1800}
-                      value={draftTime}
-                      onChange={(e) => setDraftTime(e.target.value)}
-                      className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
-                    />
-                  </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIncludeTime((on) => {
+                      if (!on && !draftTime) setDraftTime('07:00')
+                      return !on
+                    })
+                  }}
+                  className={cn(
+                    'inline-flex w-fit items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+                    includeTime
+                      ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
+                      : 'border-zinc-700/80 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200',
+                  )}
+                  aria-pressed={includeTime}
+                >
+                  <span
+                    className={cn(
+                      'flex h-3 w-3 items-center justify-center rounded-sm border text-[8px]',
+                      includeTime
+                        ? 'border-[var(--accent-500)] bg-[var(--accent-500)] text-black'
+                        : 'border-zinc-600',
+                    )}
+                  >
+                    {includeTime ? '✓' : ''}
+                  </span>
+                  Add a time
+                </button>
+
+                <div className={cn('grid gap-1.5', includeTime ? 'grid-cols-2' : 'grid-cols-1')}>
+                  {includeTime ? (
+                    <label className="min-w-0">
+                      <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                        Time
+                      </span>
+                      <input
+                        type="time"
+                        step={1800}
+                        value={draftTime}
+                        onChange={(e) => setDraftTime(e.target.value)}
+                        className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                      />
+                    </label>
+                  ) : null}
                   {draftTimed ? (
                     <label className="min-w-0">
                       <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">

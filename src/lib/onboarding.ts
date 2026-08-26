@@ -355,6 +355,10 @@ export async function applyOnboardingConfig(
     }
   }
 
+  // Push workout / hybrid targets onto the Goals page (OutcomeGoals).
+  const { runOutcomeGoalsMigration } = await import('@/lib/outcomeGoals')
+  await runOutcomeGoalsMigration(userId)
+
   const tomorrow = formatDate(addDays(new Date(), 1))
 
   return {

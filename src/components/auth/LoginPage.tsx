@@ -1,7 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
-import { DojoLogo } from '@/components/ui/DojoLogo'
 import { Card } from '@/components/ui/Card'
 import { useAuth } from '@/context/AuthContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -37,9 +36,6 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-[#06060b] px-4 py-8 text-zinc-100">
       <div className="mb-8 flex flex-col items-center gap-3 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent-600)] text-white">
-          <DojoLogo size={28} />
-        </div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dojo</h1>
           <p className="mt-1 text-sm text-zinc-500">Sign in to continue your daily practice</p>

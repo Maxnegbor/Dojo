@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { OutcomeGoalCard } from '@/components/outcomeGoals/OutcomeGoalCard'
+import { OutcomeGoalDetailModal } from '@/components/outcomeGoals/OutcomeGoalDetailModal'
 import { OutcomeGoalEditor } from '@/components/outcomeGoals/OutcomeGoalEditor'
 import { useAuth } from '@/hooks/useData'
 import { useSettings } from '@/context/SettingsContext'
@@ -27,6 +28,7 @@ export function OutcomeGoalsPage() {
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [editing, setEditing] = useState<OutcomeGoal | null | 'new'>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const today = formatDate(new Date())
@@ -46,7 +48,7 @@ export function OutcomeGoalsPage() {
 
     const end = weekDates[weekDates.length - 1]
     const startDate = new Date(`${weekDates[0]}T12:00:00`)
-    startDate.setDate(startDate.getDate() - 90)
+    startDate.setDate(startDate.getDate() - 120)
     const start = formatDate(startDate)
 
     if (isSupabaseConfigured) {
@@ -101,15 +103,22 @@ export function OutcomeGoalsPage() {
     [activeGoals, logs, workouts, hybridGoals, today, settings.weekStartsOn],
   )
 
+  const detailProgress = useMemo(
+    () => progressList.find((entry) => entry.goal.id === detailId) ?? null,
+    [progressList, detailId],
+  )
+
   const handleSave = (goal: OutcomeGoal) => {
     upsertOutcomeGoal(goal)
     setEditing(null)
+    setDetailId(goal.id)
     refreshGoals()
   }
 
   const handleDelete = (id: string) => {
     deleteOutcomeGoal(id)
     setConfirmDeleteId(null)
+    if (detailId === id) setDetailId(null)
     if (editing !== 'new' && editing?.id === id) setEditing(null)
     refreshGoals()
   }
@@ -189,13 +198,28 @@ export function OutcomeGoalsPage() {
               <OutcomeGoalCard
                 key={progress.goal.id}
                 progress={progress}
-                onEdit={() => setEditing(progress.goal)}
+                onOpen={() => setDetailId(progress.goal.id)}
                 onDelete={() => setConfirmDeleteId(progress.goal.id)}
               />
             ),
           )}
         </div>
       )}
+
+      {detailProgress && editing == null ? (
+        <OutcomeGoalDetailModal
+          progress={detailProgress}
+          logs={logs}
+          workouts={workouts}
+          hybridGoals={hybridGoals}
+          weekStartsOn={settings.weekStartsOn}
+          onEdit={() => {
+            setEditing(detailProgress.goal)
+            setDetailId(null)
+          }}
+          onClose={() => setDetailId(null)}
+        />
+      ) : null}
     </div>
   )
 }

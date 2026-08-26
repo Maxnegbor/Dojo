@@ -30,7 +30,7 @@ import type {
   OutcomeGoalLinkPeriod,
   OutcomeGoalRecurrence,
 } from '@/types'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 interface OutcomeGoalEditorProps {
   initial?: OutcomeGoal | null
@@ -58,26 +58,34 @@ function groupedMetricOptions(options: GoalMetricOption[]) {
 function LinkTargetInput({
   link,
   unit,
+  field,
   onChange,
 }: {
   link: OutcomeGoalLink
   unit: string
+  field: 'target_value' | 'start_value'
   onChange: (next: OutcomeGoalLink) => void
 }) {
   const sleepId = sleepMetricIdFromLibraryKey(link.metric_key)
   const sleepMetric = sleepId
     ? getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
     : undefined
+  const value = field === 'start_value' ? (link.start_value ?? 0) : link.target_value
+
+  const setValue = (next: number) => {
+    if (field === 'start_value') onChange({ ...link, start_value: next })
+    else onChange({ ...link, target_value: next })
+  }
 
   if (sleepMetric && isClockSleepMetric(sleepMetric)) {
     return (
       <input
         type="time"
-        value={sleepMetricTargetToInputValue(sleepMetric, link.target_value)}
+        value={sleepMetricTargetToInputValue(sleepMetric, value)}
         onChange={(e) => {
           const next = sleepMetricTargetFromInputValue(sleepMetric, e.target.value)
           if (next == null) return
-          onChange({ ...link, target_value: next })
+          setValue(next)
         }}
         className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100"
       />
@@ -92,8 +100,8 @@ function LinkTargetInput({
     return (
       <DurationMetricInput
         label=""
-        value={link.target_value}
-        onChange={(minutes) => onChange({ ...link, target_value: minutes ?? 0 })}
+        value={value}
+        onChange={(minutes) => setValue(minutes ?? 0)}
       />
     )
   }
@@ -101,16 +109,18 @@ function LinkTargetInput({
   return (
     <input
       type="number"
-      min={0}
       step="any"
-      value={link.target_value}
-      onChange={(e) =>
-        onChange({
-          ...link,
-          target_value: Number(e.target.value) || 0,
-        })
+      value={value}
+      onChange={(e) => setValue(Number(e.target.value) || 0)}
+      aria-label={
+        field === 'start_value'
+          ? unit
+            ? `Starting ${unit}`
+            : 'Starting value'
+          : unit
+            ? `Target ${unit}`
+            : 'Target'
       }
-      aria-label={unit ? `Target ${unit}` : 'Target'}
       className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100"
     />
   )
@@ -144,6 +154,7 @@ function LinkRow({
   const selected = options.find((option) => option.key === link.metric_key)
   const groups = groupedMetricOptions(options)
   const targetUnit = selected?.unit?.trim()
+  const hasStart = link.start_value != null && Number.isFinite(link.start_value)
 
   return (
     <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3">
@@ -160,6 +171,7 @@ function LinkRow({
                 ...link,
                 metric_key: key,
                 target_value: defaultTargetForMetric(key),
+                start_value: null,
                 period: defaultPeriodForMetric(key),
               })
             }}
@@ -207,7 +219,12 @@ function LinkRow({
           <span className="mb-1 block truncate text-[10px] font-medium uppercase tracking-wide text-zinc-500">
             Target{targetUnit ? ` · ${targetUnit}` : ''}
           </span>
-          <LinkTargetInput link={link} unit={targetUnit ?? ''} onChange={onChange} />
+          <LinkTargetInput
+            link={link}
+            unit={targetUnit ?? ''}
+            field="target_value"
+            onChange={onChange}
+          />
         </label>
         <label className="min-w-0">
           <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
@@ -226,6 +243,59 @@ function LinkRow({
           </select>
         </label>
       </div>
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (hasStart) {
+              onChange({ ...link, start_value: null })
+              return
+            }
+            const seed =
+              link.metric_key === 'weight'
+                ? Math.round(link.target_value * 0.9 * 10) / 10
+                : 0
+            onChange({ ...link, start_value: seed })
+          }}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors',
+            hasStart
+              ? 'border-[var(--accent-500)]/50 bg-[var(--accent-950)] text-[var(--accent-200)]'
+              : 'border-zinc-700/80 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200',
+          )}
+          aria-pressed={hasStart}
+        >
+          <span
+            className={cn(
+              'flex h-3 w-3 items-center justify-center rounded-sm border text-[8px]',
+              hasStart
+                ? 'border-[var(--accent-500)] bg-[var(--accent-500)] text-black'
+                : 'border-zinc-600',
+            )}
+          >
+            {hasStart ? '✓' : ''}
+          </span>
+          Starting value
+        </button>
+
+        {hasStart ? (
+          <label className="block max-w-[10rem]">
+            <span className="mb-1 block truncate text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+              Start{targetUnit ? ` · ${targetUnit}` : ''}
+            </span>
+            <LinkTargetInput
+              link={link}
+              unit={targetUnit ?? ''}
+              field="start_value"
+              onChange={onChange}
+            />
+            <p className="mt-1 text-[10px] leading-snug text-zinc-600">
+              Progress is measured from this baseline to the target — not from zero.
+            </p>
+          </label>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -241,6 +311,12 @@ export function OutcomeGoalEditor({
     [hybridGoals],
   )
   const [title, setTitle] = useState(initial?.title ?? '')
+  const [startMode, setStartMode] = useState<'now' | 'select'>(() =>
+    initial?.start_date ? 'select' : 'now',
+  )
+  const [startDate, setStartDate] = useState(
+    () => initial?.start_date ?? formatDate(new Date()),
+  )
   const [deadline, setDeadline] = useState(initial?.deadline ?? '')
   const [recurrence, setRecurrence] = useState<OutcomeGoalRecurrence>(
     initial?.recurrence ?? 'weekly',
@@ -276,6 +352,7 @@ export function OutcomeGoalEditor({
     onSave({
       ...base,
       title: title.trim(),
+      start_date: startMode === 'select' && startDate.trim() ? startDate.trim() : undefined,
       deadline: deadline.trim() || undefined,
       recurrence,
       recurrence_days:
@@ -324,45 +401,89 @@ export function OutcomeGoalEditor({
           />
         </label>
 
-        <div className="grid grid-cols-2 gap-3">
-          <label className="min-w-0">
-            <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-              Deadline
-            </span>
-            <DatePickerField value={deadline} onChange={setDeadline} />
-          </label>
+        <div className="space-y-3">
           <div className="min-w-0">
-            <label className="block">
-              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                Recurs
-              </span>
-              <select
-                value={recurrence}
-                onChange={(e) => setRecurrence(e.target.value as OutcomeGoalRecurrence)}
-                className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+              Start date
+            </span>
+            <div className="flex gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+              <button
+                type="button"
+                onClick={() => setStartMode('now')}
+                className={cn(
+                  'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                  startMode === 'now'
+                    ? 'bg-[var(--accent-500)] text-black'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200',
+                )}
               >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="every_14">Every 14 days</option>
-                <option value="custom">Custom…</option>
-              </select>
-            </label>
-            {recurrence === 'custom' && (
-              <label className="mt-2 flex items-center gap-2">
-                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                  Every
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={recurrenceDays}
-                  onChange={(e) => setRecurrenceDays(e.target.value)}
-                  className="w-20 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm tabular-nums text-zinc-100"
-                />
-                <span className="text-xs text-zinc-500">days</span>
-              </label>
+                Now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStartMode('select')
+                  if (!startDate) setStartDate(formatDate(new Date()))
+                }}
+                className={cn(
+                  'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                  startMode === 'select'
+                    ? 'bg-[var(--accent-500)] text-black'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200',
+                )}
+              >
+                Select
+              </button>
+            </div>
+            {startMode === 'select' ? (
+              <div className="mt-2">
+                <DatePickerField value={startDate} onChange={setStartDate} />
+              </div>
+            ) : (
+              <p className="mt-1.5 text-[10px] text-zinc-600">Uses today as the goal start.</p>
             )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="min-w-0">
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Deadline
+              </span>
+              <DatePickerField value={deadline} onChange={setDeadline} />
+            </label>
+            <div className="min-w-0">
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  Recurs
+                </span>
+                <select
+                  value={recurrence}
+                  onChange={(e) => setRecurrence(e.target.value as OutcomeGoalRecurrence)}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="every_14">Every 14 days</option>
+                  <option value="custom">Custom…</option>
+                </select>
+              </label>
+              {recurrence === 'custom' && (
+                <label className="mt-2 flex items-center gap-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    Every
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={recurrenceDays}
+                    onChange={(e) => setRecurrenceDays(e.target.value)}
+                    className="w-20 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm tabular-nums text-zinc-100"
+                  />
+                  <span className="text-xs text-zinc-500">days</span>
+                </label>
+              )}
+            </div>
           </div>
         </div>
 
