@@ -47,7 +47,7 @@ export function ExperimentScheduleOverview({
       </div>
       <ul
         className={cn(
-          'min-h-0 space-y-1.5 overflow-y-auto overscroll-contain rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-2',
+          'scrollbar-hidden min-h-0 space-y-1.5 overflow-y-auto overscroll-contain rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-2',
           listClassName,
         )}
       >
