@@ -10,6 +10,8 @@ interface ExperimentScheduleOverviewProps {
   today?: string
   /** Allow toggling completion from the schedule. */
   onToggleAdherence?: (date: string) => void
+  /** Clear completion status back to neutral. */
+  onClearAdherence?: (date: string) => void
   /** Toggle a confounder tick for a schedule day. */
   onToggleConfounder?: (date: string, confounderId: string, present: boolean) => void
   className?: string
@@ -20,6 +22,7 @@ export function ExperimentScheduleOverview({
   experiment,
   today = formatDate(new Date()),
   onToggleAdherence,
+  onClearAdherence,
   onToggleConfounder,
   className,
   listClassName,
@@ -151,12 +154,13 @@ export function ExperimentScheduleOverview({
                   )}
                 </div>
                 {onToggleAdherence ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onToggleAdherence(day.date)
-                    }}
+                  <div className="flex shrink-0 flex-col items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleAdherence(day.date)
+                      }}
                     className={cn(
                       'flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors',
                       followed
@@ -179,9 +183,22 @@ export function ExperimentScheduleOverview({
                           ? 'Skipped — click to clear'
                           : 'Not set — click to mark completed'
                     }
-                  >
-                    <Check size={14} strokeWidth={3} />
-                  </button>
+                    >
+                      <Check size={14} strokeWidth={3} />
+                    </button>
+                    {adherence !== null && onClearAdherence ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onClearAdherence(day.date)
+                        }}
+                        className="text-[10px] text-zinc-600 transition-colors hover:text-zinc-400"
+                      >
+                        Undo
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <span
                     className={cn(
