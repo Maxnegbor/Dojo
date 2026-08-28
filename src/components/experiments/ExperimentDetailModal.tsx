@@ -214,9 +214,9 @@ export function ExperimentDetailModal({
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4 lg:overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col gap-5 lg:flex-row lg:items-stretch">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-[58%] lg:overflow-hidden">
+        <div className="scrollbar-hidden flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex flex-col gap-5 px-5 py-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch lg:overflow-hidden lg:py-4">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-[58%] lg:overflow-hidden lg:pl-0 lg:pr-2">
               {armToday ? (
                 <section className="mb-4 rounded-xl border border-[var(--accent-500)]/35 bg-[var(--accent-950)]/30 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-300)]">
@@ -344,81 +344,6 @@ export function ExperimentDetailModal({
             </section>
           )}
 
-          <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
-            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Results · {primaryName}
-            </h3>
-            <label className="mb-3 flex cursor-pointer items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-2">
-              <input
-                type="checkbox"
-                checked={primaryUsesPriorDay}
-                onChange={togglePrimaryPriorDay}
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-[var(--accent-500)]"
-              />
-              <span className="min-w-0 text-[11px] leading-snug text-zinc-500">
-                Credit logged values to the <span className="text-zinc-300">prior day&apos;s</span>{' '}
-                arm (for morning-after metrics like sleep, RHR, or recovery).
-              </span>
-            </label>
-            {results.ready ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <p className="text-[10px] uppercase text-[var(--accent-400)]">
-                      A mean (n={results.armA.n})
-                    </p>
-                    <p className="font-semibold tabular-nums text-zinc-100">
-                      {formatMean(results.armA.mean, primaryUnit, experiment.primary_metric_key)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase text-zinc-500">
-                      B mean (n={results.armB.n})
-                    </p>
-                    <p className="font-semibold tabular-nums text-zinc-100">
-                      {formatMean(results.armB.mean, primaryUnit, experiment.primary_metric_key)}
-                    </p>
-                  </div>
-                </div>
-                {results.delta != null && (
-                  <p className="text-xs text-zinc-400">
-                    Δ A−B ={' '}
-                    <span className="tabular-nums text-zinc-200">
-                      {formatMean(results.delta, primaryUnit, experiment.primary_metric_key)}
-                    </span>
-                  </p>
-                )}
-                {results.excludedConfounderDays > 0 && (
-                  <p className="text-[10px] text-amber-500/80">
-                    Excluded {results.excludedConfounderDays} day
-                    {results.excludedConfounderDays === 1 ? '' : 's'} with controlled confounders
-                  </p>
-                )}
-                {results.excludedUnconfirmedDays > 0 && (
-                  <p className="text-[10px] text-zinc-500">
-                    Excluded {results.excludedUnconfirmedDays} day
-                    {results.excludedUnconfirmedDays === 1 ? '' : 's'} not marked completed
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-500">
-                Mark days completed and log your primary metric on both arms to see a comparison.
-                {(results.excludedConfounderDays > 0 || results.excludedUnconfirmedDays > 0) &&
-                  ` (${[
-                    results.excludedConfounderDays > 0
-                      ? `${results.excludedConfounderDays} confounder`
-                      : '',
-                    results.excludedUnconfirmedDays > 0
-                      ? `${results.excludedUnconfirmedDays} unconfirmed`
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(', ')} excluded)`}
-              </p>
-            )}
-          </section>
-
           {experiment.secondary_metric_keys.length > 0 && (
             <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
               <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -450,6 +375,80 @@ export function ExperimentDetailModal({
           )}
             </div>
           </div>
+
+          <section className="shrink-0 border-t border-zinc-800/80 px-5 py-4">
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
+              <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Results · {primaryName}
+              </h3>
+              <label className="mb-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-2">
+                <input
+                  type="checkbox"
+                  checked={primaryUsesPriorDay}
+                  onChange={togglePrimaryPriorDay}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-[var(--accent-500)]"
+                />
+                <span className="min-w-0 text-[11px] leading-snug text-zinc-500">
+                  Credit logged values to the <span className="text-zinc-300">prior day&apos;s</span>{' '}
+                  arm (for morning-after metrics like sleep, RHR, or recovery).
+                </span>
+              </label>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-[var(--accent-500)]/25 bg-[var(--accent-950)]/25 px-3 py-2.5">
+                  <p className="text-[10px] uppercase text-[var(--accent-400)]">
+                    A mean (n={results.armA.n})
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">
+                    {formatMean(results.armA.mean, primaryUnit, experiment.primary_metric_key)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-zinc-500">{experiment.intervention}</p>
+                </div>
+                <div className="rounded-lg border border-zinc-700/80 bg-zinc-950/40 px-3 py-2.5">
+                  <p className="text-[10px] uppercase text-zinc-500">
+                    B mean (n={results.armB.n})
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">
+                    {formatMean(results.armB.mean, primaryUnit, experiment.primary_metric_key)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-zinc-500">{experiment.control}</p>
+                </div>
+                <div className="col-span-2 rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-3 py-2.5 sm:col-span-1">
+                  <p className="text-[10px] uppercase text-zinc-500">Δ A−B</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">
+                    {results.delta != null
+                      ? formatMean(results.delta, primaryUnit, experiment.primary_metric_key)
+                      : '—'}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-zinc-500">
+                    {results.ready ? 'Primary comparison' : 'Need data on both arms'}
+                  </p>
+                </div>
+              </div>
+              {!results.ready ? (
+                <p className="mt-3 text-xs text-zinc-500">
+                  Mark days completed and log your primary metric on both intervention and control
+                  days to compare arms.
+                </p>
+              ) : null}
+              {(results.excludedConfounderDays > 0 || results.excludedUnconfirmedDays > 0) && (
+                <div className="mt-3 space-y-1">
+                  {results.excludedConfounderDays > 0 && (
+                    <p className="text-[10px] text-amber-500/80">
+                      Excluded {results.excludedConfounderDays} day
+                      {results.excludedConfounderDays === 1 ? '' : 's'} with controlled
+                      confounders
+                    </p>
+                  )}
+                  {results.excludedUnconfirmedDays > 0 && (
+                    <p className="text-[10px] text-zinc-500">
+                      Excluded {results.excludedUnconfirmedDays} day
+                      {results.excludedUnconfirmedDays === 1 ? '' : 's'} not marked completed
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
         </div>
 
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-zinc-800/80 px-5 py-3">
