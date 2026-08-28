@@ -197,9 +197,9 @@ export function ExperimentDetailModal({
           </button>
         </header>
 
-        <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-5 py-4 lg:overflow-hidden">
-          <div className="flex flex-col gap-5 lg:min-h-0 lg:flex-row lg:items-stretch">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-[58%]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4 lg:overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col gap-5 lg:flex-row lg:items-stretch">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-[58%] lg:overflow-hidden">
               {armToday ? (
                 <section className="mb-4 rounded-xl border border-[var(--accent-500)]/35 bg-[var(--accent-950)]/30 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-300)]">
@@ -234,12 +234,12 @@ export function ExperimentDetailModal({
                 experiment={experiment}
                 today={today}
                 onToggleAdherence={cycleAdherence}
-                className="flex min-h-0 flex-1 flex-col"
-                listClassName="min-h-[16rem] max-h-[28rem] flex-1 lg:max-h-none lg:min-h-0 lg:flex-1"
+                className="flex min-h-0 flex-1 flex-col lg:overflow-hidden"
+                listClassName="min-h-0 overflow-y-auto max-lg:max-h-[50vh] lg:flex-1"
               />
             </div>
 
-            <div className="scrollbar-hidden min-w-0 space-y-5 lg:max-w-[42%] lg:overflow-y-auto lg:pr-1">
+            <div className="scrollbar-hidden min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto lg:max-w-[42%] lg:pr-1">
           <section className="grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
               <p className="text-[10px] uppercase tracking-wide text-[var(--accent-400)]">

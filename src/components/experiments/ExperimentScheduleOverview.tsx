@@ -21,8 +21,8 @@ export function ExperimentScheduleOverview({
   listClassName,
 }: ExperimentScheduleOverviewProps) {
   return (
-    <section className={className}>
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <section className={cn('min-h-0', className)}>
+      <div className="mb-2 shrink-0 flex items-center justify-between gap-2">
         <h3 className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
           Schedule
         </h3>
@@ -47,7 +47,7 @@ export function ExperimentScheduleOverview({
       </div>
       <ul
         className={cn(
-          'space-y-1.5 overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-2',
+          'min-h-0 space-y-1.5 overflow-y-auto overscroll-contain rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-2',
           listClassName,
         )}
       >
