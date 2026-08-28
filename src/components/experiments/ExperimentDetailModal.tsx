@@ -10,7 +10,6 @@ import {
   experimentDisplayTitle,
   experimentQuestionLabel,
   formatProtocolShort,
-  getAdherenceForDate,
   metricAssociatesPriorDay,
   setExperimentConfounderTick,
   todayArm,
@@ -108,8 +107,6 @@ export function ExperimentDetailModal({
     onChange(saved)
   }
 
-  const todayAdherence = getAdherenceForDate(experiment, today)
-
   const cycleAdherence = (date: string) => {
     const saved = upsertExperiment(cycleExperimentAdherence(experiment, date))
     onChange(saved)
@@ -166,10 +163,10 @@ export function ExperimentDetailModal({
       <div
         role="dialog"
         aria-labelledby="experiment-detail-title"
-        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
+        className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-6 py-4">
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <input
@@ -215,50 +212,20 @@ export function ExperimentDetailModal({
         </header>
 
         <div className="scrollbar-hidden flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="flex flex-col gap-5 px-5 py-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch lg:overflow-hidden lg:py-4">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-[58%] lg:overflow-hidden lg:pl-0 lg:pr-2">
+          <div className="flex min-h-[32rem] flex-1 flex-col gap-6 px-6 py-5 lg:min-h-0 lg:flex-row lg:items-stretch lg:overflow-hidden">
+            <div className="scrollbar-hidden min-h-0 min-w-0 space-y-5 overflow-y-auto lg:w-[38%] lg:shrink-0 lg:pr-2">
               {armToday ? (
-                <section className="mb-4 rounded-xl border border-[var(--accent-500)]/35 bg-[var(--accent-950)]/30 p-3">
+                <section className="rounded-xl border border-[var(--accent-500)]/35 bg-[var(--accent-950)]/30 p-4">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-300)]">
                     Today · Arm {armToday.arm}
                   </p>
                   <p className="mt-1 text-sm text-zinc-100">
                     {armLabel(armToday.arm, experiment)}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => cycleAdherence(today)}
-                    className={cn(
-                      'mt-2 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
-                      todayAdherence === true
-                        ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300'
-                        : todayAdherence === false
-                          ? 'border-red-500/30 bg-red-950/30 text-red-300'
-                          : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600',
-                    )}
-                  >
-                    <Check size={12} strokeWidth={3} />
-                    {todayAdherence === true
-                      ? 'Completed today'
-                      : todayAdherence === false
-                        ? 'Skipped today'
-                        : 'Mark completed'}
-                  </button>
                 </section>
               ) : null}
 
-              <ExperimentScheduleOverview
-                experiment={experiment}
-                today={today}
-                onToggleAdherence={cycleAdherence}
-                onToggleConfounder={toggleConfounderTick}
-                className="flex min-h-0 flex-1 flex-col lg:overflow-hidden"
-                listClassName="min-h-0 overflow-y-auto max-lg:max-h-[50vh] lg:flex-1"
-              />
-            </div>
-
-            <div className="scrollbar-hidden min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto lg:max-w-[42%] lg:pr-1">
-          <section className="grid grid-cols-2 gap-2 text-xs">
+              <section className="grid grid-cols-2 gap-3 text-xs">
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
               <p className="text-[10px] uppercase tracking-wide text-[var(--accent-400)]">
                 A · Intervention
@@ -374,9 +341,18 @@ export function ExperimentDetailModal({
             </section>
           )}
             </div>
+
+            <ExperimentScheduleOverview
+              experiment={experiment}
+              today={today}
+              onToggleAdherence={cycleAdherence}
+              onToggleConfounder={toggleConfounderTick}
+              className="flex min-h-0 min-w-0 flex-1 flex-col lg:overflow-hidden"
+              listClassName="min-h-[24rem] flex-1 overflow-y-auto lg:min-h-0"
+            />
           </div>
 
-          <section className="shrink-0 border-t border-zinc-800/80 px-5 py-4">
+          <section className="shrink-0 border-t border-zinc-800/80 px-6 py-5">
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
               <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                 Results · {primaryName}
@@ -451,7 +427,7 @@ export function ExperimentDetailModal({
           </section>
         </div>
 
-        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-zinc-800/80 px-5 py-3">
+        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-zinc-800/80 px-6 py-3">
           <button
             type="button"
             onClick={onDelete}
