@@ -12,6 +12,7 @@ import {
   formatProtocolShort,
   getAdherenceForDate,
   metricAssociatesPriorDay,
+  setExperimentConfounderTick,
   todayArm,
   updateExperimentConfounder,
   upsertExperiment,
@@ -125,6 +126,13 @@ export function ExperimentDetailModal({
     onChange(saved)
   }
 
+  const toggleConfounderTick = (date: string, confounderId: string, present: boolean) => {
+    const saved = upsertExperiment(
+      setExperimentConfounderTick(experiment, date, confounderId, present),
+    )
+    onChange(saved)
+  }
+
   const markComplete = () => {
     const saved = upsertExperiment({
       ...experiment,
@@ -234,6 +242,7 @@ export function ExperimentDetailModal({
                 experiment={experiment}
                 today={today}
                 onToggleAdherence={cycleAdherence}
+                onToggleConfounder={toggleConfounderTick}
                 className="flex min-h-0 flex-1 flex-col lg:overflow-hidden"
                 listClassName="min-h-0 overflow-y-auto max-lg:max-h-[50vh] lg:flex-1"
               />
