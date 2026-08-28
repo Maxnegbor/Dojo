@@ -86,6 +86,42 @@ interface ExperimentWizardProps {
   onCancel: () => void
 }
 
+function PriorDayMetricToggle({
+  checked,
+  onChange,
+  metricLabel,
+}: {
+  checked: boolean
+  onChange: () => void
+  metricLabel?: string
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-[var(--accent-500)]"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm text-zinc-200">
+          {metricLabel ? (
+            <>
+              Credit <span className="text-zinc-100">{metricLabel}</span> to prior day&apos;s arm
+            </>
+          ) : (
+            'Credit to prior day&apos;s arm'
+          )}
+        </span>
+        <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">
+          When you log this the next morning, associate it with yesterday&apos;s intervention vs
+          control day (e.g. sleep, RHR, recovery).
+        </span>
+      </span>
+    </label>
+  )
+}
+
 export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWizardProps) {
   const metricOptions = useMemo(() => listMetricOptionsForGoals(hybridGoals), [hybridGoals])
 
@@ -107,6 +143,7 @@ export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWi
   const [secondaryCreateName, setSecondaryCreateName] = useState('')
   const [secondaryCreateUnit, setSecondaryCreateUnit] = useState('score')
   const [showSecondaryCreate, setShowSecondaryCreate] = useState(false)
+  const [priorDayMetrics, setPriorDayMetrics] = useState<MetricKey[]>([])
   const [confounders, setConfounders] = useState<ExperimentConfounder[]>([])
   const [confounderDraft, setConfounderDraft] = useState('')
   const [confounderSurfaces, setConfounderSurfaces] = useState<
@@ -169,9 +206,13 @@ export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWi
   })()
 
   const toggleSecondary = (key: MetricKey) => {
-    setSecondaryKeys((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    )
+    setSecondaryKeys((prev) => {
+      if (prev.includes(key)) {
+        setPriorDayMetrics((prior) => prior.filter((k) => k !== key))
+        return prev.filter((k) => k !== key)
+      }
+      return [...prev, key]
+    })
   }
 
   const addSecondaryDraft = () => {
@@ -196,6 +237,19 @@ export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWi
   const removeSecondaryDraft = (key: MetricKey) => {
     setSecondaryDrafts((prev) => prev.filter((d) => d.metric_key !== key))
     setSecondaryKeys((prev) => prev.filter((k) => k !== key))
+    setPriorDayMetrics((prev) => prev.filter((k) => k !== key))
+  }
+
+  const togglePriorDayMetric = (key: MetricKey) => {
+    setPriorDayMetrics((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    )
+  }
+
+  const priorDayMetricLabel = (key: MetricKey): string => {
+    const draft = secondaryDrafts.find((d) => d.metric_key === key)
+    if (draft) return draft.name
+    return metricOptions.find((o) => o.key === key)?.label ?? key
   }
 
   const handleSave = () => {
@@ -212,6 +266,9 @@ export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWi
       control: control.trim(),
       primary_metric_key: resolvedPrimaryKey,
       secondary_metric_keys: secondaryKeys.filter((k) => k !== resolvedPrimaryKey),
+      metric_associate_prior_day: priorDayMetrics.filter(
+        (k) => k === resolvedPrimaryKey || secondaryKeys.includes(k),
+      ),
       confounders,
       confounder_log_surfaces:
         confounders.length > 0
@@ -413,12 +470,38 @@ export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWi
                   </label>
                 </div>
               )}
+
+              {resolvedPrimaryKey ? (
+                <PriorDayMetricToggle
+                  checked={priorDayMetrics.includes(resolvedPrimaryKey)}
+                  onChange={() => togglePriorDayMetric(resolvedPrimaryKey)}
+                />
+              ) : null}
             </div>
           )}
 
           {step === 'secondary' && (
             <div className="space-y-3">
               <p className="text-xs text-zinc-500">Optional. Tap to include, or create a new one.</p>
+
+              {secondaryKeys.length > 0 && (
+                <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    Timing
+                  </p>
+                  <ul className="space-y-2">
+                    {secondaryKeys.map((key) => (
+                      <li key={key}>
+                        <PriorDayMetricToggle
+                          metricLabel={priorDayMetricLabel(key)}
+                          checked={priorDayMetrics.includes(key)}
+                          onChange={() => togglePriorDayMetric(key)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {secondaryDrafts.length > 0 && (
                 <ul className="space-y-1">

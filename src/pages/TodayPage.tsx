@@ -896,12 +896,7 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
-          <ExperimentHomeCard
-            date={viewDate}
-            logs={streakLogs}
-            workouts={[...weekWorkouts, ...workouts]}
-            hybridGoals={goals}
-          />
+          <ExperimentHomeCard date={viewDate} />
           <WorkoutLogCard
             date={viewDate}
             userId={userId}

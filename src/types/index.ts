@@ -234,6 +234,11 @@ export interface Experiment {
   control: string
   primary_metric_key: MetricKey
   secondary_metric_keys: MetricKey[]
+  /**
+   * Metrics logged the morning after an intervention day — reading on date D is
+   * credited to the schedule arm on date D − 1 (e.g. sleep, RHR, recovery).
+   */
+  metric_associate_prior_day: MetricKey[]
   confounders: ExperimentConfounder[]
   /** Day-level confounder ticks for controlling results. */
   confounder_logs: ExperimentConfounderLog[]

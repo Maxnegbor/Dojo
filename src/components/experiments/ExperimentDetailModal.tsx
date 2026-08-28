@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ExperimentScheduleOverview } from '@/components/experiments/ExperimentScheduleOverview'
 import {
   armLabel,
   computeExperimentResults,
   experimentDisplayTitle,
   experimentQuestionLabel,
   formatProtocolShort,
-  getConfounderTicksForDate,
+  metricAssociatesPriorDay,
   setExperimentAdherence,
   todayArm,
   upsertExperiment,
@@ -15,7 +16,7 @@ import {
 import { metricLabel } from '@/lib/goals'
 import { formatMetricAmount } from '@/lib/timedMetrics'
 import { cn, formatDate } from '@/lib/utils'
-import type { DailyLog, Experiment, Goal, Workout } from '@/types'
+import type { DailyLog, Experiment, Goal, MetricKey, Workout } from '@/types'
 
 interface ExperimentDetailModalProps {
   experiment: Experiment
@@ -75,6 +76,34 @@ export function ExperimentDetailModal({
     [experiment, logs, workouts, controlIds],
   )
 
+  const primaryUsesPriorDay = metricAssociatesPriorDay(experiment, experiment.primary_metric_key)
+
+  const togglePrimaryPriorDay = () => {
+    const key = experiment.primary_metric_key
+    const next = primaryUsesPriorDay
+      ? experiment.metric_associate_prior_day.filter((k) => k !== key)
+      : [...experiment.metric_associate_prior_day, key]
+    const saved = upsertExperiment({
+      ...experiment,
+      metric_associate_prior_day: next,
+      updated_at: new Date().toISOString(),
+    })
+    onChange(saved)
+  }
+
+  const toggleSecondaryPriorDay = (key: MetricKey) => {
+    const usesPriorDay = metricAssociatesPriorDay(experiment, key)
+    const next = usesPriorDay
+      ? experiment.metric_associate_prior_day.filter((k) => k !== key)
+      : [...experiment.metric_associate_prior_day, key]
+    const saved = upsertExperiment({
+      ...experiment,
+      metric_associate_prior_day: next,
+      updated_at: new Date().toISOString(),
+    })
+    onChange(saved)
+  }
+
   const adherenceMap = useMemo(() => {
     const map = new Map<string, boolean>()
     for (const entry of experiment.adherence) map.set(entry.date, entry.followed)
@@ -112,7 +141,7 @@ export function ExperimentDetailModal({
       <div
         role="dialog"
         aria-labelledby="experiment-detail-title"
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
@@ -160,31 +189,43 @@ export function ExperimentDetailModal({
           </button>
         </header>
 
-        <div className="scrollbar-hidden min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-          {armToday ? (
-            <section className="rounded-xl border border-[var(--accent-500)]/35 bg-[var(--accent-950)]/30 p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-300)]">
-                Today · Arm {armToday.arm}
-              </p>
-              <p className="mt-1 text-sm text-zinc-100">
-                {armLabel(armToday.arm, experiment)}
-              </p>
-              <button
-                type="button"
-                onClick={() => toggleAdherence(today)}
-                className={cn(
-                  'mt-2 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
-                  adherenceMap.get(today)
-                    ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300'
-                    : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600',
-                )}
-              >
-                <Check size={12} strokeWidth={3} />
-                {adherenceMap.get(today) ? 'Followed' : 'Mark followed'}
-              </button>
-            </section>
-          ) : null}
+        <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-5 py-4 lg:overflow-hidden">
+          <div className="flex flex-col gap-5 lg:min-h-0 lg:flex-row lg:items-stretch">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-[58%]">
+              {armToday ? (
+                <section className="mb-4 rounded-xl border border-[var(--accent-500)]/35 bg-[var(--accent-950)]/30 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-300)]">
+                    Today · Arm {armToday.arm}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-100">
+                    {armLabel(armToday.arm, experiment)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => toggleAdherence(today)}
+                    className={cn(
+                      'mt-2 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                      adherenceMap.get(today)
+                        ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300'
+                        : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600',
+                    )}
+                  >
+                    <Check size={12} strokeWidth={3} />
+                    {adherenceMap.get(today) ? 'Completed today' : 'Mark completed'}
+                  </button>
+                </section>
+              ) : null}
 
+              <ExperimentScheduleOverview
+                experiment={experiment}
+                today={today}
+                onToggleAdherence={toggleAdherence}
+                className="flex min-h-0 flex-1 flex-col"
+                listClassName="min-h-[16rem] max-h-[28rem] flex-1 lg:max-h-none lg:min-h-0 lg:flex-1"
+              />
+            </div>
+
+            <div className="scrollbar-hidden min-w-0 space-y-5 lg:max-w-[42%] lg:overflow-y-auto lg:pr-1">
           <section className="grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
               <p className="text-[10px] uppercase tracking-wide text-[var(--accent-400)]">
@@ -242,68 +283,22 @@ export function ExperimentDetailModal({
             </section>
           )}
 
-          <section>
-            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Schedule
-            </h3>
-            <ul className="max-h-48 space-y-1 overflow-y-auto">
-              {experiment.schedule.map((day) => {
-                const isToday = day.date === today
-                const followed = adherenceMap.get(day.date)
-                const dayTicks = getConfounderTicksForDate(experiment, day.date)
-                const tickLabels = experiment.confounders
-                  .filter((c) => dayTicks[c.id])
-                  .map((c) => c.label)
-                return (
-                  <li
-                    key={day.date}
-                    className={cn(
-                      'flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs',
-                      isToday
-                        ? 'border-[var(--accent-500)]/35 bg-[var(--accent-950)]/40'
-                        : 'border-zinc-800/70 bg-zinc-900/40',
-                    )}
-                  >
-                    <span className="w-16 shrink-0 tabular-nums text-zinc-400">
-                      {day.date.slice(5)}
-                    </span>
-                    <span
-                      className={cn(
-                        'w-5 shrink-0 font-semibold',
-                        day.arm === 'A' ? 'text-[var(--accent-300)]' : 'text-zinc-400',
-                      )}
-                    >
-                      {day.arm}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-zinc-500">
-                      {armLabel(day.arm, experiment)}
-                      {tickLabels.length > 0 ? (
-                        <span className="text-amber-500/80"> · {tickLabels.join(', ')}</span>
-                      ) : null}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => toggleAdherence(day.date)}
-                      className={cn(
-                        'flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
-                        followed
-                          ? 'bg-emerald-500/20 text-emerald-400'
-                          : 'bg-zinc-800 text-zinc-600',
-                      )}
-                      aria-label={followed ? 'Clear adherence' : 'Mark followed'}
-                    >
-                      <Check size={10} strokeWidth={3} />
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
-
           <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
             <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Results · {primaryName}
             </h3>
+            <label className="mb-3 flex cursor-pointer items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-2">
+              <input
+                type="checkbox"
+                checked={primaryUsesPriorDay}
+                onChange={togglePrimaryPriorDay}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-[var(--accent-500)]"
+              />
+              <span className="min-w-0 text-[11px] leading-snug text-zinc-500">
+                Credit logged values to the <span className="text-zinc-300">prior day&apos;s</span>{' '}
+                arm (for morning-after metrics like sleep, RHR, or recovery).
+              </span>
+            </label>
             {results.ready ? (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -332,23 +327,68 @@ export function ExperimentDetailModal({
                     </span>
                   </p>
                 )}
-                {results.excludedDays > 0 && (
+                {results.excludedConfounderDays > 0 && (
                   <p className="text-[10px] text-amber-500/80">
-                    Excluded {results.excludedDays} day
-                    {results.excludedDays === 1 ? '' : 's'} with controlled confounders
+                    Excluded {results.excludedConfounderDays} day
+                    {results.excludedConfounderDays === 1 ? '' : 's'} with controlled confounders
+                  </p>
+                )}
+                {results.excludedUnconfirmedDays > 0 && (
+                  <p className="text-[10px] text-zinc-500">
+                    Excluded {results.excludedUnconfirmedDays} day
+                    {results.excludedUnconfirmedDays === 1 ? '' : 's'} not marked completed
                   </p>
                 )}
               </div>
             ) : (
               <p className="text-xs text-zinc-500">
-                Log your primary metric on both intervention and control days to see a
-                comparison.
-                {results.excludedDays > 0
-                  ? ` (${results.excludedDays} day${results.excludedDays === 1 ? '' : 's'} excluded)`
-                  : ''}
+                Mark days completed and log your primary metric on both arms to see a comparison.
+                {(results.excludedConfounderDays > 0 || results.excludedUnconfirmedDays > 0) &&
+                  ` (${[
+                    results.excludedConfounderDays > 0
+                      ? `${results.excludedConfounderDays} confounder`
+                      : '',
+                    results.excludedUnconfirmedDays > 0
+                      ? `${results.excludedUnconfirmedDays} unconfirmed`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(', ')} excluded)`}
               </p>
             )}
           </section>
+
+          {experiment.secondary_metric_keys.length > 0 && (
+            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
+              <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Secondary outcome timing
+              </h3>
+              <ul className="space-y-2">
+                {experiment.secondary_metric_keys.map((key) => {
+                  const name =
+                    hybridGoals.find((g) => g.metric_key === key)?.name || metricLabel(key)
+                  return (
+                    <li key={key}>
+                      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-2">
+                        <input
+                          type="checkbox"
+                          checked={metricAssociatesPriorDay(experiment, key)}
+                          onChange={() => toggleSecondaryPriorDay(key)}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-[var(--accent-500)]"
+                        />
+                        <span className="min-w-0 text-[11px] leading-snug text-zinc-500">
+                          Credit <span className="text-zinc-300">{name}</span> to the prior
+                          day&apos;s arm
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
+            </div>
+          </div>
         </div>
 
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-zinc-800/80 px-5 py-3">

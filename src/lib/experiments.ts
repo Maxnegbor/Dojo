@@ -1,7 +1,7 @@
 import { addDays, parseISO } from 'date-fns'
 import { getMetricValue } from '@/lib/metrics'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
-import { formatDate, generateId } from '@/lib/utils'
+import { addDaysToDateString, formatDate, generateId } from '@/lib/utils'
 import type {
   DailyLog,
   Experiment,
@@ -188,6 +188,12 @@ export function normalizeExperiment(raw: unknown): Experiment | null {
     ? obj.secondary_metric_keys.filter((k): k is MetricKey => typeof k === 'string' && k.length > 0)
     : []
 
+  const priorDayMetrics = Array.isArray(obj.metric_associate_prior_day)
+    ? obj.metric_associate_prior_day.filter(
+        (k): k is MetricKey => typeof k === 'string' && k.length > 0,
+      )
+    : []
+
   const start =
     typeof obj.start_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.start_date)
       ? obj.start_date
@@ -203,6 +209,7 @@ export function normalizeExperiment(raw: unknown): Experiment | null {
     control: typeof obj.control === 'string' ? obj.control.trim() : '',
     primary_metric_key: primary,
     secondary_metric_keys: secondary,
+    metric_associate_prior_day: priorDayMetrics,
     confounders: normalizeConfounders(obj.confounders),
     confounder_logs: normalizeConfounderLogs(obj.confounder_logs),
     confounder_log_surfaces: normalizeConfounderSurfaces(obj.confounder_log_surfaces),
@@ -278,6 +285,7 @@ export function createEmptyExperiment(partial?: Partial<Experiment>): Experiment
     control: partial?.control ?? '',
     primary_metric_key: partial?.primary_metric_key ?? ('custom:outcome' as MetricKey),
     secondary_metric_keys: partial?.secondary_metric_keys ?? [],
+    metric_associate_prior_day: partial?.metric_associate_prior_day ?? [],
     confounders: partial?.confounders ?? [],
     confounder_logs: partial?.confounder_logs ?? [],
     confounder_log_surfaces: partial?.confounder_log_surfaces ?? ['home_log', 'shutdown'],
@@ -406,6 +414,38 @@ export function todayArm(
   return experiment.schedule.find((d) => d.date === today) ?? null
 }
 
+export function isExperimentScheduledDay(experiment: Experiment, date: string): boolean {
+  return experiment.schedule.some((d) => d.date === date)
+}
+
+/** null = not answered yet */
+export function getAdherenceForDate(experiment: Experiment, date: string): boolean | null {
+  const entry = experiment.adherence.find((e) => e.date === date)
+  return entry ? entry.followed : null
+}
+
+export function experimentNeedsAdherencePrompt(experiment: Experiment, date: string): boolean {
+  if (experiment.status !== 'running') return false
+  if (!isExperimentScheduledDay(experiment, date)) return false
+  return getAdherenceForDate(experiment, date) === null
+}
+
+/** Running experiments on this date that need the daily log step (adherence and/or confounders). */
+export function experimentsNeedingDailyLogStep(
+  surface: ExperimentConfounderLogSurface,
+  date: string = formatDate(new Date()),
+): Experiment[] {
+  return getExperiments().filter((experiment) => {
+    if (experiment.status !== 'running') return false
+    if (!isExperimentScheduledDay(experiment, date)) return false
+    const needsAdherence = experimentNeedsAdherencePrompt(experiment, date)
+    const needsConfounders =
+      experiment.confounders.length > 0 &&
+      experiment.confounder_log_surfaces.includes(surface)
+    return needsAdherence || needsConfounders
+  })
+}
+
 export function setExperimentAdherence(
   experiment: Experiment,
   date: string,
@@ -460,21 +500,35 @@ export function experimentsNeedingConfounderLog(
   surface: ExperimentConfounderLogSurface,
   date: string = formatDate(new Date()),
 ): Experiment[] {
-  return getExperiments().filter((experiment) => {
-    if (experiment.status !== 'running') return false
-    if (experiment.confounders.length === 0) return false
-    if (!experiment.confounder_log_surfaces.includes(surface)) return false
-    const onSchedule = experiment.schedule.some((d) => d.date === date)
-    // Also show if within start→last schedule day window
-    if (onSchedule) return true
-    if (experiment.schedule.length === 0) return experiment.start_date <= date
-    const last = experiment.schedule[experiment.schedule.length - 1]?.date
-    return experiment.start_date <= date && (!last || date <= last)
-  })
+  return experimentsNeedingDailyLogStep(surface, date).filter(
+    (experiment) =>
+      experiment.confounders.length > 0 &&
+      experiment.confounder_log_surfaces.includes(surface),
+  )
 }
 
 export function createConfounder(label: string): ExperimentConfounder {
   return { id: generateId(), label: label.trim() }
+}
+
+/** True when a reading logged on date D should be credited to the prior schedule day's arm. */
+export function metricAssociatesPriorDay(
+  experiment: Pick<Experiment, 'metric_associate_prior_day'>,
+  metricKey: MetricKey,
+): boolean {
+  return experiment.metric_associate_prior_day.includes(metricKey)
+}
+
+/** Calendar date to read the metric for a given schedule day (may be the next day). */
+export function logDateForScheduleDay(
+  scheduleDate: string,
+  metricKey: MetricKey,
+  experiment: Pick<Experiment, 'metric_associate_prior_day'>,
+): string {
+  if (metricAssociatesPriorDay(experiment, metricKey)) {
+    return addDaysToDateString(scheduleDate, 1)
+  }
+  return scheduleDate
 }
 
 export interface ExperimentArmStats {
@@ -492,7 +546,9 @@ export interface ExperimentResults {
   /** Enough readings on both arms to show a comparison. */
   ready: boolean
   /** Days dropped because a controlled confounder was present. */
-  excludedDays: number
+  excludedConfounderDays: number
+  /** Days dropped because the day was not marked completed. */
+  excludedUnconfirmedDays: number
 }
 
 function readingForDate(
@@ -531,14 +587,20 @@ export function computeExperimentResults(
 ): ExperimentResults {
   const valuesA: number[] = []
   const valuesB: number[] = []
-  let excludedDays = 0
+  let excludedConfounderDays = 0
+  let excludedUnconfirmedDays = 0
 
   for (const day of experiment.schedule) {
     if (dayHasControlledConfounder(experiment, day.date, controlConfounderIds)) {
-      excludedDays++
+      excludedConfounderDays++
       continue
     }
-    const value = readingForDate(metricKey, day.date, logs, workouts)
+    if (getAdherenceForDate(experiment, day.date) !== true) {
+      excludedUnconfirmedDays++
+      continue
+    }
+    const logDate = logDateForScheduleDay(day.date, metricKey, experiment)
+    const value = readingForDate(metricKey, logDate, logs, workouts)
     if (value == null || !Number.isFinite(value)) continue
     if (day.arm === 'A') valuesA.push(value)
     else valuesB.push(value)
@@ -557,7 +619,8 @@ export function computeExperimentResults(
     armB: { arm: 'B', n: valuesB.length, mean: meanB, values: valuesB },
     delta,
     ready: valuesA.length > 0 && valuesB.length > 0,
-    excludedDays,
+    excludedConfounderDays,
+    excludedUnconfirmedDays,
   }
 }
 

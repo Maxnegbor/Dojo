@@ -1,22 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Beaker } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Card } from '@/components/ui/Card'
-import { ExperimentDetailModal } from '@/components/experiments/ExperimentDetailModal'
 import {
   EXPERIMENTS_CHANGED,
   armLabel,
-  deleteExperiment,
   experimentDisplayTitle,
   getExperiments,
 } from '@/lib/experiments'
 import { cn, formatDate } from '@/lib/utils'
-import type { DailyLog, Experiment, Goal, Workout } from '@/types'
+import type { Experiment } from '@/types'
 
 interface ExperimentHomeCardProps {
   date: string
-  logs: DailyLog[]
-  workouts: Workout[]
-  hybridGoals: Goal[]
   className?: string
 }
 
@@ -37,17 +33,11 @@ function scheduleProgress(experiment: Experiment, date: string) {
   return { dayIndex, total: schedule.length, arm, pct }
 }
 
-export function ExperimentHomeCard({
-  date,
-  logs,
-  workouts,
-  hybridGoals,
-  className,
-}: ExperimentHomeCardProps) {
+export function ExperimentHomeCard({ date, className }: ExperimentHomeCardProps) {
+  const navigate = useNavigate()
   const [experiments, setExperiments] = useState<Experiment[]>(() =>
     getExperiments().filter((e) => e.status === 'running'),
   )
-  const [detailId, setDetailId] = useState<string | null>(null)
 
   useEffect(() => {
     const refresh = () =>
@@ -61,18 +51,12 @@ export function ExperimentHomeCard({
     }
   }, [])
 
-  const detail = useMemo(
-    () => experiments.find((e) => e.id === detailId) ?? null,
-    [experiments, detailId],
-  )
-
   if (experiments.length === 0) return null
 
   const today = formatDate(new Date())
 
   return (
-    <>
-      <Card
+    <Card
         className={cn('w-full', className)}
         title={
           <span className="flex items-center gap-1.5">
@@ -91,7 +75,7 @@ export function ExperimentHomeCard({
               <li key={experiment.id}>
                 <button
                   type="button"
-                  onClick={() => setDetailId(experiment.id)}
+                  onClick={() => navigate('/experiments')}
                   className={cn(
                     'relative w-full overflow-hidden rounded-lg border px-2.5 py-2 text-left transition-colors',
                     onToday
@@ -150,29 +134,5 @@ export function ExperimentHomeCard({
           })}
         </ul>
       </Card>
-
-      {detail ? (
-        <ExperimentDetailModal
-          experiment={detail}
-          logs={logs}
-          workouts={workouts}
-          hybridGoals={hybridGoals}
-          onChange={(next) => {
-            setExperiments((prev) => {
-              if (next.status !== 'running') {
-                return prev.filter((e) => e.id !== next.id)
-              }
-              return prev.map((e) => (e.id === next.id ? next : e))
-            })
-          }}
-          onDelete={() => {
-            deleteExperiment(detail.id)
-            setDetailId(null)
-            setExperiments((prev) => prev.filter((e) => e.id !== detail.id))
-          }}
-          onClose={() => setDetailId(null)}
-        />
-      ) : null}
-    </>
   )
 }

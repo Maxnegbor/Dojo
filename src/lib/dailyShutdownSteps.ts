@@ -30,7 +30,7 @@ export const DAILY_SHUTDOWN_STEP_PRESETS: DailyShutdownStepPreset[] = [
   {
     id: 'experiments',
     label: 'Experiments',
-    description: 'Tick confounders for running experiments (shown when needed)',
+    description: 'Confirm experiment days and tick confounders (shown when needed)',
   },
 ]
 

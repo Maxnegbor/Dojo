@@ -13,7 +13,7 @@ import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
 import { ExperimentConfoundersSection } from '@/components/experiments/ExperimentConfoundersSection'
 import { useSettings } from '@/context/SettingsContext'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
-import { experimentsNeedingConfounderLog } from '@/lib/experiments'
+import { experimentsNeedingDailyLogStep } from '@/lib/experiments'
 import { computeMorningLogFields, formatMorningMinutes } from '@/lib/morningLog'
 import {
   getEnabledMorningLogMetrics,
@@ -195,7 +195,7 @@ export function MorningLogModal({
   const hasChecklist = checklistGroups.length > 0
   const showTodoist = isTodoistConnected()
   const hasLogFields = loggableMetrics.length > 0 || enabledMorningMetrics.length > 0
-  const needsExperiments = experimentsNeedingConfounderLog('morning', date).length > 0
+  const needsExperiments = experimentsNeedingDailyLogStep('morning', date).length > 0
 
   const flowSteps = useMemo((): MorningLogStep[] => {
     const steps: MorningLogStep[] = []

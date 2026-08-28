@@ -48,7 +48,7 @@ import {
   typedReminderMatches,
 } from '@/lib/typedReminder'
 import { isTodoistConnected } from '@/lib/todoistStore'
-import { experimentsNeedingConfounderLog } from '@/lib/experiments'
+import { experimentsNeedingDailyLogStep } from '@/lib/experiments'
 import { ExperimentConfoundersSection } from '@/components/experiments/ExperimentConfoundersSection'
 import type { DailyLog, DailyShutdownStepId, Goal, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import type { ScheduleTemplate } from '@/lib/scheduleTemplates'
@@ -163,7 +163,7 @@ export function ShutdownModal({
   const typedReminderText = getTypedReminderText(settings, 'shutdown')
 
   const visibleSteps = useMemo((): ShutdownFlowStep[] => {
-    const needsExperiments = experimentsNeedingConfounderLog('shutdown', viewDate).length > 0
+    const needsExperiments = experimentsNeedingDailyLogStep('shutdown', viewDate).length > 0
     const next: ShutdownFlowStep[] = configuredSteps.filter((id) => {
       if (id === 'habits') return false
       if (id === 'checklist') return checklistGroups.length > 0
