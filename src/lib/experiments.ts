@@ -459,6 +459,59 @@ export function setExperimentAdherence(
   }
 }
 
+export function clearExperimentAdherence(experiment: Experiment, date: string): Experiment {
+  return {
+    ...experiment,
+    adherence: experiment.adherence.filter((e) => e.date !== date),
+    updated_at: new Date().toISOString(),
+  }
+}
+
+/** Cycle: unset → completed → skipped → unset. */
+export function cycleExperimentAdherence(experiment: Experiment, date: string): Experiment {
+  const current = getAdherenceForDate(experiment, date)
+  if (current === null) return setExperimentAdherence(experiment, date, true)
+  if (current === true) return setExperimentAdherence(experiment, date, false)
+  return clearExperimentAdherence(experiment, date)
+}
+
+export function updateExperimentConfounder(
+  experiment: Experiment,
+  confounderId: string,
+  label: string,
+): Experiment {
+  const trimmed = label.trim()
+  if (!trimmed) return experiment
+  return {
+    ...experiment,
+    confounders: experiment.confounders.map((c) =>
+      c.id === confounderId ? { ...c, label: trimmed } : c,
+    ),
+    updated_at: new Date().toISOString(),
+  }
+}
+
+export function deleteExperimentConfounder(
+  experiment: Experiment,
+  confounderId: string,
+): Experiment {
+  const confounder_logs = experiment.confounder_logs
+    .map((entry) => {
+      if (!entry.ticks[confounderId]) return entry
+      const ticks = { ...entry.ticks }
+      delete ticks[confounderId]
+      return Object.keys(ticks).length === 0 ? null : { ...entry, ticks }
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+
+  return {
+    ...experiment,
+    confounders: experiment.confounders.filter((c) => c.id !== confounderId),
+    confounder_logs,
+    updated_at: new Date().toISOString(),
+  }
+}
+
 export function getConfounderTicksForDate(
   experiment: Experiment,
   date: string,

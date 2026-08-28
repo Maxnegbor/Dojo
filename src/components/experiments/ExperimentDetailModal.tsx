@@ -5,12 +5,15 @@ import { ExperimentScheduleOverview } from '@/components/experiments/ExperimentS
 import {
   armLabel,
   computeExperimentResults,
+  cycleExperimentAdherence,
+  deleteExperimentConfounder,
   experimentDisplayTitle,
   experimentQuestionLabel,
   formatProtocolShort,
+  getAdherenceForDate,
   metricAssociatesPriorDay,
-  setExperimentAdherence,
   todayArm,
+  updateExperimentConfounder,
   upsertExperiment,
 } from '@/lib/experiments'
 import { metricLabel } from '@/lib/goals'
@@ -104,16 +107,21 @@ export function ExperimentDetailModal({
     onChange(saved)
   }
 
-  const adherenceMap = useMemo(() => {
-    const map = new Map<string, boolean>()
-    for (const entry of experiment.adherence) map.set(entry.date, entry.followed)
-    return map
-  }, [experiment.adherence])
+  const todayAdherence = getAdherenceForDate(experiment, today)
 
-  const toggleAdherence = (date: string) => {
-    const current = adherenceMap.get(date)
-    const next = setExperimentAdherence(experiment, date, !(current === true))
-    const saved = upsertExperiment(next)
+  const cycleAdherence = (date: string) => {
+    const saved = upsertExperiment(cycleExperimentAdherence(experiment, date))
+    onChange(saved)
+  }
+
+  const saveConfounderLabel = (confounderId: string, label: string) => {
+    const saved = upsertExperiment(updateExperimentConfounder(experiment, confounderId, label))
+    onChange(saved)
+  }
+
+  const removeConfounder = (confounderId: string) => {
+    const saved = upsertExperiment(deleteExperimentConfounder(experiment, confounderId))
+    setControlIds((prev) => prev.filter((id) => id !== confounderId))
     onChange(saved)
   }
 
@@ -202,16 +210,22 @@ export function ExperimentDetailModal({
                   </p>
                   <button
                     type="button"
-                    onClick={() => toggleAdherence(today)}
+                    onClick={() => cycleAdherence(today)}
                     className={cn(
                       'mt-2 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
-                      adherenceMap.get(today)
+                      todayAdherence === true
                         ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300'
-                        : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600',
+                        : todayAdherence === false
+                          ? 'border-red-500/30 bg-red-950/30 text-red-300'
+                          : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600',
                     )}
                   >
                     <Check size={12} strokeWidth={3} />
-                    {adherenceMap.get(today) ? 'Completed today' : 'Mark completed'}
+                    {todayAdherence === true
+                      ? 'Completed today'
+                      : todayAdherence === false
+                        ? 'Skipped today'
+                        : 'Mark completed'}
                   </button>
                 </section>
               ) : null}
@@ -219,7 +233,7 @@ export function ExperimentDetailModal({
               <ExperimentScheduleOverview
                 experiment={experiment}
                 today={today}
-                onToggleAdherence={toggleAdherence}
+                onToggleAdherence={cycleAdherence}
                 className="flex min-h-0 flex-1 flex-col"
                 listClassName="min-h-[16rem] max-h-[28rem] flex-1 lg:max-h-none lg:min-h-0 lg:flex-1"
               />
@@ -242,39 +256,68 @@ export function ExperimentDetailModal({
           {experiment.confounders.length > 0 && (
             <section className="space-y-2">
               <h3 className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                Control for confounders
+                Confounders
               </h3>
               <p className="text-[11px] text-zinc-600">
-                Exclude days where these were ticked from the results below.
+                Edit names, delete, or toggle to exclude ticked days from results.
               </p>
-              <ul className="space-y-1">
+              <ul className="space-y-1.5">
                 {experiment.confounders.map((item) => {
-                  const on = controlIds.includes(item.id)
+                  const excludeFromResults = controlIds.includes(item.id)
                   return (
-                    <li key={item.id}>
+                    <li
+                      key={item.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/40 p-1.5"
+                    >
                       <button
                         type="button"
                         onClick={() =>
                           setControlIds((prev) =>
-                            on ? prev.filter((id) => id !== item.id) : [...prev, item.id],
+                            excludeFromResults
+                              ? prev.filter((id) => id !== item.id)
+                              : [...prev, item.id],
                           )
                         }
                         className={cn(
-                          'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors',
-                          on
-                            ? 'border-amber-500/40 bg-amber-950/30 text-amber-100'
-                            : 'border-zinc-800 bg-zinc-900/40 text-zinc-400',
+                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors',
+                          excludeFromResults
+                            ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30'
+                            : 'bg-zinc-800 text-zinc-600 hover:text-zinc-400',
                         )}
+                        title={
+                          excludeFromResults
+                            ? 'Excluding from results'
+                            : 'Exclude from results when ticked'
+                        }
+                        aria-label={
+                          excludeFromResults
+                            ? 'Stop excluding from results'
+                            : 'Exclude from results when ticked'
+                        }
                       >
-                        <span
-                          className={cn(
-                            'flex h-4 w-4 shrink-0 items-center justify-center rounded',
-                            on ? 'bg-amber-500/30 text-amber-300' : 'bg-zinc-800 text-zinc-600',
-                          )}
-                        >
-                          <Check size={10} strokeWidth={3} />
-                        </span>
-                        {item.label}
+                        <Check size={12} strokeWidth={3} />
+                      </button>
+                      <input
+                        defaultValue={item.label}
+                        key={`${item.id}:${item.label}`}
+                        onBlur={(e) => {
+                          const next = e.target.value.trim()
+                          if (next && next !== item.label) saveConfounderLabel(item.id, next)
+                          else e.target.value = item.label
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                        }}
+                        className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-zinc-200 outline-none transition-colors hover:border-zinc-700 focus:border-zinc-600 focus:bg-zinc-950"
+                        aria-label="Confounder name"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeConfounder(item.id)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-red-400"
+                        aria-label={`Delete ${item.label}`}
+                      >
+                        <Trash2 size={13} />
                       </button>
                     </li>
                   )

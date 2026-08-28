@@ -34,6 +34,12 @@ export function ExperimentScheduleOverview({
             Completed
           </span>
           <span className="inline-flex items-center gap-1">
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-950/60 text-red-400/80">
+              <Check size={9} strokeWidth={3} />
+            </span>
+            Skipped
+          </span>
+          <span className="inline-flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-amber-500/70" />
             Confounder
           </span>
@@ -120,13 +126,17 @@ export function ExperimentScheduleOverview({
                     )}
                     aria-label={
                       followed
-                        ? 'Clear completion'
+                        ? 'Mark skipped'
                         : skipped
-                          ? 'Mark completed'
+                          ? 'Clear status'
                           : 'Mark completed'
                     }
                     title={
-                      followed ? 'Completed' : skipped ? 'Not completed' : 'Mark completed'
+                      followed
+                        ? 'Completed — click for skipped'
+                        : skipped
+                          ? 'Skipped — click to clear'
+                          : 'Not set — click to mark completed'
                     }
                   >
                     <Check size={14} strokeWidth={3} />
