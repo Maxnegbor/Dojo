@@ -6,7 +6,6 @@ import {
   armLabel,
   computeExperimentResults,
   cycleExperimentAdherence,
-  clearExperimentAdherence,
   deleteExperimentConfounder,
   experimentDisplayTitle,
   experimentQuestionLabel,
@@ -116,11 +115,6 @@ export function ExperimentDetailModal({
     onChange(saved)
   }
 
-  const clearAdherence = (date: string) => {
-    const saved = upsertExperiment(clearExperimentAdherence(experiment, date))
-    onChange(saved)
-  }
-
   const saveConfounderLabel = (confounderId: string, label: string) => {
     const saved = upsertExperiment(updateExperimentConfounder(experiment, confounderId, label))
     onChange(saved)
@@ -143,6 +137,15 @@ export function ExperimentDetailModal({
     const saved = upsertExperiment({
       ...experiment,
       status: 'completed',
+      updated_at: new Date().toISOString(),
+    })
+    onChange(saved)
+  }
+
+  const reopenExperiment = () => {
+    const saved = upsertExperiment({
+      ...experiment,
+      status: 'running',
       updated_at: new Date().toISOString(),
     })
     onChange(saved)
@@ -222,36 +225,25 @@ export function ExperimentDetailModal({
                   <p className="mt-1 text-sm text-zinc-100">
                     {armLabel(armToday.arm, experiment)}
                   </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => cycleAdherence(today)}
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
-                        todayAdherence === true
-                          ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300'
-                          : todayAdherence === false
-                            ? 'border-red-500/30 bg-red-950/30 text-red-300'
-                            : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600',
-                      )}
-                    >
-                      <Check size={12} strokeWidth={3} />
-                      {todayAdherence === true
-                        ? 'Completed today'
+                  <button
+                    type="button"
+                    onClick={() => cycleAdherence(today)}
+                    className={cn(
+                      'mt-2 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                      todayAdherence === true
+                        ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300'
                         : todayAdherence === false
-                          ? 'Skipped today'
-                          : 'Mark completed'}
-                    </button>
-                    {todayAdherence !== null ? (
-                      <button
-                        type="button"
-                        onClick={() => clearAdherence(today)}
-                        className="rounded-lg px-2 py-1.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-                      >
-                        Undo
-                      </button>
-                    ) : null}
-                  </div>
+                          ? 'border-red-500/30 bg-red-950/30 text-red-300'
+                          : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600',
+                    )}
+                  >
+                    <Check size={12} strokeWidth={3} />
+                    {todayAdherence === true
+                      ? 'Completed today'
+                      : todayAdherence === false
+                        ? 'Skipped today'
+                        : 'Mark completed'}
+                  </button>
                 </section>
               ) : null}
 
@@ -259,7 +251,6 @@ export function ExperimentDetailModal({
                 experiment={experiment}
                 today={today}
                 onToggleAdherence={cycleAdherence}
-                onClearAdherence={clearAdherence}
                 onToggleConfounder={toggleConfounderTick}
                 className="flex min-h-0 flex-1 flex-col lg:overflow-hidden"
                 listClassName="min-h-0 overflow-y-auto max-lg:max-h-[50vh] lg:flex-1"
@@ -474,6 +465,11 @@ export function ExperimentDetailModal({
             {experiment.status === 'running' && (
               <Button type="button" variant="secondary" size="sm" onClick={markComplete}>
                 Mark complete
+              </Button>
+            )}
+            {experiment.status === 'completed' && (
+              <Button type="button" variant="secondary" size="sm" onClick={reopenExperiment}>
+                Undo
               </Button>
             )}
             <Button type="button" variant="secondary" size="sm" onClick={onClose}>
