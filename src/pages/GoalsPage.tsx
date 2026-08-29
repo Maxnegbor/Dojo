@@ -12,7 +12,7 @@ import type { Goal } from '@/types'
 import { useAuth } from '@/hooks/useData'
 
 export function GoalsPage() {
-  const { userId } = useAuth()
+  const { userId, storageReady } = useAuth()
   const { settings } = useSettings()
   const [goals, setGoals] = useState<Goal[]>([])
 
@@ -26,7 +26,7 @@ export function GoalsPage() {
   }, [])
 
   const load = useCallback(async () => {
-    if (!userId) return
+    if (!userId || !storageReady) return
 
     const loaded = isSupabaseConfigured
       ? await (await import('@/lib/supabase')).fetchGoals(userId)
@@ -37,12 +37,21 @@ export function GoalsPage() {
     for (const duplicate of toRetire) {
       await persistGoal(duplicate)
     }
-  }, [userId, persistGoal])
+  }, [userId, storageReady, persistGoal])
 
   useEffect(() => { load() }, [load])
 
   const saveGoal = async (goal: Goal) => {
     const existing = goals.find((g) => g.id === goal.id)
+    setGoals((prev) => {
+      const idx = prev.findIndex((g) => g.id === goal.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = goal
+        return next
+      }
+      return [...prev, goal]
+    })
     if (
       existing &&
       goal.metric_key.startsWith('workout_') &&
@@ -52,11 +61,6 @@ export function GoalsPage() {
     }
 
     await persistGoal(goal)
-    setGoals((prev) => {
-      const idx = prev.findIndex((g) => g.id === goal.id)
-      if (idx >= 0) { const next = [...prev]; next[idx] = goal; return next }
-      return [...prev, goal]
-    })
   }
 
   const removeGoal = async (goal: Goal) => {

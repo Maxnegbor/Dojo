@@ -6,7 +6,7 @@ import { useSettings } from '@/context/SettingsContext'
 import { setWorkoutDayTotal, totalMinutesForDay } from '@/lib/workoutDayTotals'
 import {
   DEFAULT_WORKOUT_UNIT,
-  getHomeLogWorkoutTypes,
+  getWorkoutTypes,
   type WorkoutTypeDefinition,
 } from '@/lib/workoutTypes'
 import type { Workout } from '@/types'
@@ -32,7 +32,7 @@ export function WorkoutWeekEditModal({
     () => getWeekDates(parseISO(`${date}T12:00:00`), settings.weekStartsOn),
     [date, settings.weekStartsOn],
   )
-  const types = useMemo(() => getHomeLogWorkoutTypes(), [])
+  const types = useMemo(() => getWorkoutTypes(), [])
 
   const [draft, setDraft] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}

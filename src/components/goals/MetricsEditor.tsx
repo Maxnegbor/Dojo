@@ -590,14 +590,19 @@ export function MetricsEditor({
   ) => {
     const existing = existingGoal ?? workoutGoal(typeId)
     const unit = normalizeWorkoutUnit(formState.unit || DEFAULT_WORKOUT_UNIT)
-    if (!existing) return
-
     onSaveGoal(
       normalizeGoal({
-        ...existing,
+        id: existing?.id ?? generateId(),
+        user_id: userId,
+        metric_key: workoutMetricKey(typeId),
         name: label,
-        unit,
+        target_value: existing?.target_value ?? null,
         log_period: formState.logPeriod,
+        goal_weight_start: existing?.goal_weight_start ?? null,
+        goal_weight_target: existing?.goal_weight_target ?? null,
+        unit,
+        is_active: true,
+        created_at: existing?.created_at ?? new Date().toISOString(),
       }),
     )
   }
@@ -722,6 +727,11 @@ export function MetricsEditor({
         }
         onSaveGoal(normalizeGoal(nextGoal))
       }
+      enableMetricsSection(
+        form.categoryId && form.categoryId !== UNGROUPED_CATEGORY_ID
+          ? form.categoryId
+          : 'default',
+      )
       closeForm()
       return
     }

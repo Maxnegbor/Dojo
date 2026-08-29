@@ -109,7 +109,7 @@ export function TodayPage() {
   const navigate = useNavigate()
   const [viewDate, setViewDate] = useState(formatDate(new Date()))
   const { log, workouts, loading, refresh, syncFromStore, removeWorkout, addWorkout } = useDailyLog(viewDate)
-  const { userId } = useAuth()
+  const { userId, storageReady } = useAuth()
 
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
   const [tomorrowBlocks, setTomorrowBlocks] = useState<ScheduleBlock[]>([])
@@ -262,7 +262,7 @@ export function TodayPage() {
   }
 
   const loadData = useCallback(async () => {
-    if (!userId) return
+    if (!userId || !storageReady) return
     const streakStart = formatDate(addDays(parseISO(viewDate), -400))
     const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
     const weekStart = weekDates[0]!
@@ -288,7 +288,7 @@ export function TodayPage() {
       setStreakLogs(localStore.getDailyLogs(streakStart, viewDate))
       setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
     }
-  }, [userId, viewDate, settings.weekStartsOn])
+  }, [userId, storageReady, viewDate, settings.weekStartsOn])
 
   const refreshStreakLogs = useCallback(async () => {
     if (!userId) return
@@ -778,7 +778,7 @@ export function TodayPage() {
           gap: screensaver ? '0px' : undefined,
         }}
       >
-        {/* Left: Exercise plan + Todoist */}
+        {/* Left: Exercise plan + workouts + Todoist */}
         <aside className={cn(
           'home-rail home-rail--left relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
@@ -795,6 +795,39 @@ export function TodayPage() {
               await removeWorkout(workoutId)
             }}
             onVolumeLogged={() => {
+              syncFromStore()
+            }}
+          />
+          <WorkoutLogCard
+            date={viewDate}
+            userId={userId}
+            goals={goals}
+            weekWorkouts={weekWorkouts}
+            workouts={workouts}
+            disabled={!userId || loading}
+            onAddWorkout={async (category, minutes) => {
+              await addWorkout(category, minutes)
+              const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
+              const weekStart = weekDates[0]!
+              const weekEnd = weekDates[weekDates.length - 1]!
+              if (isSupabaseConfigured) {
+                const { fetchWorkouts } = await import('@/lib/supabase')
+                if (userId) setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
+              } else {
+                setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
+              }
+              syncFromStore()
+            }}
+            onWeekEdited={async () => {
+              const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
+              const weekStart = weekDates[0]!
+              const weekEnd = weekDates[weekDates.length - 1]!
+              if (isSupabaseConfigured) {
+                const { fetchWorkouts } = await import('@/lib/supabase')
+                if (userId) setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
+              } else {
+                setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
+              }
               syncFromStore()
             }}
           />
@@ -897,39 +930,6 @@ export function TodayPage() {
             className="w-full"
           />
           <ExperimentHomeCard date={viewDate} />
-          <WorkoutLogCard
-            date={viewDate}
-            userId={userId}
-            goals={goals}
-            weekWorkouts={weekWorkouts}
-            workouts={workouts}
-            disabled={!userId || loading}
-            onAddWorkout={async (category, minutes) => {
-              await addWorkout(category, minutes)
-              const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
-              const weekStart = weekDates[0]!
-              const weekEnd = weekDates[weekDates.length - 1]!
-              if (isSupabaseConfigured) {
-                const { fetchWorkouts } = await import('@/lib/supabase')
-                if (userId) setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
-              } else {
-                setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
-              }
-              syncFromStore()
-            }}
-            onWeekEdited={async () => {
-              const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
-              const weekStart = weekDates[0]!
-              const weekEnd = weekDates[weekDates.length - 1]!
-              if (isSupabaseConfigured) {
-                const { fetchWorkouts } = await import('@/lib/supabase')
-                if (userId) setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
-              } else {
-                setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
-              }
-              syncFromStore()
-            }}
-          />
         </aside>
       </div>
 

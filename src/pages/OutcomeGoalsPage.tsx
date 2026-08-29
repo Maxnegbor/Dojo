@@ -109,10 +109,18 @@ export function OutcomeGoalsPage() {
   )
 
   const handleSave = (goal: OutcomeGoal) => {
-    upsertOutcomeGoal(goal)
+    const saved = upsertOutcomeGoal(goal)
     setEditing(null)
-    setDetailId(goal.id)
-    refreshGoals()
+    setDetailId(saved.id)
+    setGoals((prev) => {
+      const idx = prev.findIndex((entry) => entry.id === saved.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = saved
+        return next
+      }
+      return [...prev, saved]
+    })
   }
 
   const handleDelete = (id: string) => {

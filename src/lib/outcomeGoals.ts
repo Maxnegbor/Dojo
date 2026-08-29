@@ -172,11 +172,24 @@ export function normalizeOutcomeGoals(raw: unknown): OutcomeGoal[] {
     .filter((goal): goal is OutcomeGoal => goal != null)
 }
 
+function parseOutcomeGoalsRaw(raw: string): unknown {
+  let parsed: unknown = JSON.parse(raw)
+  // Recover if a previous persist wrote a JSON string into jsonb (double-encoded).
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed) as unknown
+    } catch {
+      return []
+    }
+  }
+  return parsed
+}
+
 export function getOutcomeGoals(): OutcomeGoal[] {
   try {
     const raw = storageGetItem(STORAGE_KEY)
     if (!raw) return []
-    return normalizeOutcomeGoals(JSON.parse(raw) as unknown)
+    return normalizeOutcomeGoals(parseOutcomeGoalsRaw(raw))
   } catch {
     return []
   }

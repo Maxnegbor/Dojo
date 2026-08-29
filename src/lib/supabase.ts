@@ -267,6 +267,39 @@ export async function fetchGoals(userId: string): Promise<Goal[]> {
   return (data ?? []) as Goal[]
 }
 
+const GOAL_TABLE_FIELDS = [
+  'id',
+  'user_id',
+  'metric_key',
+  'name',
+  'target_value',
+  'target_type',
+  'log_period',
+  'target_period',
+  'period_days',
+  'period_start_date',
+  'period_end_date',
+  'period_recurring',
+  'category_id',
+  'goal_weight_start',
+  'goal_weight_target',
+  'unit',
+  'is_active',
+  'show_in_daily_log',
+  'created_at',
+] as const
+
+function goalRowForTable(
+  goal: Omit<Goal, 'created_at'> & { created_at?: string },
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {}
+  const raw = goal as unknown as Record<string, unknown>
+  for (const field of GOAL_TABLE_FIELDS) {
+    if (raw[field] !== undefined) row[field] = raw[field]
+  }
+  return row
+}
+
 export async function upsertGoal(
   goal: Omit<Goal, 'created_at'> & { created_at?: string },
 ): Promise<Goal> {
@@ -274,7 +307,7 @@ export async function upsertGoal(
 
   const { data, error } = await supabase
     .from('goals')
-    .upsert(goal)
+    .upsert(goalRowForTable(goal))
     .select()
     .single()
 

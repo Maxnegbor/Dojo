@@ -674,12 +674,6 @@ input[type="number"] {
       transparent 48%,
       color-mix(in srgb, #06060b 55%, transparent) 78%,
       #06060b 100%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0,
-      transparent 47px,
-      color-mix(in srgb, white 2.2%, transparent) 48px
     );
   opacity: 0.55;
   mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);

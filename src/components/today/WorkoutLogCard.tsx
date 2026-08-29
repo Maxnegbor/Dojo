@@ -12,7 +12,7 @@ import { OUTCOME_GOALS_CHANGED } from '@/lib/outcomeGoals'
 import { resolveWeeklyQuantityTarget } from '@/lib/pulseConfig'
 import {
   DEFAULT_WORKOUT_UNIT,
-  getHomeLogWorkoutTypes,
+  getWorkoutTypes,
   WORKOUT_TYPES_CHANGED,
   workoutMetricKey,
 } from '@/lib/workoutTypes'
@@ -47,14 +47,14 @@ export function WorkoutLogCard({
   onWeekEdited,
 }: WorkoutLogCardProps) {
   const { settings } = useSettings()
-  const [workoutTypes, setWorkoutTypes] = useState(() => getHomeLogWorkoutTypes())
+  const [workoutTypes, setWorkoutTypes] = useState(() => getWorkoutTypes())
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [savingCategory, setSavingCategory] = useState<string | null>(null)
   const [outcomeRevision, setOutcomeRevision] = useState(0)
   const [editOpen, setEditOpen] = useState(false)
 
   useEffect(() => {
-    const syncTypes = () => setWorkoutTypes(getHomeLogWorkoutTypes())
+    const syncTypes = () => setWorkoutTypes(getWorkoutTypes())
     const syncOutcomes = () => setOutcomeRevision((n) => n + 1)
     window.addEventListener(WORKOUT_TYPES_CHANGED, syncTypes)
     window.addEventListener(OUTCOME_GOALS_CHANGED, syncOutcomes)
@@ -115,7 +115,7 @@ export function WorkoutLogCard({
     return map
   }, [workoutTypes, goals, workoutsForWeek, weekDates, outcomeRevision])
 
-  if (!settings.showWorkoutMetrics || workoutTypes.length === 0) {
+  if (workoutTypes.length === 0) {
     return null
   }
 
@@ -136,6 +136,7 @@ export function WorkoutLogCard({
   return (
     <>
       <Card
+        className="w-full shrink-0"
         title={
           <span className="inline-flex items-center gap-1.5">
             Workouts

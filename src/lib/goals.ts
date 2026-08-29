@@ -151,13 +151,19 @@ export function dedupeActiveGoalsByMetricKey(goals: Goal[]): Goal[] {
  * Also includes orphan workout_* goals whose type no longer exists.
  */
 export function getStaleDuplicateGoals(goals: Goal[]): Goal[] {
+  const workoutTypes = getWorkoutTypes()
   const knownWorkoutKeys = new Set(
-    getWorkoutTypes().map((type) => workoutMetricKey(type.id) as string),
+    workoutTypes.map((type) => workoutMetricKey(type.id) as string),
   )
   const keepIds = new Set(dedupeActiveGoalsByMetricKey(goals).map((goal) => goal.id))
   return getActiveGoals(goals).filter((goal) => {
     if (!keepIds.has(goal.id)) return true
-    if (goal.metric_key.startsWith('workout_') && !knownWorkoutKeys.has(goal.metric_key)) {
+    // Empty types usually means storage has not hydrated — never mass-retire workout goals.
+    if (
+      workoutTypes.length > 0 &&
+      goal.metric_key.startsWith('workout_') &&
+      !knownWorkoutKeys.has(goal.metric_key)
+    ) {
       return true
     }
     return false

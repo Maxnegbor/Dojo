@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 const cache = new Map<string, string>()
 let activeUserId: string | null = null
 let hydratePromise: Promise<void> | null = null
+const persistTail = new Map<string, Promise<void>>()
 
 const APP_PREFIX = 'personal-os-'
 
@@ -35,6 +36,9 @@ export async function initUserStorage(userId: string): Promise<void> {
     const { fetchAllUserStorage, upsertUserStorage } = await import('@/lib/supabase')
     const remote = await fetchAllUserStorage(userId)
 
+    // Writes that happened while fetch was in-flight must win over stale remote.
+    const localWrites = new Map(cache)
+
     cache.clear()
     for (const [key, value] of Object.entries(remote)) {
       cache.set(key, JSON.stringify(value))
@@ -54,6 +58,11 @@ export async function initUserStorage(userId: string): Promise<void> {
       } catch {
         /* ignore invalid json */
       }
+    }
+
+    for (const [key, value] of localWrites) {
+      cache.set(key, value)
+      enqueuePersist(key)
     }
 
     window.dispatchEvent(new Event('user-storage-ready'))
@@ -77,7 +86,7 @@ export function storageGetItem(key: string): string | null {
 export function storageSetItem(key: string, value: string): void {
   cache.set(key, value)
   if (isUserStorageActive()) {
-    void persistKey(key, value)
+    enqueuePersist(key)
     return
   }
   localStorage.setItem(key, value)
@@ -118,12 +127,27 @@ export async function clearAllUserStorage(userId: string): Promise<void> {
   }
 }
 
-async function persistKey(key: string, value: string): Promise<void> {
-  if (!activeUserId) return
-  const { upsertUserStorage } = await import('@/lib/supabase')
+function parseStoredValue(value: string): unknown {
   try {
-    await upsertUserStorage(activeUserId, key, JSON.parse(value) as unknown)
+    return JSON.parse(value) as unknown
   } catch {
-    await upsertUserStorage(activeUserId, key, value)
+    return value
   }
+}
+
+function enqueuePersist(key: string): void {
+  const previous = persistTail.get(key) ?? Promise.resolve()
+  const next = previous
+    .catch(() => undefined)
+    .then(() => persistLatest(key))
+  persistTail.set(key, next)
+}
+
+/** Always persist whatever is currently in cache so a stale in-flight write cannot clobber a newer save. */
+async function persistLatest(key: string): Promise<void> {
+  if (!activeUserId) return
+  const value = cache.get(key)
+  if (value == null) return
+  const { upsertUserStorage } = await import('@/lib/supabase')
+  await upsertUserStorage(activeUserId, key, parseStoredValue(value))
 }
