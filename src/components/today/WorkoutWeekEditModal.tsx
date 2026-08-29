@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { format, parseISO } from 'date-fns'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -78,7 +79,7 @@ export function WorkoutWeekEditModal({
     }
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
       onClick={onClose}
@@ -185,6 +186,7 @@ export function WorkoutWeekEditModal({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
