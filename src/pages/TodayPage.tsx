@@ -142,7 +142,8 @@ export function TodayPage() {
   const draftRevision = useDailyLogDraftRevision(viewDate)
 
   const isActiveDay = isToday(parseISO(viewDate))
-  const screensaver = useScreensaver()
+  const { active: screensaverActive, waking: screensaverWaking } = useScreensaver()
+  const screensaver = screensaverActive && !screensaverWaking
 
   useEffect(() => {
     if (location.pathname !== '/') return
@@ -271,19 +272,25 @@ export function TodayPage() {
     if (isSupabaseConfigured) {
       const { fetchScheduleBlocks, fetchGoals, fetchDailyLogs, fetchWorkouts, upsertGoal } = await import('@/lib/supabase')
       setBlocks((await fetchScheduleBlocks(userId, viewDate)).map(normalizeScheduleBlock))
-      const { goals: cleaned, toRetire } = cleanupStaleGoals(await fetchGoals(userId))
-      setGoals(cleaned)
-      for (const duplicate of toRetire) {
-        await upsertGoal(duplicate)
+      const loaded = await fetchGoals(userId)
+      if (loaded.length > 0) {
+        const { goals: cleaned, toRetire } = cleanupStaleGoals(loaded)
+        setGoals(cleaned)
+        for (const duplicate of toRetire) {
+          await upsertGoal(duplicate)
+        }
       }
       setStreakLogs(await fetchDailyLogs(userId, streakStart, viewDate))
       setWeekWorkouts(await fetchWorkouts(userId, weekStart, weekEnd))
     } else {
       setBlocks(localStore.getScheduleBlocks(viewDate).map(normalizeScheduleBlock))
-      const { goals: cleaned, toRetire } = cleanupStaleGoals(localStore.getGoals())
-      setGoals(cleaned)
-      for (const duplicate of toRetire) {
-        localStore.upsertGoal(duplicate)
+      const loaded = localStore.getGoals()
+      if (loaded.length > 0) {
+        const { goals: cleaned, toRetire } = cleanupStaleGoals(loaded)
+        setGoals(cleaned)
+        for (const duplicate of toRetire) {
+          localStore.upsertGoal(duplicate)
+        }
       }
       setStreakLogs(localStore.getDailyLogs(streakStart, viewDate))
       setWeekWorkouts(localStore.getWorkouts(weekStart, weekEnd))
@@ -713,6 +720,8 @@ export function TodayPage() {
         className={cn(
           'relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-visible home-stage',
           screensaver && 'home-stage--screensaver',
+          screensaverWaking && 'home-stage--screensaver-wake',
+          (screensaverActive || screensaverWaking) && 'home-stage--suppress-enter',
         )}
         style={{
           gap: screensaver ? '0px' : undefined,

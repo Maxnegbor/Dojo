@@ -60,6 +60,7 @@ import { cn, generateId, formatDate } from '@/lib/utils'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { getActiveWeightGoal, getDuplicateActiveWeightGoals, isWeightGoal } from '@/lib/weightGoal'
 import {
+  autoEnrollInMorningLog,
   getMorningLogGoalKeys,
   getMorningLogYesterdayKeys,
   pruneMorningLogAssignments,
@@ -656,6 +657,7 @@ export function MetricsEditor({
         }
         const created = buildHabitFields(form)
         persistHabit([...habits, { ...created, id }])
+        autoEnrollInMorningLog({ kind: 'habit', logPeriod: form.logPeriod, habitId: id })
         enableMetricsSection('habits')
       }
       closeForm()
@@ -726,6 +728,11 @@ export function MetricsEditor({
           created_at: new Date().toISOString(),
         }
         onSaveGoal(normalizeGoal(nextGoal))
+        autoEnrollInMorningLog({
+          kind: 'goal',
+          logPeriod: form.logPeriod,
+          metricKey: resolvedKey,
+        })
       }
       enableMetricsSection(
         form.categoryId && form.categoryId !== UNGROUPED_CATEGORY_ID
@@ -760,6 +767,9 @@ export function MetricsEditor({
       })
       onSaveGoal(savedWeightGoal)
       enableMetricsSection('weight')
+      if (form.logPeriod === 'daily') {
+        autoEnrollInMorningLog({ kind: 'weight', logPeriod: form.logPeriod })
+      }
       // Weekly weight can't live on the morning log — clear any leftover assignment.
       if (form.logPeriod === 'weekly') {
         saveMorningLogGoalKeys(getMorningLogGoalKeys().filter((key) => key !== 'weight'))
@@ -823,6 +833,7 @@ export function MetricsEditor({
           },
         ])
         saveWorkoutGoal(id, name, form)
+        autoEnrollInMorningLog({ kind: 'workout', logPeriod, workoutId: id })
         enableMetricsSection('workouts')
         updateSettings({ showWorkoutMetrics: true })
       }
@@ -1836,6 +1847,9 @@ export function MetricsEditor({
                     )
                   }
                   saveSleepMetricsConfig(next)
+                  for (const id of added) {
+                    autoEnrollInMorningLog({ kind: 'sleep', logPeriod: 'daily', sleepFieldId: id })
+                  }
                 }}
                 onDone={() => setAddingSleepMetric(false)}
               />

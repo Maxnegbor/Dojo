@@ -21,9 +21,10 @@ import { formatDate, getWeekDates } from '@/lib/utils'
 import type { DailyLog, Goal, OutcomeGoal, Workout } from '@/types'
 
 export function OutcomeGoalsPage() {
-  const { userId } = useAuth()
+  const { userId, storageReady } = useAuth()
   const { settings } = useSettings()
-  const [goals, setGoals] = useState<OutcomeGoal[]>(() => getOutcomeGoals())
+  const [goals, setGoals] = useState<OutcomeGoal[]>([])
+  const [goalsReady, setGoalsReady] = useState(false)
   const [hybridGoals, setHybridGoals] = useState<Goal[]>([])
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [workouts, setWorkouts] = useState<Workout[]>([])
@@ -38,11 +39,13 @@ export function OutcomeGoalsPage() {
   )
 
   const refreshGoals = useCallback(() => {
+    if (!storageReady) return
     setGoals(getOutcomeGoals())
-  }, [])
+    setGoalsReady(true)
+  }, [storageReady])
 
   const loadData = useCallback(async () => {
-    if (!userId) return
+    if (!userId || !storageReady) return
     await runOutcomeGoalsMigration(userId)
     refreshGoals()
 
@@ -67,7 +70,7 @@ export function OutcomeGoalsPage() {
       setLogs(localStore.getDailyLogs(start, end))
       setWorkouts(localStore.getWorkouts(start, end))
     }
-  }, [userId, weekDates, refreshGoals])
+  }, [userId, storageReady, weekDates, refreshGoals])
 
   useEffect(() => {
     void loadData()
@@ -132,6 +135,10 @@ export function OutcomeGoalsPage() {
   }
 
   if (!userId) return null
+
+  if (!goalsReady) {
+    return <div className="flex flex-1 items-center justify-center text-zinc-500">Loading…</div>
+  }
 
   return (
     <div className="space-y-4">

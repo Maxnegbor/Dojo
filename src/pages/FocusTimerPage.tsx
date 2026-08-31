@@ -13,6 +13,7 @@ import { CycleStepper, LongBreakSettings, MinuteSlider, SkipBreaksToggle } from 
 import { FocusGoalModal } from '@/components/focus/FocusGoalModal'
 import { ToggleRow } from '@/components/settings/SettingsControls'
 import { useFocus } from '@/context/FocusContext'
+import { useScreensaver } from '@/context/ScreensaverContext'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth } from '@/hooks/useData'
 import { saveFocusGoal, syncFocusGoalFromSettings } from '@/lib/focusGoalSync'
@@ -60,6 +61,8 @@ export function FocusTimerPage() {
     focusImmersive,
     setFocusImmersive,
   } = useFocus()
+  const { active: screensaverActive, waking: screensaverWaking } = useScreensaver()
+  const screensaver = screensaverActive && !screensaverWaking
   const { userId } = useAuth()
   const { settings: userPrefs, formatTime } = useSettings()
   const [settings, setSettings] = useState<FocusTimerSettings>(getFocusSettings)
@@ -399,11 +402,15 @@ export function FocusTimerPage() {
   return (
     <div
       className={cn(
-        'relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6',
+        'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6 transition-[gap,padding] duration-[1400ms] ease-in-out',
+        screensaver && 'fixed inset-0 z-20 gap-8 px-6 py-8 sm:px-10',
+        screensaverWaking && 'focus-stage--screensaver-wake',
         showSchedule && showSettings
           ? 'max-w-6xl'
           : showSchedule
-            ? 'max-w-4xl'
+            ? screensaver
+              ? 'max-w-[96rem]'
+              : 'max-w-4xl'
             : showSettings
               ? 'max-w-3xl'
               : 'max-w-lg',
@@ -412,7 +419,10 @@ export function FocusTimerPage() {
       <button
         type="button"
         onClick={() => setFocusImmersive(!focusImmersive)}
-        className="absolute right-0 top-0 z-10 rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        className={cn(
+          'absolute right-0 top-0 z-10 rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-400 transition-all duration-[1400ms] ease-in-out hover:bg-zinc-800 hover:text-zinc-200',
+          screensaverActive && 'pointer-events-none opacity-0',
+        )}
         aria-pressed={focusImmersive}
         aria-label={focusImmersive ? 'Exit fullscreen' : 'Enter fullscreen'}
         title={focusImmersive ? 'Exit fullscreen (Esc)' : 'Hide sidebar'}
@@ -420,32 +430,45 @@ export function FocusTimerPage() {
         {focusImmersive ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
       </button>
 
-      <header className="text-center">
+      <header
+        className={cn(
+          'text-center transition-[max-height,opacity,margin] duration-[1400ms] ease-in-out',
+          screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
+        )}
+      >
         <h1 className="text-2xl font-bold text-zinc-100">Focus</h1>
       </header>
 
       <div
         className={cn(
-          'flex items-start gap-4',
+          'flex items-start gap-4 transition-[gap] duration-[1400ms] ease-in-out',
+          screensaver && 'h-full min-h-0 flex-1 items-center justify-center gap-10 lg:gap-14',
           showSchedule || showSettings
             ? 'flex-col lg:flex-row lg:justify-center'
             : 'justify-center',
         )}
       >
-        <div className="flex w-full max-w-[480px] flex-col gap-4 self-center lg:shrink-0">
+        <div
+          className={cn(
+            'flex w-full max-w-[480px] flex-col gap-4 self-center transition-all duration-[1400ms] ease-in-out lg:shrink-0',
+            screensaver && 'max-w-none flex-1 items-center justify-center',
+          )}
+        >
           <Card
             className={cn(
-              'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6',
+              'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6 transition-all duration-[1400ms] ease-in-out',
+              screensaver && 'max-w-none border-0 bg-transparent px-0 py-0 shadow-none',
             )}
           >
         <p
           className={cn(
-            'mb-1 h-4 text-xs font-medium uppercase tracking-widest',
+            'mb-1 h-4 text-xs font-medium uppercase tracking-widest transition-opacity duration-[1400ms] ease-in-out',
             phase === 'focus'
               ? 'text-[var(--accent-400)]'
               : isRest
                 ? 'text-blue-400'
                 : 'text-zinc-500',
+            screensaverActive && 'opacity-0',
           )}
         >
           {phase === 'done'
@@ -457,7 +480,12 @@ export function FocusTimerPage() {
                 : `Rest · ${cycle}/${settings.iterations}`}
         </p>
 
-        <div className="relative mt-4 mb-6 h-60 w-60 shrink-0">
+        <div
+          className={cn(
+            'relative mt-4 mb-6 shrink-0 transition-all duration-[1400ms] ease-in-out',
+            screensaver ? 'mt-0 mb-0 h-[min(42vmin,22rem)] w-[min(42vmin,22rem)]' : 'h-60 w-60',
+          )}
+        >
           <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden>
             <circle cx="50" cy="50" r="44" fill="none" stroke="#27272a" strokeWidth="5" />
             <circle
@@ -472,7 +500,12 @@ export function FocusTimerPage() {
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="select-none text-[3.75rem] font-extralight leading-none tabular-nums tracking-tight text-zinc-50">
+            <span
+              className={cn(
+                'select-none font-extralight leading-none tabular-nums tracking-tight text-zinc-50 transition-all duration-[1400ms] ease-in-out',
+                screensaver ? 'text-[min(12vmin,6rem)]' : 'text-[3.75rem]',
+              )}
+            >
               {String(minutes).padStart(2, '0')}
               <span className="text-zinc-500">:</span>
               {String(seconds).padStart(2, '0')}
@@ -481,14 +514,19 @@ export function FocusTimerPage() {
         </div>
 
         <FocusLabelPicker
-          className="mb-4"
+          className={cn('mb-4 transition-opacity duration-[1400ms] ease-in-out', screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0')}
           value={selectedLabelId}
           onChange={selectLabel}
           disabled={phase === 'done'}
         />
 
         {sessionEndAt && phase !== 'done' ? (
-          <div className="mb-5 flex h-11 shrink-0 flex-wrap items-center justify-center gap-1.5">
+          <div
+            className={cn(
+              'mb-5 flex h-11 shrink-0 flex-wrap items-center justify-center gap-1.5 transition-opacity duration-[1400ms] ease-in-out',
+              screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0',
+            )}
+          >
             <div className="rounded-full border border-[var(--accent-ring)] bg-[var(--accent-950)] px-3 py-1 text-center">
               <p className="text-[9px] uppercase tracking-wide text-[var(--accent-300)]/70">Ends at</p>
               <p className="text-xs font-semibold text-[var(--accent-200)]">
@@ -503,10 +541,21 @@ export function FocusTimerPage() {
             </div>
           </div>
         ) : (
-          <div className="mb-5 h-11 shrink-0" aria-hidden />
+          <div
+            className={cn(
+              'mb-5 h-11 shrink-0 transition-all duration-[1400ms] ease-in-out',
+              screensaverActive && 'mb-0 h-0',
+            )}
+            aria-hidden
+          />
         )}
 
-        <div className="mb-3 flex h-12 w-full shrink-0 items-center justify-center">
+        <div
+          className={cn(
+            'mb-3 flex h-12 w-full shrink-0 items-center justify-center transition-opacity duration-[1400ms] ease-in-out',
+            screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0',
+          )}
+        >
           {!running ? (
             <Button
               size="lg"
@@ -539,7 +588,12 @@ export function FocusTimerPage() {
           )}
         </div>
 
-        <div className="flex h-12 shrink-0 items-center justify-center gap-2">
+        <div
+          className={cn(
+            'flex h-12 shrink-0 items-center justify-center gap-2 transition-opacity duration-[1400ms] ease-in-out',
+            screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
+          )}
+        >
           <Button
             variant="secondary"
             onClick={() => (phase === 'focus' ? endFocus() : endBreak())}
@@ -562,7 +616,13 @@ export function FocusTimerPage() {
         </div>
       </Card>
 
-          <Card title="Last 12 hours" className="w-full">
+          <Card
+            title="Last 12 hours"
+            className={cn(
+              'w-full transition-opacity duration-[1400ms] ease-in-out',
+              screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
+            )}
+          >
             <FocusHourlyChart
               formatHour={formatHourLabel}
               liveSession={liveFocusSession}
@@ -572,7 +632,13 @@ export function FocusTimerPage() {
         </div>
 
         {showSettings && (
-          <Card title="Timer settings" className="w-full shrink-0 space-y-5 self-center lg:w-72 lg:self-start">
+          <Card
+            title="Timer settings"
+            className={cn(
+              'w-full shrink-0 space-y-5 self-center transition-opacity duration-[1400ms] ease-in-out lg:w-72 lg:self-start',
+              screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
+            )}
+          >
             <MinuteSlider
               label="Focus duration"
               value={settings.focusMinutes}
@@ -651,7 +717,12 @@ export function FocusTimerPage() {
           <FocusScheduleAgenda
             userId={userId}
             formatTime={formatTime}
-            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-72 lg:shrink-0"
+            screensaver={screensaver}
+            className={cn(
+              'mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-72 lg:shrink-0',
+              screensaver &&
+                'mx-0 max-h-none min-h-0 max-w-none flex-1 lg:min-h-0 lg:w-auto lg:max-w-none',
+            )}
           />
         )}
       </div>

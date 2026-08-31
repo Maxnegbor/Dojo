@@ -661,6 +661,7 @@ input[type="number"] {
       transparent 68%
     );
   pointer-events: none;
+  transition: opacity 1400ms ease-in-out;
 }
 
 .home-atmosphere::after {
@@ -678,6 +679,7 @@ input[type="number"] {
   opacity: 0.55;
   mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
   pointer-events: none;
+  transition: opacity 1400ms ease-in-out;
 }
 
 .home-stage {
@@ -776,9 +778,33 @@ input[type="number"] {
   animation: none;
 }
 
+.home-stage--suppress-enter .home-rail,
+.home-stage--suppress-enter .home-canvas {
+  animation: none !important;
+}
+
+.home-stage--screensaver-wake .home-rail {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transition: opacity 1400ms ease-in-out, visibility 0s linear 0s;
+}
+
+.home-stage--screensaver-wake > div:first-child {
+  max-height: var(--home-header-max-height, 12rem) !important;
+  opacity: 1 !important;
+  filter: none !important;
+  pointer-events: auto !important;
+}
+
 .home-atmosphere--screensaver::before,
 .home-atmosphere--screensaver::after {
   opacity: 0;
-  transition: opacity 1500ms ease-in-out;
+  transition: opacity 1400ms ease-in-out;
+}
+
+/* Focus screensaver uses the same wake timing as Home. */
+.focus-stage--screensaver-wake {
+  transition: gap 1400ms ease-in-out, padding 1400ms ease-in-out;
 }
 

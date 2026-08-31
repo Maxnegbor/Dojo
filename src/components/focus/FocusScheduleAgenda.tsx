@@ -9,10 +9,12 @@ interface FocusScheduleAgendaProps {
   userId: string
   formatTime: (date: Date) => string
   className?: string
+  screensaver?: boolean
 }
 
 const HOUR_HEIGHT = 72
 const TIMELINE_TOP_INSET = 18
+const SCREENSAVER_HOUR_HEIGHT = 96
 
 function labelForTime(hhmm: string, formatTime: (date: Date) => string): string {
   const [h = 0, m = 0] = hhmm.split(':').map(Number)
@@ -30,12 +32,13 @@ function minutesToStyle(
   startMin: number,
   endMin: number,
   timelineStartHour: number,
+  hourHeight: number,
 ): { top: number; height: number } {
   const start = startMin - timelineStartHour * 60
   const end = endMin - timelineStartHour * 60
   return {
-    top: (start / 60) * HOUR_HEIGHT + TIMELINE_TOP_INSET,
-    height: Math.max(((end - start) / 60) * HOUR_HEIGHT, 28),
+    top: (start / 60) * hourHeight + TIMELINE_TOP_INSET,
+    height: Math.max(((end - start) / 60) * hourHeight, 28),
   }
 }
 
@@ -43,6 +46,7 @@ export function FocusScheduleAgenda({
   userId,
   formatTime,
   className,
+  screensaver = false,
 }: FocusScheduleAgendaProps) {
   const { settings } = useSettings()
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
@@ -83,29 +87,48 @@ export function FocusScheduleAgenda({
 
   const startHour = settings.timelineStartHour
   const endHour = settings.timelineEndHour
+  const hourHeight = screensaver ? SCREENSAVER_HOUR_HEIGHT : HOUR_HEIGHT
   const slotHours = useMemo(
     () => Array.from({ length: Math.max(0, endHour - startHour) }, (_, i) => startHour + i),
     [startHour, endHour],
   )
-  const contentHeight = Math.max(1, (endHour - startHour) * HOUR_HEIGHT + TIMELINE_TOP_INSET)
+  const contentHeight = Math.max(1, (endHour - startHour) * hourHeight + TIMELINE_TOP_INSET)
   const nowLine =
     nowMinutes >= startHour * 60 && nowMinutes <= endHour * 60
-      ? ((nowMinutes - startHour * 60) / 60) * HOUR_HEIGHT + TIMELINE_TOP_INSET
+      ? ((nowMinutes - startHour * 60) / 60) * hourHeight + TIMELINE_TOP_INSET
       : null
 
   return (
     <aside
       className={cn(
-        'flex w-full flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-950/40',
+        'flex w-full flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-950/40 transition-all duration-[1400ms] ease-in-out',
+        screensaver && 'h-full min-h-0 border-zinc-800/50 bg-zinc-950/60',
         className,
       )}
     >
-      <div className="shrink-0 border-b border-zinc-800/70 px-5 py-4">
-        <h2 className="text-lg font-semibold tracking-tight text-zinc-100">Schedule</h2>
+      <div
+        className={cn(
+          'shrink-0 border-b border-zinc-800/70 px-5 py-4 transition-all duration-[1400ms] ease-in-out',
+          screensaver && 'px-6 py-5',
+        )}
+      >
+        <h2
+          className={cn(
+            'font-semibold tracking-tight text-zinc-100 transition-all duration-[1400ms] ease-in-out',
+            screensaver ? 'text-2xl' : 'text-lg',
+          )}
+        >
+          Schedule
+        </h2>
       </div>
 
       {blocks.length === 0 ? (
-        <p className="px-5 py-10 text-center text-sm leading-relaxed text-zinc-500">
+        <p
+          className={cn(
+            'px-5 py-10 text-center leading-relaxed text-zinc-500 transition-all duration-[1400ms] ease-in-out',
+            screensaver ? 'px-6 text-base' : 'text-sm',
+          )}
+        >
           No blocks planned for today.
         </p>
       ) : (
@@ -115,8 +138,11 @@ export function FocusScheduleAgenda({
               {slotHours.map((h, i) => (
                 <div
                   key={h}
-                  className="pointer-events-none absolute inset-x-0 border-b border-zinc-800/35 pr-1 text-right text-[10px] text-zinc-600"
-                  style={{ top: TIMELINE_TOP_INSET + i * HOUR_HEIGHT, height: HOUR_HEIGHT }}
+                  className={cn(
+                    'pointer-events-none absolute inset-x-0 border-b border-zinc-800/35 pr-1 text-right text-zinc-600',
+                    screensaver ? 'text-xs' : 'text-[10px]',
+                  )}
+                  style={{ top: TIMELINE_TOP_INSET + i * hourHeight, height: hourHeight }}
                 >
                   <span className={cn('block', i === 0 ? 'relative top-0.5' : 'relative -top-2')}>
                     {formatScheduleHour(h, formatTime)}
@@ -130,7 +156,7 @@ export function FocusScheduleAgenda({
                 <div
                   key={h}
                   className="pointer-events-none absolute inset-x-0"
-                  style={{ top: TIMELINE_TOP_INSET + i * HOUR_HEIGHT, height: HOUR_HEIGHT }}
+                  style={{ top: TIMELINE_TOP_INSET + i * hourHeight, height: hourHeight }}
                 >
                   <div className="h-px w-full border-b border-zinc-800/25" />
                   <div className="absolute left-0 right-0 top-1/2 h-px border-b border-zinc-800/10 border-dashed" />
@@ -145,7 +171,7 @@ export function FocusScheduleAgenda({
                 const isPast = nowMinutes >= endMin
                 const isShort = durationMin <= 30
                 const accent = isGreyBlock(block) ? GREY_BLOCK_HEX : block.color || GREY_BLOCK_HEX
-                const style = minutesToStyle(startMin, endMin, startHour)
+                const style = minutesToStyle(startMin, endMin, startHour, hourHeight)
 
                 return (
                   <div
@@ -153,6 +179,7 @@ export function FocusScheduleAgenda({
                     className={cn(
                       'absolute left-0 right-1 flex overflow-hidden rounded-lg border-2 bg-zinc-950/70 px-2 py-1 shadow-md',
                       isPast && 'opacity-40',
+                      screensaver && 'px-3 py-2',
                     )}
                     style={{
                       ...style,
@@ -162,11 +189,22 @@ export function FocusScheduleAgenda({
                     }}
                   >
                     <div className={cn('min-w-0 flex-1', isShort ? 'pt-0.5' : 'pt-1')}>
-                      <p className={cn('truncate text-xs font-medium leading-tight', isCurrent ? 'text-zinc-50' : 'text-zinc-200')}>
+                      <p
+                        className={cn(
+                          'truncate font-medium leading-tight',
+                          screensaver ? 'text-sm' : 'text-xs',
+                          isCurrent ? 'text-zinc-50' : 'text-zinc-200',
+                        )}
+                      >
                         {block.title}
                       </p>
                       {!isShort && (
-                        <p className="mt-0.5 text-[10px] tabular-nums text-zinc-400">
+                        <p
+                          className={cn(
+                            'mt-0.5 tabular-nums text-zinc-400',
+                            screensaver ? 'text-xs' : 'text-[10px]',
+                          )}
+                        >
                           {labelForTime(block.start_time, formatTime)}
                           <span className="mx-1 text-zinc-600">–</span>
                           {labelForTime(block.end_time, formatTime)}

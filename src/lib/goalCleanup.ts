@@ -11,6 +11,10 @@ export function cleanupStaleGoals(goals: Goal[]): {
   goals: Goal[]
   toRetire: Goal[]
 } {
+  if (goals.length === 0) {
+    return { goals: [], toRetire: [] }
+  }
+
   const { goals: afterWeight, toRetire: weightRetire } =
     withDuplicateWeightGoalsRetired(goals)
 

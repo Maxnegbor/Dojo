@@ -32,6 +32,8 @@ export function GoalsPage() {
       ? await (await import('@/lib/supabase')).fetchGoals(userId)
       : localStore.getGoals()
 
+    if (loaded.length === 0) return
+
     const { goals: cleaned, toRetire } = cleanupStaleGoals(loaded)
     setGoals(cleaned)
     for (const duplicate of toRetire) {

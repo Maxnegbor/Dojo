@@ -10,7 +10,7 @@ import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
 import { useFocus } from '@/context/FocusContext'
 import { useSettings } from '@/context/SettingsContext'
 import { useIdleScreensaver } from '@/hooks/useIdleScreensaver'
-import { ScreensaverContext } from '@/context/ScreensaverContext'
+import { ScreensaverContext, type ScreensaverState } from '@/context/ScreensaverContext'
 
 const NAV = [
   { to: '/', label: 'Home', icon: Sparkles },
@@ -152,6 +152,7 @@ const SIDEBAR_EXPAND_DELAY_MS = 800
 const SIDEBAR_COLLAPSE_DELAY_MS = 100
 /** Expanded width: 70% of prior w-56 (14rem). */
 const SIDEBAR_EXPANDED_WIDTH_CLASS = 'w-[9.8rem]'
+const SCREENSAVER_WAKE_MS = 1400
 
 function sidebarLabelClass(expanded: boolean) {
   return cn(
@@ -167,7 +168,11 @@ export function AppLayout() {
   const { focusImmersive, setFocusImmersive } = useFocus()
   const { pathname } = useLocation()
   const isIdle = useIdleScreensaver()
-  const screensaver = isIdle && pathname === '/'
+  const onScreensaverRoute = pathname === '/' || pathname === '/focus'
+  const [screensaver, setScreensaver] = useState<ScreensaverState>({
+    active: false,
+    waking: false,
+  })
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const sidebarExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sidebarCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -208,6 +213,24 @@ export function AppLayout() {
   }, [])
 
   useEffect(() => {
+    if (isIdle && onScreensaverRoute) {
+      setScreensaver({ active: true, waking: false })
+      return
+    }
+
+    setScreensaver((prev) => {
+      if (!prev.active) return { active: false, waking: false }
+      return { active: true, waking: true }
+    })
+
+    const id = window.setTimeout(() => {
+      setScreensaver({ active: false, waking: false })
+    }, SCREENSAVER_WAKE_MS)
+
+    return () => window.clearTimeout(id)
+  }, [isIdle, onScreensaverRoute])
+
+  useEffect(() => {
     if (pathname !== '/focus' && focusImmersive) {
       setFocusImmersive(false)
     }
@@ -225,7 +248,7 @@ export function AppLayout() {
   return (
     <div className="relative z-10 flex h-dvh overflow-hidden bg-[#06060b] text-zinc-100">
       {!focusImmersive && (
-      <aside className={cn('relative z-30 w-14 shrink-0 transition-opacity duration-[2000ms] ease-in-out', screensaver && 'opacity-0 pointer-events-none')}>
+      <aside className={cn('relative z-30 w-14 shrink-0 transition-opacity duration-[1400ms] ease-in-out', screensaver.active && 'pointer-events-none opacity-0')}>
         <div
           className={cn(
             'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-x-hidden overflow-y-auto border-r border-zinc-800/80 bg-[#06060b]',
@@ -291,7 +314,7 @@ export function AppLayout() {
           className={cn(
             'pointer-events-none absolute inset-0 z-0 overflow-hidden',
             pathname === '/' && 'home-atmosphere',
-            pathname === '/' && screensaver && 'home-atmosphere--screensaver',
+            pathname === '/' && screensaver.active && !screensaver.waking && 'home-atmosphere--screensaver',
           )}
           aria-hidden
         />
@@ -302,6 +325,7 @@ export function AppLayout() {
               ? 'overflow-hidden px-6 pt-2 pb-4 sm:pt-3'
               : 'overflow-y-auto px-6 py-6',
             focusImmersive && 'px-4 sm:px-6 lg:px-8',
+            screensaver.active && pathname === '/focus' && 'overflow-hidden px-4 py-4 sm:px-6 lg:px-8',
           )}
         >
           <div

@@ -79,6 +79,26 @@ export interface MorningLogMetricCandidate {
   goal?: Goal
 }
 
+function morningLogItemToMetricCandidate(item: MorningLogItem): MorningLogMetricCandidate | null {
+  if (!item.metricKey) return null
+  const section: MorningLogMetricSection =
+    item.kind === 'habit'
+      ? 'habit'
+      : item.kind === 'workout'
+        ? 'workout'
+        : item.kind === 'weight'
+          ? 'weight'
+          : 'goal'
+  return {
+    key: item.metricKey,
+    section,
+    label: item.label,
+    unit: item.unit,
+    badge: item.badge,
+    goal: item.goal,
+  }
+}
+
 export function isHabitMorningLogKey(key: MetricKey): boolean {
   return key.startsWith('habit_')
 }
@@ -560,6 +580,49 @@ export function toggleMorningLogGoalKey(key: MetricKey, enabled: boolean) {
   }
 }
 
+/** Add a daily metric key to morning log prompts. */
+export function enrollMetricKeyInMorningLog(key: MetricKey) {
+  toggleMorningLogGoalKey(key, true)
+}
+
+export function enrollSleepFieldInMorningLog(fieldId: string) {
+  if (fieldId === 'in_bed') return
+  const ids = getMorningLogSleepFieldIds()
+  if (ids.includes(fieldId)) return
+  saveMorningLogSleepFieldIds([...ids, fieldId])
+}
+
+/** New metrics on the Metrics page are auto-added to the morning log when eligible. */
+export function autoEnrollInMorningLog(params: {
+  kind: 'habit' | 'goal' | 'workout' | 'weight' | 'sleep'
+  logPeriod: string
+  metricKey?: MetricKey
+  habitId?: string
+  workoutId?: string
+  sleepFieldId?: string
+}) {
+  if (params.logPeriod !== 'daily') return
+  if (params.kind === 'habit' && params.habitId) {
+    enrollMetricKeyInMorningLog(habitMorningLogKey(params.habitId))
+    return
+  }
+  if (params.kind === 'workout' && params.workoutId) {
+    enrollMetricKeyInMorningLog(workoutMetricKey(params.workoutId))
+    return
+  }
+  if (params.kind === 'goal' && params.metricKey && params.metricKey !== 'focus') {
+    enrollMetricKeyInMorningLog(params.metricKey)
+    return
+  }
+  if (params.kind === 'weight') {
+    enrollMetricKeyInMorningLog('weight')
+    return
+  }
+  if (params.kind === 'sleep' && params.sleepFieldId) {
+    enrollSleepFieldInMorningLog(params.sleepFieldId)
+  }
+}
+
 export function isMorningLogYesterdayKey(key: MetricKey, _goals: Goal[] = []): boolean {
   return getMorningLogYesterdayKeys().includes(key)
 }
@@ -574,13 +637,22 @@ export function getEnabledMorningLogMetrics(
   options?: { showWorkouts?: boolean },
 ): MorningLogMetricCandidate[] {
   migrateAskInToMorningLog(goals)
-  const enabledKeys = new Set(getMorningLogGoalKeys())
+  const sleepConfig = getSleepMetricsConfigFromStorage()
+  const configured = getConfiguredMorningLogItems(goals, sleepConfig)
   const seen = new Set<string>()
-  return getMorningLogMetricCandidates(goals, options).filter((metric) => {
-    if (!enabledKeys.has(metric.key) || seen.has(metric.key)) return false
-    seen.add(metric.key)
-    return true
-  })
+  const metrics: MorningLogMetricCandidate[] = []
+
+  for (const item of configured) {
+    if (item.kind === 'sleep') continue
+    if (!item.metricKey || seen.has(item.metricKey)) continue
+    const candidate = morningLogItemToMetricCandidate(item)
+    if (!candidate) continue
+    if (options?.showWorkouts === false && candidate.section === 'workout') continue
+    seen.add(item.metricKey)
+    metrics.push(candidate)
+  }
+
+  return metrics
 }
 
 export function getEnabledMorningLogMetricsForToday(
