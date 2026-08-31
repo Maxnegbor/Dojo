@@ -4,6 +4,7 @@ import { GREY_BLOCK_HEX } from '@/types'
 import { useSettings } from '@/context/SettingsContext'
 import { fetchScheduleBlocksForDate, isGreyBlock } from '@/lib/scheduleBlock'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
+import { computeScheduleScrollToNowTarget } from '@/lib/scheduleScroll'
 import { parseTimeToMinutes, cn, formatDate } from '@/lib/utils'
 
 interface FocusScheduleAgendaProps {
@@ -16,8 +17,6 @@ interface FocusScheduleAgendaProps {
 const HOUR_HEIGHT = 72
 const TIMELINE_TOP_INSET = 18
 const SCREENSAVER_HOUR_HEIGHT = 96
-/** Past context kept above the now line when auto-scrolling. */
-const NOW_HISTORY_MINUTES = 30
 
 function labelForTime(hhmm: string, formatTime: (date: Date) => string): string {
   const [h = 0, m = 0] = hhmm.split(':').map(Number)
@@ -106,18 +105,22 @@ export function FocusScheduleAgenda({
       const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
       if (maxScroll <= 0) return false
 
-      let target = 0
-      if (nowLine != null) {
-        const historyPx = (NOW_HISTORY_MINUTES / 60) * hourHeight
-        target = Math.max(0, Math.min(nowLine - historyPx, maxScroll))
-      } else if (nowMinutes > endHour * 60) {
-        target = maxScroll
-      }
+      const target = computeScheduleScrollToNowTarget({
+        nowLinePx: nowLine,
+        nowMinutes,
+        timelineStartMinutes: startHour * 60,
+        timelineEndMinutes: endHour * 60,
+        contentEndPx: contentHeight,
+        hourHeightPx: hourHeight,
+        scrollHeight: scrollEl.scrollHeight,
+        clientHeight: scrollEl.clientHeight,
+        currentScrollTop: scrollEl.scrollTop,
+      })
 
       scrollEl.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'auto' })
       return true
     },
-    [nowLine, nowMinutes, endHour, hourHeight],
+    [nowLine, nowMinutes, startHour, endHour, hourHeight, contentHeight],
   )
 
   useLayoutEffect(() => {
@@ -151,22 +154,6 @@ export function FocusScheduleAgenda({
         className,
       )}
     >
-      <div
-        className={cn(
-          'shrink-0 border-b border-zinc-800/70 px-5 py-4 transition-all duration-[1400ms] ease-in-out',
-          screensaver && 'px-6 py-5',
-        )}
-      >
-        <h2
-          className={cn(
-            'font-semibold tracking-tight text-zinc-100 transition-all duration-[1400ms] ease-in-out',
-            screensaver ? 'text-2xl' : 'text-lg',
-          )}
-        >
-          Schedule
-        </h2>
-      </div>
-
       {blocks.length === 0 ? (
         <p
           className={cn(

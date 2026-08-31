@@ -15,7 +15,7 @@ import {
   getPlannedWorkouts,
   PLANNED_WORKOUT_DRAG_MIME,
 } from '@/lib/exercisePlan'
-import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
+import { SCHEDULE_SCROLL_TO_NOW, computeScheduleScrollToNowTarget } from '@/lib/scheduleScroll'
 import {
   getScheduleBlockAlarmLead,
   isScheduleBlockAlarmEnabled,
@@ -463,8 +463,7 @@ export function HourlyTimeline({
     if (!isActiveDay) return false
 
     const scrollEl = scrollRef.current
-    const anchor = scrollAnchorRef.current
-    if (!scrollEl || !anchor) return false
+    if (!scrollEl) return false
 
     const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
     if (maxScroll <= 0) return false
@@ -472,6 +471,25 @@ export function HourlyTimeline({
     const behavior = options?.smooth ? 'smooth' : 'auto'
     const now = new Date()
     const mins = now.getHours() * 60 + now.getMinutes()
+
+    if (screensaver) {
+      const target = computeScheduleScrollToNowTarget({
+        nowLinePx: nowLine,
+        nowMinutes: mins,
+        timelineStartMinutes: startHour * 60,
+        timelineEndMinutes: endMinutes,
+        contentEndPx: contentHeight,
+        hourHeightPx: HOUR_HEIGHT,
+        scrollHeight: scrollEl.scrollHeight,
+        clientHeight: scrollEl.clientHeight,
+        currentScrollTop: scrollEl.scrollTop,
+      })
+      scrollEl.scrollTo({ top: target, behavior })
+      return true
+    }
+
+    const anchor = scrollAnchorRef.current
+    if (!anchor) return false
 
     if (mins < startHour * 60) {
       scrollEl.scrollTo({ top: 0, behavior })
@@ -492,7 +510,7 @@ export function HourlyTimeline({
       behavior,
     })
     return true
-  }, [isActiveDay, startHour, endMinutes])
+  }, [isActiveDay, startHour, endMinutes, screensaver, nowLine, contentHeight])
 
   const scrollToCurrentTimeWithRetry = useCallback(() => {
     if (!isActiveDay) return
@@ -534,7 +552,22 @@ export function HourlyTimeline({
   useLayoutEffect(() => {
     if (!isActiveDay) return
     scrollToCurrentTimeWithRetry()
-  }, [isActiveDay, startHour, endHour, date, timelineHeight, scrollToCurrentTimeWithRetry])
+  }, [isActiveDay, startHour, endHour, date, timelineHeight, screensaver, scrollToCurrentTimeWithRetry])
+
+  useEffect(() => {
+    if (!isActiveDay || !screensaver) return
+    scrollToCurrentTime({ smooth: true })
+  }, [nowLine, isActiveDay, screensaver, scrollToCurrentTime])
+
+  useEffect(() => {
+    if (!isActiveDay || !screensaver) return
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+
+    const ro = new ResizeObserver(() => scrollToCurrentTime())
+    ro.observe(scrollEl)
+    return () => ro.disconnect()
+  }, [isActiveDay, screensaver, scrollToCurrentTime])
 
   useLayoutEffect(() => {
     const el = scrollRef.current

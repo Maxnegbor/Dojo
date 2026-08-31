@@ -27,21 +27,18 @@ export function PulseMeter({
   const clamped = Math.max(0, Math.min(100, Math.round(score)))
   const visuals = pulseMeterVisuals(clamped, scale)
   const corePx = pulseCorePx(scale)
-  const strokeWidth = Math.max(2.5, visuals.coreBorderPx)
-  const ringRadius = (corePx - strokeWidth) / 2
+  const fillStrokeWidth = Math.max(4, visuals.coreBorderPx * 1.45)
+  const trackStrokeWidth = Math.max(2, visuals.coreBorderPx * 0.55)
+  const ringRadius = (corePx - fillStrokeWidth) / 2
   const circumference = 2 * Math.PI * ringRadius
   const fillFraction = clamped / 100
   const dashOffset = circumference * (1 - fillFraction)
 
-  const accentLightness = visuals.accentLightness
   const trackColor =
     clamped > 0
       ? `color-mix(in srgb, var(--accent-500) ${Math.max(12, visuals.borderOpacity * 55)}%, rgb(63 63 70))`
       : 'color-mix(in srgb, var(--accent-500) 22%, rgb(63 63 70))'
-  const fillColor =
-    clamped > 0
-      ? `color-mix(in srgb, var(--accent-500) ${Math.min(100, visuals.borderOpacity * 100 + accentLightness * 0.35 + 28)}%, white ${Math.min(35, accentLightness * 0.45)}%)`
-      : trackColor
+  const fillColor = 'var(--accent-400)'
 
   useEffect(() => {
     onDisplayScoreChange?.(clamped)
@@ -85,7 +82,7 @@ export function PulseMeter({
           r={ringRadius}
           fill="none"
           stroke={trackColor}
-          strokeWidth={strokeWidth}
+          strokeWidth={trackStrokeWidth}
         />
         {clamped > 0 && (
           <circle
@@ -94,10 +91,13 @@ export function PulseMeter({
             r={ringRadius}
             fill="none"
             stroke={fillColor}
-            strokeWidth={strokeWidth}
+            strokeWidth={fillStrokeWidth}
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}
+            style={{
+              filter: 'drop-shadow(0 0 4px color-mix(in srgb, var(--accent-400) 55%, transparent))',
+            }}
           />
         )}
       </svg>
