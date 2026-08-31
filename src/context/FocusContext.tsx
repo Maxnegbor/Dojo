@@ -28,6 +28,9 @@ interface FocusContextValue {
   /** When true, Focus page hides the app sidebar for an immersive timer. */
   focusImmersive: boolean
   setFocusImmersive: (value: boolean) => void
+  /** True while a focus timer session is in progress (running or paused mid-session). */
+  focusTimerActive: boolean
+  setFocusTimerActive: (value: boolean) => void
   refreshFocus: () => Promise<void>
   logFocusMinutes: (
     minutes: number,
@@ -46,6 +49,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
   const [focusWeekExceptToday, setFocusWeekExceptToday] = useState(0)
   const [liveFocusSeconds, setLiveFocusSeconds] = useState(0)
   const [focusImmersive, setFocusImmersive] = useState(false)
+  const [focusTimerActive, setFocusTimerActive] = useState(false)
 
   const setTimerTabSeconds = useCallback((seconds: number | null) => {
     document.title =
@@ -110,6 +114,8 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         setTimerTabSeconds,
         focusImmersive,
         setFocusImmersive,
+        focusTimerActive,
+        setFocusTimerActive,
         refreshFocus,
         logFocusMinutes,
       }}

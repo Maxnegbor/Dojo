@@ -66,6 +66,16 @@ export function playTimerChime() {
   })
 }
 
+/** Block-start alarm for schedule timeblocks. */
+export function playScheduleBlockAlarmSound() {
+  withAudioContext((ctx) => {
+    const now = ctx.currentTime
+    playTone(ctx, 659.25, now, 0.2, 0.08, 'sine')
+    playTone(ctx, 880, now + 0.15, 0.25, 0.07, 'sine')
+    playTone(ctx, 1046.5, now + 0.32, 0.35, 0.06, 'sine')
+  })
+}
+
 /** Clear completion chime when a focus block (or the whole session) ends. */
 export function playFocusTimerFinishSound(options?: { sessionComplete?: boolean }) {
   withAudioContext((ctx) => {

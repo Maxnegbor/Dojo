@@ -4,6 +4,7 @@ import { Beaker, Brain, Flag, FlaskConical, LayoutDashboard, Settings, Sparkles,
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MissedLogGate } from '@/components/layout/MissedLogGate'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
+import { ScheduleBlockAlarmGate } from '@/components/layout/ScheduleBlockAlarmGate'
 import { ShutdownGate } from '@/components/layout/ShutdownGate'
 import { cn } from '@/lib/utils'
 import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
@@ -165,10 +166,10 @@ function sidebarLabelClass(expanded: boolean) {
 
 export function AppLayout() {
   const { settings, updateSettings } = useSettings()
-  const { focusImmersive, setFocusImmersive } = useFocus()
+  const { focusImmersive, setFocusImmersive, focusTimerActive } = useFocus()
   const { pathname } = useLocation()
   const isIdle = useIdleScreensaver()
-  const onScreensaverRoute = pathname === '/' || pathname === '/focus'
+  const onScreensaverRoute = pathname === '/' || (pathname === '/focus' && focusTimerActive)
   const [screensaver, setScreensaver] = useState<ScreensaverState>({
     active: false,
     waking: false,
@@ -336,6 +337,7 @@ export function AppLayout() {
           >
             <MissedLogGate />
             <MorningLogGate />
+            <ScheduleBlockAlarmGate />
             <ShutdownGate>
               <Outlet />
             </ShutdownGate>

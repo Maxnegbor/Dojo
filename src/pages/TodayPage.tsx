@@ -77,6 +77,7 @@ import {
 } from '@/lib/exercisePlan'
 import { isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
+import { removeScheduleBlockAlarm } from '@/lib/scheduleBlockAlarms'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import type { DailyLog, Goal, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import {
@@ -410,6 +411,7 @@ export function TodayPage() {
       await deleteScheduleBlock(id)
     } else localStore.deleteScheduleBlock(id)
     unlinkPlannedWorkoutByScheduleBlockId(id)
+    removeScheduleBlockAlarm(id)
     setBlocks((prev) => prev.filter((b) => b.id !== id))
   }
 
@@ -476,6 +478,7 @@ export function TodayPage() {
   const removeTomorrowBlock = async (id: string) => {
     await removeScheduleBlock(id)
     unlinkPlannedWorkoutByScheduleBlockId(id)
+    removeScheduleBlockAlarm(id)
     setTomorrowBlocks((prev) => prev.filter((b) => b.id !== id))
   }
 

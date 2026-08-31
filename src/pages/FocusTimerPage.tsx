@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2, RotateCcw, Settings2, SkipForward } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -52,6 +53,45 @@ function PauseIcon() {
   )
 }
 
+function FocusTimerFace({
+  progress,
+  isRest,
+  minutes,
+  seconds,
+  className,
+}: {
+  progress: number
+  isRest: boolean
+  minutes: number
+  seconds: number
+  className?: string
+}) {
+  return (
+    <div className={cn('relative h-60 w-60 shrink-0', className)}>
+      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden>
+        <circle cx="50" cy="50" r="44" fill="none" stroke="#27272a" strokeWidth="5" />
+        <circle
+          cx="50"
+          cy="50"
+          r="44"
+          fill="none"
+          stroke={isRest ? '#3b82f6' : 'var(--accent-500)'}
+          strokeWidth="5"
+          strokeDasharray={`${progress * 2.76} 276`}
+          strokeLinecap="round"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="select-none text-[3.75rem] font-extralight leading-none tabular-nums tracking-tight text-zinc-50">
+          {String(minutes).padStart(2, '0')}
+          <span className="text-zinc-500">:</span>
+          {String(seconds).padStart(2, '0')}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export function FocusTimerPage() {
   const {
     logFocusMinutes,
@@ -60,9 +100,9 @@ export function FocusTimerPage() {
     setTimerTabSeconds,
     focusImmersive,
     setFocusImmersive,
+    setFocusTimerActive,
   } = useFocus()
   const { active: screensaverActive, waking: screensaverWaking } = useScreensaver()
-  const screensaver = screensaverActive && !screensaverWaking
   const { userId } = useAuth()
   const { settings: userPrefs, formatTime } = useSettings()
   const [settings, setSettings] = useState<FocusTimerSettings>(getFocusSettings)
@@ -198,6 +238,11 @@ export function FocusTimerPage() {
   }, [focusImmersive, setFocusImmersive])
 
   useEffect(() => () => setFocusImmersive(false), [setFocusImmersive])
+
+  useEffect(() => {
+    setFocusTimerActive(running || sessionStarted)
+    return () => setFocusTimerActive(false)
+  }, [running, sessionStarted, setFocusTimerActive])
 
   const maybePromptFocusScore = useCallback((startMs: number, minutes: number) => {
     if (!settingsRef.current.promptFocusScore) return
@@ -399,13 +444,41 @@ export function FocusTimerPage() {
 
   const showSchedule = userPrefs.showFocusSchedule && !!userId
 
+  const focusScreensaverLayer =
+    screensaverActive &&
+    createPortal(
+      <div
+        className={cn(
+          'fixed inset-0 z-[200] bg-[#06060b] transition-opacity duration-[1400ms] ease-in-out',
+          screensaverWaking && 'pointer-events-none opacity-0',
+        )}
+      >
+        <FocusTimerFace
+          progress={progress}
+          isRest={isRest}
+          minutes={minutes}
+          seconds={seconds}
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        />
+        {showSchedule && userId && (
+          <FocusScheduleAgenda
+            userId={userId}
+            formatTime={formatTime}
+            className="fixed top-1/2 max-h-[min(36rem,75vh)] w-64 -translate-y-1/2 left-[calc(50%+16rem)]"
+          />
+        )}
+      </div>,
+      document.body,
+    )
+
   return (
-    <div
+    <>
+      {focusScreensaverLayer}
+      <div
       className={cn(
-        'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6 transition-[gap,padding] duration-[1400ms] ease-in-out',
-        screensaver && 'fixed inset-0 z-20 items-center justify-center gap-0 px-6 py-0',
-        screensaverWaking && 'focus-stage--screensaver-wake',
-        !screensaver &&
+        'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6 transition-[gap,padding,opacity] duration-[1400ms] ease-in-out',
+        screensaverActive && 'pointer-events-none opacity-0',
+        !screensaverActive &&
           (showSchedule && showSettings
             ? 'max-w-6xl'
             : showSchedule
@@ -441,26 +514,13 @@ export function FocusTimerPage() {
       <div
         className={cn(
           'flex items-start gap-4 transition-[gap] duration-[1400ms] ease-in-out',
-          screensaver
-            ? 'relative items-center justify-center'
-            : showSchedule || showSettings
-              ? 'flex-col lg:flex-row lg:justify-center'
-              : 'justify-center',
+          showSchedule || showSettings
+            ? 'flex-col lg:flex-row lg:justify-center'
+            : 'justify-center',
         )}
       >
-        <div
-          className={cn(
-            'flex w-full max-w-[480px] flex-col gap-4 self-center transition-all duration-[1400ms] ease-in-out lg:shrink-0',
-            screensaver && 'relative w-auto max-w-none shrink-0',
-          )}
-        >
-          <Card
-            className={cn(
-              'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6 transition-all duration-[1400ms] ease-in-out',
-              screensaver &&
-                'max-w-none !rounded-none !border-0 !bg-transparent !p-0 !shadow-none',
-            )}
-          >
+        <div className="flex w-full max-w-[480px] flex-col gap-4 self-center lg:shrink-0">
+          <Card className="flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6">
         <p
           className={cn(
             'mb-1 h-4 text-xs font-medium uppercase tracking-widest transition-opacity duration-[1400ms] ease-in-out',
@@ -481,28 +541,13 @@ export function FocusTimerPage() {
                 : `Rest · ${cycle}/${settings.iterations}`}
         </p>
 
-        <div className={cn('relative h-60 w-60 shrink-0', screensaver ? 'my-0' : 'mt-4 mb-6')}>
-          <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden>
-            <circle cx="50" cy="50" r="44" fill="none" stroke="#27272a" strokeWidth="5" />
-            <circle
-              cx="50"
-              cy="50"
-              r="44"
-              fill="none"
-              stroke={isRest ? '#3b82f6' : 'var(--accent-500)'}
-              strokeWidth="5"
-              strokeDasharray={`${progress * 2.76} 276`}
-              strokeLinecap="round"
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="select-none text-[3.75rem] font-extralight leading-none tabular-nums tracking-tight text-zinc-50">
-              {String(minutes).padStart(2, '0')}
-              <span className="text-zinc-500">:</span>
-              {String(seconds).padStart(2, '0')}
-            </span>
-          </div>
-        </div>
+        <FocusTimerFace
+          progress={progress}
+          isRest={isRest}
+          minutes={minutes}
+          seconds={seconds}
+          className="mt-4 mb-6"
+        />
 
         <FocusLabelPicker
           className={cn('mb-4 transition-opacity duration-[1400ms] ease-in-out', screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0')}
@@ -620,14 +665,6 @@ export function FocusTimerPage() {
               useDevDummy={userPrefs.devMode}
             />
           </Card>
-
-        {showSchedule && userId && screensaver && (
-          <FocusScheduleAgenda
-            userId={userId}
-            formatTime={formatTime}
-            className="absolute left-full top-1/2 ml-6 w-64 max-h-[min(36rem,75vh)] -translate-y-1/2"
-          />
-        )}
         </div>
 
         {showSettings && (
@@ -712,7 +749,7 @@ export function FocusTimerPage() {
           </Card>
         )}
 
-        {showSchedule && userId && !screensaver && (
+        {showSchedule && userId && (
           <FocusScheduleAgenda
             userId={userId}
             formatTime={formatTime}
@@ -744,5 +781,6 @@ export function FocusTimerPage() {
         />
       )}
     </div>
+    </>
   )
 }

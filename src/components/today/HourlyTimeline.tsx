@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Trash2, X } from 'lucide-react'
+import { Bell, Trash2, X } from 'lucide-react'
 import { GREY_BLOCK_TITLE, type ScheduleBlock, type WorkoutCategory } from '@/types'
 import { createScheduleBlock, isGreyBlock, setScheduleBlockColor } from '@/lib/scheduleBlock'
 import {
@@ -16,6 +16,11 @@ import {
   PLANNED_WORKOUT_DRAG_MIME,
 } from '@/lib/exercisePlan'
 import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
+import {
+  isScheduleBlockAlarmEnabled,
+  SCHEDULE_BLOCK_ALARMS_CHANGED,
+  toggleScheduleBlockAlarm,
+} from '@/lib/scheduleBlockAlarms'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
@@ -320,6 +325,16 @@ export function HourlyTimeline({
   }, [])
 
   useEffect(() => {
+    const refresh = () => setAlarmRevision((value) => value + 1)
+    window.addEventListener(SCHEDULE_BLOCK_ALARMS_CHANGED, refresh)
+    window.addEventListener('user-storage-ready', refresh)
+    return () => {
+      window.removeEventListener(SCHEDULE_BLOCK_ALARMS_CHANGED, refresh)
+      window.removeEventListener('user-storage-ready', refresh)
+    }
+  }, [])
+
+  useEffect(() => {
     const refresh = () =>
       setLinkedBlockIds(
         new Set(getPlannedWorkouts().map((p) => p.schedule_block_id).filter(Boolean) as string[]),
@@ -368,6 +383,7 @@ export function HourlyTimeline({
     endMin: number
   } | null>(null)
   const [titleEdits, setTitleEdits] = useState<Record<string, string>>({})
+  const [alarmRevision, setAlarmRevision] = useState(0)
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
   const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
   const titleInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -1021,6 +1037,8 @@ export function HourlyTimeline({
           )}
 
           {blocks.map((block) => {
+            void alarmRevision
+            const alarmEnabled = isScheduleBlockAlarmEnabled(block.id)
             const { durationMins, ...style } = getBlockStyle(block)
             const isCompact = durationMins <= COMPACT_BLOCK_MAX_MINUTES
             const isShortInline = durationMins === GRID_MINUTES
@@ -1174,21 +1192,54 @@ export function HourlyTimeline({
                       />
                     )}
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onDelete(block.id) }}
-                  onMouseDown={(e) => e.stopPropagation()}
+                <div
                   className={cn(
-                    'group/trash absolute right-2 z-20 flex items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-black/20 hover:text-red-400',
-                    isCompact ? 'top-1/2 -translate-y-1/2 p-1.5' : 'top-3.5 p-2.5',
+                    'absolute right-2 z-20 flex flex-col items-center gap-0.5',
+                    isCompact ? 'top-1/2 -translate-y-1/2' : 'top-3.5',
                   )}
-                  aria-label="Delete block"
                 >
-                  <Trash2
-                    size={12}
-                    className="transition-transform duration-200 ease-out group-hover/trash:scale-[1.35]"
-                  />
-                </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDelete(block.id)
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="group/trash flex items-center justify-center rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-black/20 hover:text-red-400"
+                    aria-label="Delete block"
+                  >
+                    <Trash2
+                      size={12}
+                      className="transition-transform duration-200 ease-out group-hover/trash:scale-[1.35]"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleScheduleBlockAlarm(block.id)
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className={cn(
+                      'group/alarm flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-black/20',
+                      alarmEnabled
+                        ? 'text-red-500 hover:text-red-400'
+                        : 'text-zinc-500 hover:text-zinc-300',
+                    )}
+                    aria-label={
+                      alarmEnabled ? 'Turn off block alarm' : 'Turn on block alarm'
+                    }
+                    aria-pressed={alarmEnabled}
+                  >
+                    <Bell
+                      size={12}
+                      className={cn(
+                        'transition-transform duration-200 ease-out group-hover/alarm:scale-[1.35]',
+                        alarmEnabled && 'fill-current',
+                      )}
+                    />
+                  </button>
+                </div>
                 <div
                   data-resize-handle
                   className={cn(
