@@ -12,7 +12,8 @@ export function ScheduleBlockAlarmGate() {
 
   return (
     <ScheduleBlockAlarmModal
-      block={activeAlarm}
+      block={activeAlarm.block}
+      leadMinutes={activeAlarm.leadMinutes}
       formatTime={formatTime}
       onDismiss={dismissAlarm}
     />

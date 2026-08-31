@@ -27,10 +27,21 @@ export function PulseMeter({
   const clamped = Math.max(0, Math.min(100, Math.round(score)))
   const visuals = pulseMeterVisuals(clamped, scale)
   const corePx = pulseCorePx(scale)
-  const borderColor =
+  const strokeWidth = Math.max(2.5, visuals.coreBorderPx)
+  const ringRadius = (corePx - strokeWidth) / 2
+  const circumference = 2 * Math.PI * ringRadius
+  const fillFraction = clamped / 100
+  const dashOffset = circumference * (1 - fillFraction)
+
+  const accentLightness = visuals.accentLightness
+  const trackColor =
     clamped > 0
-      ? 'var(--accent-400)'
+      ? `color-mix(in srgb, var(--accent-500) ${Math.max(12, visuals.borderOpacity * 55)}%, rgb(63 63 70))`
       : 'color-mix(in srgb, var(--accent-500) 22%, rgb(63 63 70))'
+  const fillColor =
+    clamped > 0
+      ? `color-mix(in srgb, var(--accent-500) ${Math.min(100, visuals.borderOpacity * 100 + accentLightness * 0.35 + 28)}%, white ${Math.min(35, accentLightness * 0.45)}%)`
+      : trackColor
 
   useEffect(() => {
     onDisplayScoreChange?.(clamped)
@@ -50,10 +61,6 @@ export function PulseMeter({
   const style = {
     width: corePx,
     height: corePx,
-    borderStyle: 'solid',
-    borderWidth: Math.max(2.5, visuals.coreBorderPx),
-    borderColor,
-    boxShadow: 'none',
   } as CSSProperties
 
   return (
@@ -65,7 +72,36 @@ export function PulseMeter({
       style={style}
       aria-label={`Pulse ${clamped}`}
     >
-      <span className={cn('font-bold tabular-nums text-zinc-50', scoreTextClass)}>
+      <svg
+        className="pointer-events-none absolute inset-0 -rotate-90"
+        width={corePx}
+        height={corePx}
+        viewBox={`0 0 ${corePx} ${corePx}`}
+        aria-hidden
+      >
+        <circle
+          cx={corePx / 2}
+          cy={corePx / 2}
+          r={ringRadius}
+          fill="none"
+          stroke={trackColor}
+          strokeWidth={strokeWidth}
+        />
+        {clamped > 0 && (
+          <circle
+            cx={corePx / 2}
+            cy={corePx / 2}
+            r={ringRadius}
+            fill="none"
+            stroke={fillColor}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+          />
+        )}
+      </svg>
+      <span className={cn('relative font-bold tabular-nums text-zinc-50', scoreTextClass)}>
         {clamped}
       </span>
     </div>

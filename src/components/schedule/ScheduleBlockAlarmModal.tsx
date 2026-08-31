@@ -1,10 +1,12 @@
 import { createPortal } from 'react-dom'
 import { Bell } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import type { ScheduleBlockAlarmLead } from '@/lib/scheduleBlockAlarms'
 import type { ScheduleBlock } from '@/types'
 
 interface ScheduleBlockAlarmModalProps {
   block: ScheduleBlock
+  leadMinutes: ScheduleBlockAlarmLead
   formatTime: (date: Date) => string
   onDismiss: () => void
 }
@@ -16,8 +18,15 @@ function formatBlockTime(hhmm: string, formatTime: (date: Date) => string): stri
   return formatTime(date)
 }
 
+function alarmLeadMessage(leadMinutes: ScheduleBlockAlarmLead): string {
+  if (leadMinutes === 0) return 'This block is starting now.'
+  if (leadMinutes === 60) return 'This block starts in 1 hour.'
+  return `This block starts in ${leadMinutes} minutes.`
+}
+
 export function ScheduleBlockAlarmModal({
   block,
+  leadMinutes,
   formatTime,
   onDismiss,
 }: ScheduleBlockAlarmModalProps) {
@@ -34,7 +43,7 @@ export function ScheduleBlockAlarmModal({
           <span className="mx-2 text-zinc-600">–</span>
           {formatBlockTime(block.end_time, formatTime)}
         </p>
-        <p className="mt-4 text-sm text-zinc-500">This block is starting now.</p>
+        <p className="mt-4 text-sm text-zinc-500">{alarmLeadMessage(leadMinutes)}</p>
         <Button size="lg" className="mt-8 min-w-[10rem]" onClick={onDismiss}>
           Dismiss
         </Button>

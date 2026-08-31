@@ -1,17 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchScheduleBlocksForDate } from '@/lib/scheduleBlock'
-import { isScheduleBlockAlarmEnabled } from '@/lib/scheduleBlockAlarms'
+import {
+  getScheduleBlockAlarm,
+  scheduleBlockAlarmAtMinutes,
+  type ScheduleBlockAlarmLead,
+} from '@/lib/scheduleBlockAlarms'
 import { playScheduleBlockAlarmSound } from '@/lib/timerSound'
-import { formatDate, parseTimeToMinutes } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import type { ScheduleBlock } from '@/types'
 
-function alarmKey(block: ScheduleBlock): string {
-  return `${block.date}:${block.id}:${block.start_time}`
+export interface ActiveScheduleBlockAlarm {
+  block: ScheduleBlock
+  leadMinutes: ScheduleBlockAlarmLead
 }
 
-/** Fire block-start alarms only while the tab is visible — never catch up on past alarms. */
+function alarmKey(block: ScheduleBlock, alarmAtMinutes: number): string {
+  return `${block.date}:${block.id}:${alarmAtMinutes}`
+}
+
+/** Fire block alarms only while the tab is visible — never catch up on past alarms. */
 export function useScheduleBlockAlarms(userId: string | null) {
-  const [activeAlarm, setActiveAlarm] = useState<ScheduleBlock | null>(null)
+  const [activeAlarm, setActiveAlarm] = useState<ActiveScheduleBlockAlarm | null>(null)
   const firedRef = useRef(new Set<string>())
 
   const activeAlarmShowingRef = useRef(false)
@@ -36,18 +45,19 @@ export function useScheduleBlockAlarms(userId: string | null) {
 
       const blocks = await fetchScheduleBlocksForDate(userId, today)
       for (const block of blocks) {
-        if (!isScheduleBlockAlarmEnabled(block.id)) continue
+        const config = getScheduleBlockAlarm(block.id)
+        if (!config) continue
 
-        const startMinutes = parseTimeToMinutes(block.start_time)
-        if (nowMinutes !== startMinutes) continue
+        const alarmAt = scheduleBlockAlarmAtMinutes(block.start_time, config.leadMinutes)
+        if (nowMinutes !== alarmAt) continue
 
-        const key = alarmKey(block)
+        const key = alarmKey(block, alarmAt)
         if (firedRef.current.has(key)) continue
 
         firedRef.current.add(key)
         playScheduleBlockAlarmSound()
         activeAlarmShowingRef.current = true
-        setActiveAlarm(block)
+        setActiveAlarm({ block, leadMinutes: config.leadMinutes })
         break
       }
     }

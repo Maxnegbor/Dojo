@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ScheduleBlock } from '@/types'
 import { GREY_BLOCK_HEX } from '@/types'
 import { useSettings } from '@/context/SettingsContext'
@@ -16,6 +16,8 @@ interface FocusScheduleAgendaProps {
 const HOUR_HEIGHT = 72
 const TIMELINE_TOP_INSET = 18
 const SCREENSAVER_HOUR_HEIGHT = 96
+/** Past context kept above the now line when auto-scrolling. */
+const NOW_HISTORY_MINUTES = 30
 
 function labelForTime(hhmm: string, formatTime: (date: Date) => string): string {
   const [h = 0, m = 0] = hhmm.split(':').map(Number)
@@ -51,6 +53,7 @@ export function FocusScheduleAgenda({
     const now = new Date()
     return now.getHours() * 60 + now.getMinutes()
   })
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     const today = formatDate(new Date())
@@ -95,6 +98,51 @@ export function FocusScheduleAgenda({
       ? ((nowMinutes - startHour * 60) / 60) * hourHeight + TIMELINE_TOP_INSET
       : null
 
+  const scrollToNow = useCallback(
+    (smooth = false) => {
+      const scrollEl = scrollRef.current
+      if (!scrollEl) return false
+
+      const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+      if (maxScroll <= 0) return false
+
+      let target = 0
+      if (nowLine != null) {
+        const historyPx = (NOW_HISTORY_MINUTES / 60) * hourHeight
+        target = Math.max(0, Math.min(nowLine - historyPx, maxScroll))
+      } else if (nowMinutes > endHour * 60) {
+        target = maxScroll
+      }
+
+      scrollEl.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'auto' })
+      return true
+    },
+    [nowLine, nowMinutes, endHour, hourHeight],
+  )
+
+  useLayoutEffect(() => {
+    let attempts = 0
+    const run = () => {
+      if (scrollToNow(false) || attempts >= 30) return
+      attempts += 1
+      requestAnimationFrame(run)
+    }
+    run()
+  }, [scrollToNow, blocks.length, contentHeight])
+
+  useEffect(() => {
+    scrollToNow(true)
+  }, [nowMinutes, scrollToNow])
+
+  useEffect(() => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+
+    const ro = new ResizeObserver(() => scrollToNow(false))
+    ro.observe(scrollEl)
+    return () => ro.disconnect()
+  }, [scrollToNow])
+
   return (
     <aside
       className={cn(
@@ -129,7 +177,10 @@ export function FocusScheduleAgenda({
           No blocks planned for today.
         </p>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 scrollbar-hidden">
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 scrollbar-hidden"
+        >
           <div className="relative flex" style={{ height: contentHeight, minHeight: contentHeight }}>
             <div className="relative w-10 shrink-0 border-r border-zinc-800/70">
               {slotHours.map((h, i) => (

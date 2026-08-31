@@ -17,10 +17,13 @@ import {
 } from '@/lib/exercisePlan'
 import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
 import {
+  getScheduleBlockAlarmLead,
   isScheduleBlockAlarmEnabled,
   SCHEDULE_BLOCK_ALARMS_CHANGED,
   toggleScheduleBlockAlarm,
+  formatScheduleBlockAlarmLead,
 } from '@/lib/scheduleBlockAlarms'
+import { ScheduleBlockAlarmMenu } from '@/components/schedule/ScheduleBlockAlarmMenu'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
@@ -384,6 +387,11 @@ export function HourlyTimeline({
   } | null>(null)
   const [titleEdits, setTitleEdits] = useState<Record<string, string>>({})
   const [alarmRevision, setAlarmRevision] = useState(0)
+  const [alarmMenu, setAlarmMenu] = useState<{
+    blockId: string
+    x: number
+    y: number
+  } | null>(null)
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
   const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
   const titleInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -1039,6 +1047,7 @@ export function HourlyTimeline({
           {blocks.map((block) => {
             void alarmRevision
             const alarmEnabled = isScheduleBlockAlarmEnabled(block.id)
+            const alarmLead = getScheduleBlockAlarmLead(block.id)
             const { durationMins, ...style } = getBlockStyle(block)
             const isCompact = durationMins <= COMPACT_BLOCK_MAX_MINUTES
             const isShortInline = durationMins === GRID_MINUTES
@@ -1194,10 +1203,48 @@ export function HourlyTimeline({
                 </div>
                 <div
                   className={cn(
-                    'absolute right-2 z-20 flex flex-col items-center gap-0.5',
+                    'absolute right-2 z-20 flex flex-row items-center gap-0.5',
                     isCompact ? 'top-1/2 -translate-y-1/2' : 'top-3.5',
                   )}
                 >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleScheduleBlockAlarm(block.id)
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setAlarmMenu({ blockId: block.id, x: e.clientX, y: e.clientY })
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className={cn(
+                      'group/alarm flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-black/20',
+                      alarmEnabled
+                        ? 'text-red-500 hover:text-red-400'
+                        : 'text-zinc-500 hover:text-zinc-300',
+                    )}
+                    aria-label={
+                      alarmEnabled
+                        ? `Block alarm on (${formatScheduleBlockAlarmLead(alarmLead)}). Click to turn off, right-click to change timing.`
+                        : 'Turn on block alarm. Right-click for early alarm timing.'
+                    }
+                    aria-pressed={alarmEnabled}
+                    title={
+                      alarmEnabled
+                        ? `${formatScheduleBlockAlarmLead(alarmLead)} — right-click to change`
+                        : 'Right-click for 15m, 30m, or 1h before'
+                    }
+                  >
+                    <Bell
+                      size={12}
+                      className={cn(
+                        'transition-transform duration-200 ease-out group-hover/alarm:scale-[1.35]',
+                        alarmEnabled && 'fill-current',
+                      )}
+                    />
+                  </button>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1211,32 +1258,6 @@ export function HourlyTimeline({
                     <Trash2
                       size={12}
                       className="transition-transform duration-200 ease-out group-hover/trash:scale-[1.35]"
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleScheduleBlockAlarm(block.id)
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className={cn(
-                      'group/alarm flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-black/20',
-                      alarmEnabled
-                        ? 'text-red-500 hover:text-red-400'
-                        : 'text-zinc-500 hover:text-zinc-300',
-                    )}
-                    aria-label={
-                      alarmEnabled ? 'Turn off block alarm' : 'Turn on block alarm'
-                    }
-                    aria-pressed={alarmEnabled}
-                  >
-                    <Bell
-                      size={12}
-                      className={cn(
-                        'transition-transform duration-200 ease-out group-hover/alarm:scale-[1.35]',
-                        alarmEnabled && 'fill-current',
-                      )}
                     />
                   </button>
                 </div>
@@ -1303,6 +1324,15 @@ export function HourlyTimeline({
         </div>
       </div>
     </div>
+      {alarmMenu && (
+        <ScheduleBlockAlarmMenu
+          blockId={alarmMenu.blockId}
+          x={alarmMenu.x}
+          y={alarmMenu.y}
+          currentLead={getScheduleBlockAlarmLead(alarmMenu.blockId)}
+          onClose={() => setAlarmMenu(null)}
+        />
+      )}
     </div>
   )
 }
