@@ -1,7 +1,48 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Anthropic Sans Display";
+  src: url("/fonts/AnthropicSans-Display-Light-Static.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Sans Display";
+  src: url("/fonts/AnthropicSans-Display-Medium-Static.otf") format("opentype");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Sans Display";
+  src: url("/fonts/AnthropicSans-Display-Bold-Static.otf") format("opentype");
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Sans Display";
+  src: url("/fonts/AnthropicSans-Display-BoldItalic-Static.otf") format("opentype");
+  font-weight: 600 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Sans Display";
+  src: url("/fonts/AnthropicSans-Display-Extrabold-Static.otf") format("opentype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Anthropic Sans Display", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Anthropic Sans Display", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root,
@@ -69,16 +110,17 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  font-family: var(--font-sans);
+  background: #06060b;
+}
+
 body {
   margin: 0;
-  font-family: var(--font-sans);
+  font-family: inherit;
   background: #06060b;
   color: #fafafa;
   -webkit-font-smoothing: antialiased;
-}
-
-html {
-  background: #06060b;
 }
 
 input[type="number"]::-webkit-inner-spin-button,
