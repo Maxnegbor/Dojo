@@ -18,6 +18,7 @@ import {
 import { SCHEDULE_SCROLL_TO_NOW } from '@/lib/scheduleScroll'
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
+import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
 import { generateId, formatDuration, minutesToTime, parseTimeToMinutes, cn } from '@/lib/utils'
 
 const HOUR_HEIGHT = 88
@@ -60,10 +61,10 @@ function ScheduleBlockTitleInput({
   const mirrorText = value || placeholder
 
   const mirrorClass =
-    'invisible col-start-1 row-start-1 whitespace-pre text-[1em] font-medium leading-tight'
+    'invisible col-start-1 row-start-1 whitespace-pre text-[1em] font-bold leading-tight'
 
   const inputClass =
-    'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text bg-transparent px-0 py-0 text-[1em] font-medium leading-tight text-zinc-100 outline-none focus:outline-none'
+    'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text bg-transparent px-0 py-0 text-[1em] font-bold leading-tight text-zinc-100 outline-none focus:outline-none'
 
   return (
     <div className="inline-grid w-fit max-w-full">
@@ -263,13 +264,6 @@ function minutesToStyle(
   }
 }
 
-function formatScheduleHour(hour: number, formatTime: (date: Date) => string): string {
-  if (hour === 24) {
-    return formatTime(new Date(2000, 0, 1, 0, 0))
-  }
-  return formatTime(new Date(2000, 0, 1, hour, 0))
-}
-
 function getTimelineMetrics(startHour: number, endHour: number) {
   const slotCount = Math.max(0, endHour - startHour)
   const timelineHeight = slotCount * HOUR_HEIGHT
@@ -308,7 +302,8 @@ export function HourlyTimeline({
   onDropPlannedWorkout,
   screensaver = false,
 }: HourlyTimelineProps) {
-  const { formatTime } = useSettings()
+  const { formatTime, settings } = useSettings()
+  const use24h = settings.timeFormat === '24h'
   const [colorPresets, setColorPresets] = useState(() => getScheduleColorPresets())
   const [linkedBlockIds, setLinkedBlockIds] = useState<Set<string>>(
     () => new Set(getPlannedWorkouts().map((p) => p.schedule_block_id).filter(Boolean) as string[]),
@@ -895,16 +890,16 @@ export function HourlyTimeline({
                 className="pointer-events-none absolute inset-x-0 border-b border-zinc-800/40 pr-1.5 text-right text-[10px] text-zinc-600"
                 style={{ top: TIMELINE_TOP_INSET + i * HOUR_HEIGHT, height: HOUR_HEIGHT }}
               >
-                <span className={cn('block', i === 0 ? 'relative top-0.5' : 'relative -top-2')}>
-                  {formatScheduleHour(h, formatTime)}
-                </span>
+                <ScheduleHourLabel
+                  hour={h}
+                  use24h={use24h}
+                  position={i === 0 ? 'first' : 'default'}
+                />
               </div>
             ))}
             {slotHours.length > 0 && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 pr-1.5 text-right text-[10px] text-zinc-600">
-                <span className="relative -top-2 block">
-                  {formatScheduleHour(endHour, formatTime)}
-                </span>
+                <ScheduleHourLabel hour={endHour} use24h={use24h} />
               </div>
             )}
           </div>

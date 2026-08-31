@@ -3,6 +3,7 @@ import type { ScheduleBlock } from '@/types'
 import { GREY_BLOCK_HEX } from '@/types'
 import { useSettings } from '@/context/SettingsContext'
 import { fetchScheduleBlocksForDate, isGreyBlock } from '@/lib/scheduleBlock'
+import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
 import { parseTimeToMinutes, cn, formatDate } from '@/lib/utils'
 
 interface FocusScheduleAgendaProps {
@@ -21,11 +22,6 @@ function labelForTime(hhmm: string, formatTime: (date: Date) => string): string 
   const date = new Date()
   date.setHours(h, m, 0, 0)
   return formatTime(date)
-}
-
-function formatScheduleHour(hour: number, formatTime: (date: Date) => string): string {
-  if (hour === 24) return formatTime(new Date(2000, 0, 1, 0, 0))
-  return formatTime(new Date(2000, 0, 1, hour, 0))
 }
 
 function minutesToStyle(
@@ -49,6 +45,7 @@ export function FocusScheduleAgenda({
   screensaver = false,
 }: FocusScheduleAgendaProps) {
   const { settings } = useSettings()
+  const use24h = settings.timeFormat === '24h'
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
   const [nowMinutes, setNowMinutes] = useState(() => {
     const now = new Date()
@@ -144,9 +141,11 @@ export function FocusScheduleAgenda({
                   )}
                   style={{ top: TIMELINE_TOP_INSET + i * hourHeight, height: hourHeight }}
                 >
-                  <span className={cn('block', i === 0 ? 'relative top-0.5' : 'relative -top-2')}>
-                    {formatScheduleHour(h, formatTime)}
-                  </span>
+                  <ScheduleHourLabel
+                    hour={h}
+                    use24h={use24h}
+                    position={i === 0 ? 'first' : 'default'}
+                  />
                 </div>
               ))}
             </div>
@@ -191,7 +190,7 @@ export function FocusScheduleAgenda({
                     <div className={cn('min-w-0 flex-1', isShort ? 'pt-0.5' : 'pt-1')}>
                       <p
                         className={cn(
-                          'truncate font-medium leading-tight',
+                          'truncate font-bold leading-tight',
                           screensaver ? 'text-sm' : 'text-xs',
                           isCurrent ? 'text-zinc-50' : 'text-zinc-200',
                         )}

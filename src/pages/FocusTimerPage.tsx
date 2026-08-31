@@ -403,17 +403,16 @@ export function FocusTimerPage() {
     <div
       className={cn(
         'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6 transition-[gap,padding] duration-[1400ms] ease-in-out',
-        screensaver && 'fixed inset-0 z-20 gap-8 px-6 py-8 sm:px-10',
+        screensaver && 'fixed inset-0 z-20 items-center justify-center gap-0 px-6 py-0',
         screensaverWaking && 'focus-stage--screensaver-wake',
-        showSchedule && showSettings
-          ? 'max-w-6xl'
-          : showSchedule
-            ? screensaver
-              ? 'max-w-[96rem]'
-              : 'max-w-4xl'
-            : showSettings
-              ? 'max-w-3xl'
-              : 'max-w-lg',
+        !screensaver &&
+          (showSchedule && showSettings
+            ? 'max-w-6xl'
+            : showSchedule
+              ? 'max-w-4xl'
+              : showSettings
+                ? 'max-w-3xl'
+                : 'max-w-lg'),
       )}
     >
       <button
@@ -442,22 +441,24 @@ export function FocusTimerPage() {
       <div
         className={cn(
           'flex items-start gap-4 transition-[gap] duration-[1400ms] ease-in-out',
-          screensaver && 'h-full min-h-0 flex-1 items-center justify-center gap-10 lg:gap-14',
-          showSchedule || showSettings
-            ? 'flex-col lg:flex-row lg:justify-center'
-            : 'justify-center',
+          screensaver
+            ? 'relative items-center justify-center'
+            : showSchedule || showSettings
+              ? 'flex-col lg:flex-row lg:justify-center'
+              : 'justify-center',
         )}
       >
         <div
           className={cn(
             'flex w-full max-w-[480px] flex-col gap-4 self-center transition-all duration-[1400ms] ease-in-out lg:shrink-0',
-            screensaver && 'max-w-none flex-1 items-center justify-center',
+            screensaver && 'relative w-auto max-w-none shrink-0',
           )}
         >
           <Card
             className={cn(
               'flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6 transition-all duration-[1400ms] ease-in-out',
-              screensaver && 'max-w-none border-0 bg-transparent px-0 py-0 shadow-none',
+              screensaver &&
+                'max-w-none !rounded-none !border-0 !bg-transparent !p-0 !shadow-none',
             )}
           >
         <p
@@ -468,7 +469,7 @@ export function FocusTimerPage() {
               : isRest
                 ? 'text-blue-400'
                 : 'text-zinc-500',
-            screensaverActive && 'opacity-0',
+            screensaverActive && 'pointer-events-none mb-0 h-0 overflow-hidden opacity-0',
           )}
         >
           {phase === 'done'
@@ -480,12 +481,7 @@ export function FocusTimerPage() {
                 : `Rest · ${cycle}/${settings.iterations}`}
         </p>
 
-        <div
-          className={cn(
-            'relative mt-4 mb-6 shrink-0 transition-all duration-[1400ms] ease-in-out',
-            screensaver ? 'mt-0 mb-0 h-[min(42vmin,22rem)] w-[min(42vmin,22rem)]' : 'h-60 w-60',
-          )}
-        >
+        <div className={cn('relative h-60 w-60 shrink-0', screensaver ? 'my-0' : 'mt-4 mb-6')}>
           <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden>
             <circle cx="50" cy="50" r="44" fill="none" stroke="#27272a" strokeWidth="5" />
             <circle
@@ -500,12 +496,7 @@ export function FocusTimerPage() {
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span
-              className={cn(
-                'select-none font-extralight leading-none tabular-nums tracking-tight text-zinc-50 transition-all duration-[1400ms] ease-in-out',
-                screensaver ? 'text-[min(12vmin,6rem)]' : 'text-[3.75rem]',
-              )}
-            >
+            <span className="select-none text-[3.75rem] font-extralight leading-none tabular-nums tracking-tight text-zinc-50">
               {String(minutes).padStart(2, '0')}
               <span className="text-zinc-500">:</span>
               {String(seconds).padStart(2, '0')}
@@ -629,6 +620,14 @@ export function FocusTimerPage() {
               useDevDummy={userPrefs.devMode}
             />
           </Card>
+
+        {showSchedule && userId && screensaver && (
+          <FocusScheduleAgenda
+            userId={userId}
+            formatTime={formatTime}
+            className="absolute left-full top-1/2 ml-6 w-64 max-h-[min(36rem,75vh)] -translate-y-1/2"
+          />
+        )}
         </div>
 
         {showSettings && (
@@ -713,16 +712,11 @@ export function FocusTimerPage() {
           </Card>
         )}
 
-        {showSchedule && userId && (
+        {showSchedule && userId && !screensaver && (
           <FocusScheduleAgenda
             userId={userId}
             formatTime={formatTime}
-            screensaver={screensaver}
-            className={cn(
-              'mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-72 lg:shrink-0',
-              screensaver &&
-                'mx-0 max-h-none min-h-0 max-w-none flex-1 lg:min-h-0 lg:w-auto lg:max-w-none',
-            )}
+            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-72 lg:shrink-0"
           />
         )}
       </div>
