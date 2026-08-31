@@ -449,23 +449,26 @@ export function FocusTimerPage() {
     createPortal(
       <div
         className={cn(
-          'fixed inset-0 z-[200] bg-[#06060b] transition-opacity duration-[1400ms] ease-in-out',
+          'fixed inset-0 z-[200] flex h-dvh flex-col items-center bg-[#06060b] px-6 py-10 transition-opacity duration-[1400ms] ease-in-out',
           screensaverWaking && 'pointer-events-none opacity-0',
         )}
       >
-        <FocusTimerFace
-          progress={progress}
-          isRest={isRest}
-          minutes={minutes}
-          seconds={seconds}
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-        />
-        {showSchedule && userId && (
-          <FocusScheduleAgenda
-            userId={userId}
-            formatTime={formatTime}
-            className="fixed top-1/2 max-h-[min(36rem,75vh)] w-64 -translate-y-1/2 left-[calc(50%+16rem)]"
+        <div className="flex shrink-0 justify-center pt-2">
+          <FocusTimerFace
+            progress={progress}
+            isRest={isRest}
+            minutes={minutes}
+            seconds={seconds}
           />
+        </div>
+        {showSchedule && userId && (
+          <div className="mt-8 flex min-h-0 w-full max-w-sm flex-1 flex-col pb-2">
+            <FocusScheduleAgenda
+              userId={userId}
+              formatTime={formatTime}
+              className="min-h-0 w-full max-h-full flex-1"
+            />
+          </div>
         )}
       </div>,
       document.body,
