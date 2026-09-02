@@ -43,6 +43,7 @@ import { getHabitStreaksForDate } from '@/lib/habitStreaks'
 import { normalizeDailyShutdownSteps } from '@/lib/dailyShutdownSteps'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habitTypes'
+import { HABITIFY_CHANGED, HABITIFY_JOURNAL_CHANGED } from '@/lib/habitifyStore'
 import { computeDayPulse, PULSE_HEADER_SCALE, pulseCorePx } from '@/lib/pulse'
 import { buildPulseContributors } from '@/lib/pulseBreakdown'
 import { getPulseFormulaForDate } from '@/lib/pulseConfig'
@@ -141,6 +142,17 @@ export function TodayPage() {
   const { config: pulseConfig } = usePulseConfig()
   const { config: sleepMetricsConfig } = useSleepMetricsConfig()
   const draftRevision = useDailyLogDraftRevision(viewDate)
+  const [habitifyRevision, setHabitifyRevision] = useState(0)
+
+  useEffect(() => {
+    const bump = () => setHabitifyRevision((n) => n + 1)
+    window.addEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+    window.addEventListener(HABITIFY_CHANGED, bump)
+    return () => {
+      window.removeEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+      window.removeEventListener(HABITIFY_CHANGED, bump)
+    }
+  }, [])
 
   const isActiveDay = isToday(parseISO(viewDate))
   const { active: screensaverActive, waking: screensaverWaking } = useScreensaver()
@@ -164,7 +176,7 @@ export function TodayPage() {
       formula,
       sleepMetricsConfig,
     )
-  }, [viewDate, log, goals, workouts, pulseConfig, sleepMetricsConfig, draftRevision])
+  }, [viewDate, log, goals, workouts, pulseConfig, sleepMetricsConfig, draftRevision, habitifyRevision])
 
   const pulseContributors = useMemo(() => {
     const formula = getPulseFormulaForDate(pulseConfig, viewDate)
@@ -178,7 +190,7 @@ export function TodayPage() {
       formula,
       sleepMetricsConfig,
     })
-  }, [viewDate, log, goals, workouts, pulseConfig, sleepMetricsConfig, draftRevision])
+  }, [viewDate, log, goals, workouts, pulseConfig, sleepMetricsConfig, draftRevision, habitifyRevision])
 
   const headerPulseScore = dayPulse.score
   const headerPulseLayoutPx = pulseCorePx(PULSE_HEADER_SCALE) + 8

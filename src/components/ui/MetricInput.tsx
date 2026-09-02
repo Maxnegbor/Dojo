@@ -28,7 +28,7 @@ export function MetricInput({ label, unit, compact, className, type = 'number', 
             'placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)]',
             'disabled:cursor-not-allowed disabled:opacity-60',
             compact ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-sm',
-            unit && type === 'number' && (compact ? 'pr-8' : 'pr-10'),
+            unit && type !== 'time' && (compact ? 'pr-10' : 'pr-12'),
             className,
           )}
           {...props}

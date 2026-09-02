@@ -26,6 +26,7 @@ import {
   isLongBreakAfterFocus,
   loggedFocusMinutes,
   remainingSessionSeconds,
+  shouldSkipBreaks,
   totalFocusMinutes,
   totalSessionSeconds,
   type TimerPhase,
@@ -266,7 +267,7 @@ export function FocusTimerPage() {
       await logFocusMinutes(elapsed, undefined, sessionStart, selectedLabelIdRef.current)
       maybePromptFocusScore(sessionStart, elapsed)
 
-      if (s.skipBreaks) {
+      if (shouldSkipBreaks(s)) {
         if (c >= s.iterations) {
           playFocusTimerFinishSound({ sessionComplete: true })
           setPhase('done')
@@ -352,7 +353,7 @@ export function FocusTimerPage() {
     await logFocusMinutes(elapsed, undefined, sessionStart, selectedLabelIdRef.current)
     maybePromptFocusScore(sessionStart, elapsed)
 
-    if (settings.skipBreaks) {
+    if (shouldSkipBreaks(settings)) {
       if (cycle >= settings.iterations) {
         setPhase('done')
         setRunning(false)
@@ -692,18 +693,25 @@ export function FocusTimerPage() {
             <MinuteSlider
               label="Break duration"
               value={settings.breakMinutes}
-              disabled={settings.skipBreaks || running || sessionStarted}
+              disabled={shouldSkipBreaks(settings) || running || sessionStarted}
               onChange={(breakMinutes) => updateTimerSettings({ breakMinutes })}
             />
             <CycleStepper
               label="Cycles"
               value={settings.iterations}
-              onChange={(iterations) => updateTimerSettings({ iterations })}
+              onChange={(iterations) =>
+                updateTimerSettings({
+                  iterations,
+                  ...(iterations > 1 ? { skipBreaks: false } : {}),
+                })
+              }
             />
-            <SkipBreaksToggle
-              checked={settings.skipBreaks}
-              onChange={(skipBreaks) => updateTimerSettings({ skipBreaks })}
-            />
+            {settings.iterations <= 1 && (
+              <SkipBreaksToggle
+                checked={settings.skipBreaks}
+                onChange={(skipBreaks) => updateTimerSettings({ skipBreaks })}
+              />
+            )}
             <ToggleRow
               label="Allow pause"
               compact
@@ -721,7 +729,7 @@ export function FocusTimerPage() {
               enabled={settings.longBreakEnabled}
               afterCycles={settings.longBreakAfterCycles}
               minutes={settings.longBreakMinutes}
-              disabled={settings.skipBreaks || running || sessionStarted}
+              disabled={shouldSkipBreaks(settings) || running || sessionStarted}
               onEnabledChange={(longBreakEnabled) => updateTimerSettings({ longBreakEnabled })}
               onAfterCyclesChange={(longBreakAfterCycles) =>
                 updateTimerSettings({ longBreakAfterCycles })

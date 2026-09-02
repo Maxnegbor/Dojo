@@ -297,10 +297,44 @@ export function DailyLogForm({
     return { pendingHabits: pending, completedHabits: completed }
   }, [filteredDailyHabits, draft.habits, isAnimating])
 
+  const [wrapUpUnloggedKeys, setWrapUpUnloggedKeys] = useState<{
+    date: string
+    keys: Set<string>
+  } | null>(null)
+
+  if (unloggedMetricsOnly) {
+    if (wrapUpUnloggedKeys == null || wrapUpUnloggedKeys.date !== log.date) {
+      setWrapUpUnloggedKeys({
+        date: log.date,
+        keys: new Set(
+          filteredScalarGoals
+            .filter((goal) => !isScalarGoalLoggedInDraft(goal, draft))
+            .map((goal) => goal.metric_key),
+        ),
+      })
+    }
+  } else if (wrapUpUnloggedKeys != null) {
+    setWrapUpUnloggedKeys(null)
+  }
+
   const unloggedScalarGoals = useMemo(() => {
     if (!unloggedMetricsOnly) return filteredScalarGoals
-    return filteredScalarGoals.filter((goal) => !isScalarGoalLoggedInDraft(goal, draft))
-  }, [filteredScalarGoals, unloggedMetricsOnly, draft])
+    const frozen =
+      wrapUpUnloggedKeys?.date === log.date
+        ? wrapUpUnloggedKeys.keys
+        : new Set(
+            filteredScalarGoals
+              .filter((goal) => !isScalarGoalLoggedInDraft(goal, draft))
+              .map((goal) => goal.metric_key),
+          )
+    return filteredScalarGoals.filter((goal) => frozen.has(goal.metric_key))
+  }, [
+    filteredScalarGoals,
+    unloggedMetricsOnly,
+    draft,
+    wrapUpUnloggedKeys,
+    log.date,
+  ])
 
   const unloggedWorkoutTypes = useMemo(() => {
     if (!unloggedMetricsOnly) return filteredWorkoutTypes

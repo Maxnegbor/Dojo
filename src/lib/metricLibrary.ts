@@ -27,6 +27,7 @@ export const KIND_CATEGORY_FALLBACK = {
 
 export const KIND_CATEGORY_LABELS: Record<string, string> = {
   habits: 'Habits',
+  habitify: 'Habitify',
   sleep: 'Sleep',
   focus: 'Focus',
   weight: 'Weight',

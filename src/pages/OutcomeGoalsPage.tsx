@@ -40,7 +40,8 @@ export function OutcomeGoalsPage() {
 
   const refreshGoals = useCallback(() => {
     if (!storageReady) return
-    setGoals(getOutcomeGoals())
+    const next = getOutcomeGoals()
+    setGoals(next)
     setGoalsReady(true)
   }, [storageReady])
 
@@ -86,8 +87,23 @@ export function OutcomeGoalsPage() {
     }
   }, [refreshGoals])
 
+  useEffect(() => {
+    if (editing == null && detailId == null && confirmDeleteId == null) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setEditing(null)
+      setDetailId(null)
+      setConfirmDeleteId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing, detailId, confirmDeleteId])
+
   const activeGoals = useMemo(
-    () => goals.filter((goal) => goal.is_active),
+    () =>
+      goals
+        .filter((goal) => goal.is_active)
+        .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')),
     [goals],
   )
 
@@ -111,19 +127,16 @@ export function OutcomeGoalsPage() {
     [progressList, detailId],
   )
 
+  const pendingDelete = useMemo(
+    () => activeGoals.find((goal) => goal.id === confirmDeleteId) ?? null,
+    [activeGoals, confirmDeleteId],
+  )
+
   const handleSave = (goal: OutcomeGoal) => {
     const saved = upsertOutcomeGoal(goal)
     setEditing(null)
     setDetailId(saved.id)
-    setGoals((prev) => {
-      const idx = prev.findIndex((entry) => entry.id === saved.id)
-      if (idx >= 0) {
-        const next = [...prev]
-        next[idx] = saved
-        return next
-      }
-      return [...prev, saved]
-    })
+    refreshGoals()
   }
 
   const handleDelete = (id: string) => {
@@ -153,24 +166,13 @@ export function OutcomeGoalsPage() {
             library to measure it.
           </p>
         </div>
-        {editing == null && (
-          <Button size="sm" onClick={() => setEditing('new')}>
-            <Plus size={14} />
-            New goal
-          </Button>
-        )}
+        <Button size="sm" onClick={() => setEditing('new')}>
+          <Plus size={14} />
+          New goal
+        </Button>
       </div>
 
-      {editing != null && (
-        <OutcomeGoalEditor
-          initial={editing === 'new' ? null : editing}
-          hybridGoals={hybridGoals}
-          onSave={handleSave}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-
-      {progressList.length === 0 && editing == null ? (
+      {progressList.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 px-6 py-12 text-center">
           <p className="text-sm text-zinc-400">No goals yet</p>
           <p className="mt-1 text-xs text-zinc-600">
@@ -183,45 +185,72 @@ export function OutcomeGoalsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
-          {progressList.map((progress) =>
-            confirmDeleteId === progress.goal.id ? (
-              <div
-                key={progress.goal.id}
-                className="h-full rounded-xl border border-red-900/40 bg-red-950/20 p-4"
-              >
-                <p className="text-sm text-zinc-200">
-                  Delete <span className="font-semibold">{progress.goal.title}</span>?
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setConfirmDeleteId(null)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => handleDelete(progress.goal.id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <OutcomeGoalCard
-                key={progress.goal.id}
-                progress={progress}
-                onOpen={() => setDetailId(progress.goal.id)}
-                onDelete={() => setConfirmDeleteId(progress.goal.id)}
-              />
-            ),
-          )}
+          {progressList.map((progress) => (
+            <OutcomeGoalCard
+              key={progress.goal.id}
+              progress={progress}
+              onOpen={() => setDetailId(progress.goal.id)}
+              onDelete={() => setConfirmDeleteId(progress.goal.id)}
+            />
+          ))}
         </div>
       )}
 
-      {detailProgress && editing == null ? (
+      {editing != null ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
+          onClick={() => setEditing(null)}
+        >
+          <div
+            role="dialog"
+            aria-label={editing === 'new' ? 'New goal' : 'Edit goal'}
+            className="scrollbar-hidden max-h-[90vh] w-full max-w-lg overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <OutcomeGoalEditor
+              initial={editing === 'new' ? null : editing}
+              hybridGoals={hybridGoals}
+              onSave={handleSave}
+              onCancel={() => setEditing(null)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {pendingDelete ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
+          onClick={() => setConfirmDeleteId(null)}
+        >
+          <div
+            role="dialog"
+            aria-labelledby="delete-goal-title"
+            className="w-full max-w-sm rounded-2xl border border-red-900/40 bg-zinc-950 p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="delete-goal-title" className="text-sm font-semibold text-zinc-100">
+              Delete {pendingDelete.title}?
+            </h3>
+            <p className="mt-1.5 text-xs text-zinc-500">
+              This removes the goal. Your metric logs stay.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteId(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => handleDelete(pendingDelete.id)}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {detailProgress && editing == null && confirmDeleteId == null ? (
         <OutcomeGoalDetailModal
           progress={detailProgress}
           logs={logs}

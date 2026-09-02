@@ -27,7 +27,7 @@ import {
   sleepMetricIdFromLibraryKey,
 } from '@/lib/sleepMetrics'
 import { formatMetricAmount, formatGoalTargetLabel } from '@/lib/timedMetrics'
-import { storageGetItem, storageSetItem } from '@/lib/userStorage'
+import { flushStorageKey, isUserStorageHydrated, storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { getWeekDates, formatDate } from '@/lib/utils'
 import { isWeightGoal } from '@/lib/weightGoal'
 import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
@@ -48,6 +48,15 @@ const STORAGE_KEY = 'personal-os-outcome-goals'
 /** v2: merge missing hybrid targets even when some outcome goals already exist. */
 const MIGRATION_KEY = 'personal-os-outcome-goals-migrated-v2'
 export const OUTCOME_GOALS_CHANGED = 'personal-os-outcome-goals-changed'
+const DOC_VERSION = 2
+const MAX_DELETED_IDS = 500
+
+interface OutcomeGoalsDocument {
+  version: number
+  updated_at: string
+  goals: OutcomeGoal[]
+  deleted_ids: string[]
+}
 
 function newId(): string {
   return crypto.randomUUID()
@@ -172,6 +181,15 @@ export function normalizeOutcomeGoals(raw: unknown): OutcomeGoal[] {
     .filter((goal): goal is OutcomeGoal => goal != null)
 }
 
+function emptyDocument(): OutcomeGoalsDocument {
+  return {
+    version: DOC_VERSION,
+    updated_at: new Date(0).toISOString(),
+    goals: [],
+    deleted_ids: [],
+  }
+}
+
 function parseOutcomeGoalsRaw(raw: string): unknown {
   let parsed: unknown = JSON.parse(raw)
   // Recover if a previous persist wrote a JSON string into jsonb (double-encoded).
@@ -185,14 +203,85 @@ function parseOutcomeGoalsRaw(raw: string): unknown {
   return parsed
 }
 
-export function getOutcomeGoals(): OutcomeGoal[] {
-  try {
-    const raw = storageGetItem(STORAGE_KEY)
-    if (!raw) return []
-    return normalizeOutcomeGoals(parseOutcomeGoalsRaw(raw))
-  } catch {
-    return []
+function parseDocument(raw: string | null): OutcomeGoalsDocument {
+  if (!raw) return emptyDocument()
+  const parsed = parseOutcomeGoalsRaw(raw)
+  if (Array.isArray(parsed)) {
+    return {
+      version: DOC_VERSION,
+      updated_at: new Date(0).toISOString(),
+      goals: normalizeOutcomeGoals(parsed),
+      deleted_ids: [],
+    }
   }
+  if (!parsed || typeof parsed !== 'object') return emptyDocument()
+  const obj = parsed as Record<string, unknown>
+  const deletedRaw = Array.isArray(obj.deleted_ids) ? obj.deleted_ids : []
+  return {
+    version: DOC_VERSION,
+    updated_at: typeof obj.updated_at === 'string' ? obj.updated_at : new Date(0).toISOString(),
+    goals: normalizeOutcomeGoals(obj.goals),
+    deleted_ids: deletedRaw.filter((id): id is string => typeof id === 'string' && id.length > 0),
+  }
+}
+
+function readLocalDocument(): OutcomeGoalsDocument {
+  try {
+    return parseDocument(localStorage.getItem(STORAGE_KEY))
+  } catch {
+    return emptyDocument()
+  }
+}
+
+function mergeDocuments(a: OutcomeGoalsDocument, b: OutcomeGoalsDocument): OutcomeGoalsDocument {
+  const deleted = new Set([...a.deleted_ids, ...b.deleted_ids])
+  const byId = new Map<string, OutcomeGoal>()
+  for (const goal of [...a.goals, ...b.goals]) {
+    if (deleted.has(goal.id)) continue
+    const existing = byId.get(goal.id)
+    if (!existing || (goal.updated_at ?? '') >= (existing.updated_at ?? '')) {
+      byId.set(goal.id, goal)
+    }
+  }
+  const deleted_ids = [...deleted].slice(-MAX_DELETED_IDS)
+  return {
+    version: DOC_VERSION,
+    updated_at: (a.updated_at ?? '') >= (b.updated_at ?? '') ? a.updated_at : b.updated_at,
+    goals: [...byId.values()].sort((x, y) => (x.created_at ?? '').localeCompare(y.created_at ?? '')),
+    deleted_ids,
+  }
+}
+
+function readDocument(): OutcomeGoalsDocument {
+  try {
+    const stored = parseDocument(storageGetItem(STORAGE_KEY))
+    const local = readLocalDocument()
+    return mergeDocuments(stored, local)
+  } catch {
+    return emptyDocument()
+  }
+}
+
+function persistDocument(next: OutcomeGoalsDocument): OutcomeGoalsDocument {
+  const merged = mergeDocuments(readDocument(), next)
+  merged.updated_at = new Date().toISOString()
+  merged.version = DOC_VERSION
+  storageSetItem(STORAGE_KEY, JSON.stringify(merged))
+  window.dispatchEvent(new Event(OUTCOME_GOALS_CHANGED))
+  void flushStorageKey(STORAGE_KEY)
+  return merged
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY || event.key == null) {
+      window.dispatchEvent(new Event(OUTCOME_GOALS_CHANGED))
+    }
+  })
+}
+
+export function getOutcomeGoals(): OutcomeGoal[] {
+  return readDocument().goals
 }
 
 export function getActiveOutcomeGoals(): OutcomeGoal[] {
@@ -200,10 +289,13 @@ export function getActiveOutcomeGoals(): OutcomeGoal[] {
 }
 
 export function saveOutcomeGoals(goals: OutcomeGoal[]): OutcomeGoal[] {
-  const normalized = normalizeOutcomeGoals(goals)
-  storageSetItem(STORAGE_KEY, JSON.stringify(normalized))
-  window.dispatchEvent(new Event(OUTCOME_GOALS_CHANGED))
-  return normalized
+  const incoming = normalizeOutcomeGoals(goals)
+  return persistDocument({
+    version: DOC_VERSION,
+    updated_at: new Date().toISOString(),
+    goals: incoming,
+    deleted_ids: readDocument().deleted_ids,
+  }).goals
 }
 
 export function upsertOutcomeGoal(goal: OutcomeGoal): OutcomeGoal {
@@ -212,18 +304,27 @@ export function upsertOutcomeGoal(goal: OutcomeGoal): OutcomeGoal {
     updated_at: new Date().toISOString(),
   })
   if (!normalized) throw new Error('Invalid goal')
-  const existing = getOutcomeGoals()
-  const idx = existing.findIndex((entry) => entry.id === normalized.id)
-  const next =
-    idx >= 0
-      ? existing.map((entry, i) => (i === idx ? normalized : entry))
-      : [...existing, normalized]
-  saveOutcomeGoals(next)
+  const current = readDocument()
+  persistDocument({
+    version: DOC_VERSION,
+    updated_at: normalized.updated_at,
+    goals: [
+      ...current.goals.filter((entry) => entry.id !== normalized.id),
+      normalized,
+    ],
+    deleted_ids: current.deleted_ids.filter((id) => id !== normalized.id),
+  })
   return normalized
 }
 
 export function deleteOutcomeGoal(id: string): void {
-  saveOutcomeGoals(getOutcomeGoals().filter((goal) => goal.id !== id))
+  const current = readDocument()
+  persistDocument({
+    version: DOC_VERSION,
+    updated_at: new Date().toISOString(),
+    goals: current.goals.filter((goal) => goal.id !== id),
+    deleted_ids: [...current.deleted_ids, id],
+  })
 }
 
 export function createEmptyOutcomeGoal(partial?: Partial<OutcomeGoal>): OutcomeGoal {
@@ -334,7 +435,12 @@ export function migrateOutcomeGoalsFromHybridGoals(hybridGoals: Goal[]): boolean
   }
 
   if (seeded.length > 0) {
-    saveOutcomeGoals([...getOutcomeGoals(), ...seeded])
+    persistDocument({
+      version: DOC_VERSION,
+      updated_at: new Date().toISOString(),
+      goals: [...getOutcomeGoals(), ...seeded],
+      deleted_ids: readDocument().deleted_ids,
+    })
   }
 
   // Only mark complete once we've actually seen hybrid goals (or finished seeding).
@@ -350,6 +456,8 @@ export async function runOutcomeGoalsMigration(userId: string): Promise<void> {
   if (!userId) return
 
   const { isSupabaseConfigured } = await import('@/lib/supabase')
+  if (isSupabaseConfigured && !isUserStorageHydrated(userId)) return
+
   let hybrid: Goal[] = []
   if (isSupabaseConfigured) {
     const { fetchGoals } = await import('@/lib/supabase')

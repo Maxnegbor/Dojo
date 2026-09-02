@@ -48,7 +48,7 @@ export function OverviewPage() {
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [workouts, setWorkouts] = useState<Workout[]>([])
-  const { userId } = useAuth()
+  const { userId, storageReady } = useAuth()
   const { settings } = useSettings()
 
   useEffect(() => {
@@ -68,9 +68,9 @@ export function OverviewPage() {
   }, [])
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId || !storageReady) return
     void runOutcomeGoalsMigration(userId).then(() => setOutcomeRevision((n) => n + 1))
-  }, [userId])
+  }, [userId, storageReady])
 
   useEffect(() => {
     if (detailCategory == null) return

@@ -187,7 +187,7 @@ export function LongBreakSettings({
         <div className="mt-4 space-y-4 border-t border-zinc-800/80 pt-4">
           <CycleStepper
             labelBefore="Every"
-            labelAfter="focus sessions"
+            labelAfter="focus cycles"
             value={afterCycles}
             min={1}
             max={20}

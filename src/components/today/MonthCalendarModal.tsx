@@ -9,6 +9,7 @@ import {
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { mergeLogWithDraftForDate } from '@/lib/dailyLogDraft'
 import { getDailyLogHabitTypes } from '@/lib/habitTypes'
+import { HABITIFY_JOURNAL_CHANGED } from '@/lib/habitifyStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import { computeDayPulse, pulseCalendarCellVisuals } from '@/lib/pulse'
@@ -48,6 +49,13 @@ export function MonthCalendarModal({
   const [loading, setLoading] = useState(true)
   const today = formatDate(new Date())
   const draftRevision = useDailyLogDraftRevision(today)
+  const [habitifyRevision, setHabitifyRevision] = useState(0)
+
+  useEffect(() => {
+    const bump = () => setHabitifyRevision((n) => n + 1)
+    window.addEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+    return () => window.removeEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+  }, [])
 
   const days = useMemo(() => {
     const start = startOfMonth(month)
@@ -131,6 +139,7 @@ export function MonthCalendarModal({
     todayLog,
     todayWorkouts,
     draftRevision,
+    habitifyRevision,
   ])
 
   const startPad = getMonthStartPad(month, settings.weekStartsOn)

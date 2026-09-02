@@ -18,7 +18,7 @@ export function OutcomeGoalCard({ progress, onOpen, onDelete }: OutcomeGoalCardP
   return (
     <article
       className={cn(
-        'h-full rounded-xl border border-zinc-800/80 bg-zinc-900 p-4',
+        'flex h-full flex-col rounded-xl border border-zinc-800/80 bg-zinc-900 p-4',
         'transition-colors hover:border-zinc-700',
       )}
     >
@@ -59,31 +59,39 @@ export function OutcomeGoalCard({ progress, onOpen, onDelete }: OutcomeGoalCardP
         <button
           type="button"
           onClick={onOpen}
-          className="mt-3 w-full space-y-1 border-t border-zinc-800/80 pt-3 text-left"
+          className="mt-3 w-full flex-1 space-y-2 border-t border-zinc-800/80 pt-3 text-left"
         >
-          <ul className="space-y-1">
+          <ul className="space-y-2">
             {metrics.map((entry) => (
-              <li
-                key={entry.link.id}
-                className="flex items-center gap-2 text-xs text-zinc-300"
-              >
-                <span
-                  className={cn(
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
-                    entry.onPace
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-zinc-800 text-zinc-600',
-                  )}
-                >
-                  <Check size={10} strokeWidth={3} />
-                </span>
-                <span className="min-w-0 flex-1 truncate">
-                  {entry.label}
-                  <span className="text-zinc-500">
-                    {' '}
-                    · {entry.display.replace(/ \(.*\)$/, '')}
+              <li key={entry.link.id} className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-zinc-300">
+                  <span
+                    className={cn(
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                      entry.onPace
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-zinc-800 text-zinc-600',
+                    )}
+                  >
+                    <Check size={10} strokeWidth={3} />
                   </span>
-                </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {entry.label}
+                    <span className="text-zinc-500">
+                      {' '}
+                      · {entry.display.replace(/ \(.*\)$/, '')}
+                    </span>
+                  </span>
+                </div>
+                <div className="ml-6 h-1 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className={cn(
+                      'h-full rounded-full',
+                      entry.onPace ? 'bg-emerald-500' : 'bg-[var(--accent-500)]',
+                    )}
+                    style={{ width: `${Math.min(100, Math.max(0, entry.percent))}%` }}
+                  />
+                </div>
               </li>
             ))}
           </ul>

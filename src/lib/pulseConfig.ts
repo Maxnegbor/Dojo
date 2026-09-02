@@ -22,6 +22,12 @@ import {
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { getDailyLogWorkoutTypes, getWeeklyLogWorkoutTypes, getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
 import { getActiveWeightGoal, isWeightLoggedWeekly } from '@/lib/weightGoal'
+import {
+  HABITIFY_CATEGORY_ID,
+  getHabitifyHabitCatalog,
+  habitifyMetricKey,
+  isHabitifyConnected,
+} from '@/lib/habitifyStore'
 import type { Goal, MetricKey, Workout } from '@/types'
 
 const STORAGE_KEY = 'personal-os-pulse-config'
@@ -464,6 +470,7 @@ export function metricNeedsPulseDailyTarget(
   hybridGoals: Goal[],
 ): boolean {
   if (metricKey.startsWith('habit_')) return false
+  if (metricKey.startsWith('habitify_')) return false
   if (sleepMetricIdFromLibraryKey(metricKey)) return false
 
   if (resolveWeeklyQuantityTarget(metricKey, hybridGoals) != null) return true
@@ -596,6 +603,19 @@ export function listPulseMetricOptions(hybridGoals: Goal[]): PulseMetricOption[]
       'Weekly habit — counts if done today for Pulse',
       'weekly',
     )
+  }
+
+  if (isHabitifyConnected()) {
+    for (const habit of getHabitifyHabitCatalog()) {
+      push(
+        habitifyMetricKey(habit.id),
+        habit.name,
+        'check',
+        HABITIFY_CATEGORY_ID,
+        habit.type === 'bad' ? 'Habitify — counts if avoided today' : 'Habitify habit check-off',
+        'daily',
+      )
+    }
   }
 
   const sleepConfig = getSleepMetricsConfig()
@@ -816,15 +836,18 @@ export function ensureDailyTargets(formula: PulseFormula, goals: Goal[]): PulseF
 /** Drop weights for metrics that no longer exist in the library. */
 export function prunePulseFormulaMetrics(formula: PulseFormula, goals: Goal[]): PulseFormula {
   const eligible = new Set(listPulseMetricOptions(goals).map((option) => option.key as string))
+  const keepHabitify = isHabitifyConnected()
+  const isEligible = (key: string) =>
+    eligible.has(key) || (keepHabitify && key.startsWith('habitify_'))
   const metricWeights: Record<string, number> = {}
   for (const [key, value] of Object.entries(formula.metricWeights ?? {})) {
-    if (eligible.has(key) && value > 0) metricWeights[key] = value
+    if (isEligible(key) && value > 0) metricWeights[key] = value
   }
 
   const orGroups = (formula.orGroups ?? [])
     .map((group) => ({
       ...group,
-      metricKeys: group.metricKeys.filter((key) => eligible.has(key)),
+      metricKeys: group.metricKeys.filter((key) => isEligible(key)),
       weight: clampWeight(group.weight),
     }))
     .filter((group) => group.metricKeys.length >= 2)
@@ -834,7 +857,7 @@ export function prunePulseFormulaMetrics(formula: PulseFormula, goals: Goal[]): 
 
   const dailyTargets: Record<string, number> = {}
   for (const [key, value] of Object.entries(formula.dailyTargets ?? {})) {
-    if (eligible.has(key) && value > 0) dailyTargets[key] = value
+    if (isEligible(key) && value > 0) dailyTargets[key] = value
   }
 
   const exerciseDailyMinutes: Record<string, number> = {}
@@ -1126,6 +1149,11 @@ export function pulseMetricOptionLabel(
   if (key.startsWith('habit_')) {
     const habit = getDailyLogHabitTypes().find((h) => `habit_${h.id}` === key)
     if (habit) return habit.label
+  }
+  if (key.startsWith('habitify_')) {
+    const id = key.slice('habitify_'.length)
+    const habit = getHabitifyHabitCatalog().find((entry) => entry.id === id)
+    if (habit) return habit.name
   }
   if (key.startsWith('workout_')) {
     const type = getWorkoutTypes().find((t) => workoutMetricKey(t.id) === key)

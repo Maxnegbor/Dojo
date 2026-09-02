@@ -17,6 +17,7 @@ import {
 import { formatDuration } from '@/lib/utils'
 import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
 import { normalizeHabits } from '@/types'
+import { formatHabitifyPulseDetail } from '@/lib/habitifyStore'
 
 export interface PulseContributor {
   id: string
@@ -103,6 +104,10 @@ function formatMetricDetail(input: {
     const habitId = metricKey.slice('habit_'.length)
     const done = Boolean(normalizeHabits(log?.habits)[habitId])
     return done ? 'Done' : 'Not done'
+  }
+
+  if (metricKey.startsWith('habitify_')) {
+    return formatHabitifyPulseDetail(metricKey, date)
   }
 
   const sleepId = sleepMetricIdFromLibraryKey(metricKey)

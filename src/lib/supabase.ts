@@ -393,19 +393,29 @@ export async function deleteReminder(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function fetchAllUserStorage(userId: string): Promise<Record<string, unknown>> {
+export interface UserStorageRow {
+  value: unknown
+  updated_at: string | null
+}
+
+export async function fetchAllUserStorage(
+  userId: string,
+): Promise<Record<string, UserStorageRow>> {
   if (!supabase) return {}
 
   const { data, error } = await supabase
     .from('user_storage')
-    .select('key, value')
+    .select('key, value, updated_at')
     .eq('user_id', userId)
 
   if (error) throw error
 
-  const result: Record<string, unknown> = {}
+  const result: Record<string, UserStorageRow> = {}
   for (const row of data ?? []) {
-    result[row.key as string] = row.value
+    result[row.key as string] = {
+      value: row.value,
+      updated_at: typeof row.updated_at === 'string' ? row.updated_at : null,
+    }
   }
   return result
 }

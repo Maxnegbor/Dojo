@@ -1,4 +1,11 @@
-import { getHabitifyApiKey } from '@/lib/habitifyStore'
+import {
+  cacheHabitifyJournal,
+  getHabitifyApiKey,
+  getHabitifyHabitCatalog,
+  saveHabitifyHabitCatalog,
+  type HabitifyHabitSummary,
+  type HabitifyJournalCacheEntry,
+} from '@/lib/habitifyStore'
 
 const API_BASE = 'https://api.habitify.me/v2'
 
@@ -157,11 +164,60 @@ export async function fetchHabitifyJournal(date: string): Promise<HabitifyJourna
     completed: 3,
   }
 
-  return entries.sort((a, b) => {
+  const sorted = entries.sort((a, b) => {
     const sr = statusRank[a.status] - statusRank[b.status]
     if (sr !== 0) return sr
     return a.name.localeCompare(b.name)
   })
+  cacheHabitifyJournal(date, sorted.map(journalToCache))
+  return sorted
+}
+
+function journalToCache(entry: HabitifyJournalEntry): HabitifyJournalCacheEntry {
+  return {
+    id: entry.id,
+    name: entry.name,
+    status: entry.status,
+    type: entry.type,
+    progressCurrent: entry.progressCurrent,
+    progressTarget: entry.progressTarget,
+  }
+}
+
+export async function fetchHabitifyHabits(): Promise<HabitifyHabitSummary[]> {
+  const habits: HabitifyHabitSummary[] = []
+  const seen = new Set<string>()
+  const limit = 100
+  let offset = 0
+
+  while (offset <= 1000) {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    })
+    const page = await habitifyFetch<HabitifyListResponse<HabitifyJournalEntryRaw>>(
+      `/habits?${params.toString()}`,
+    )
+    const rows = page?.data ?? []
+    for (const row of rows) {
+      if (!row?.id) continue
+      const id = String(row.id)
+      if (seen.has(id)) continue
+      const name = typeof row.name === 'string' ? row.name.trim() : ''
+      if (!name) continue
+      seen.add(id)
+      habits.push({
+        id,
+        name,
+        type: row.type === 'bad' ? 'bad' : 'good',
+      })
+    }
+    if (rows.length < limit) break
+    offset += limit
+  }
+
+  if (habits.length === 0) return getHabitifyHabitCatalog()
+  return saveHabitifyHabitCatalog([...getHabitifyHabitCatalog(), ...habits])
 }
 
 async function postLogAction(

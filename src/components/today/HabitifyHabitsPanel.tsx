@@ -13,6 +13,7 @@ import {
   getHabitifyApiKey,
   HABITIFY_CHANGED,
   isHabitifyConnected,
+  patchHabitifyJournalEntry,
 } from '@/lib/habitifyStore'
 import { cn } from '@/lib/utils'
 
@@ -109,12 +110,28 @@ export function HabitifyHabitsPanel({
           : item,
       ),
     )
+    patchHabitifyJournalEntry(viewDate, {
+      id: entry.id,
+      name: entry.name,
+      status: 'completed',
+      type: entry.type,
+      progressCurrent: entry.progressTarget ?? entry.progressCurrent,
+      progressTarget: entry.progressTarget,
+    })
     try {
       await completeHabitifyHabit(entry.id, viewDate)
     } catch (err) {
       setEntries((prev) =>
         prev.map((item) => (item.id === entry.id ? entry : item)),
       )
+      patchHabitifyJournalEntry(viewDate, {
+        id: entry.id,
+        name: entry.name,
+        status: entry.status,
+        type: entry.type,
+        progressCurrent: entry.progressCurrent,
+        progressTarget: entry.progressTarget,
+      })
       setError(err instanceof Error ? err.message : 'Could not complete habit')
     } finally {
       setBusy(entry.id, false)
@@ -138,6 +155,14 @@ export function HabitifyHabitsPanel({
           : item,
       ),
     )
+    patchHabitifyJournalEntry(viewDate, {
+      id: entry.id,
+      name: entry.name,
+      status: 'inprogress',
+      type: entry.type,
+      progressCurrent: 0,
+      progressTarget: entry.progressTarget,
+    })
     try {
       await undoHabitifyHabit(entry.id, viewDate)
       void load()
@@ -145,6 +170,14 @@ export function HabitifyHabitsPanel({
       setEntries((prev) =>
         prev.map((item) => (item.id === entry.id ? entry : item)),
       )
+      patchHabitifyJournalEntry(viewDate, {
+        id: entry.id,
+        name: entry.name,
+        status: entry.status,
+        type: entry.type,
+        progressCurrent: entry.progressCurrent,
+        progressTarget: entry.progressTarget,
+      })
       setError(err instanceof Error ? err.message : 'Could not undo habit')
     } finally {
       setBusy(entry.id, false)

@@ -19,6 +19,7 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
   clearUserStorageSession,
   initUserStorage,
+  isUserStorageHydrated,
 } from '@/lib/userStorage'
 import { migrateMorningLogToSleepDuration } from '@/lib/morningLog'
 import { getAppSettings, saveAppSettings } from '@/lib/settingsStore'
@@ -56,8 +57,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .then(({ data }) => finish(data.session))
         .catch(() => finish(null))
 
-      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-        finish(session)
+      const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+        // Token refresh must not clear the user — a null session here used to
+        // wipe in-memory storage and let a stale cloud snapshot overwrite goals.
+        if (event === 'TOKEN_REFRESHED') {
+          if (session?.user) {
+            setUserId(session.user.id)
+            setEmail(session.user.email ?? null)
+          }
+          return
+        }
+        if (event === 'SIGNED_OUT') {
+          finish(null)
+          return
+        }
+        if (session?.user) finish(session)
       })
 
       return () => sub.subscription.unsubscribe()
@@ -83,6 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!isSupabaseConfigured) {
       localStore.setUserId(userId)
+      setStorageReady(true)
+      return
+    }
+
+    if (isUserStorageHydrated(userId)) {
       setStorageReady(true)
       return
     }

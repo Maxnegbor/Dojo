@@ -30,6 +30,7 @@ export type MetricKey =
   | 'focus'
   | `workout_${string}`
   | `habit_${string}`
+  | `habitify_${string}`
   | `sleep:${string}`
   | `custom:${string}`
 

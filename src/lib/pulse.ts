@@ -26,6 +26,7 @@ import {
 import type { DailyLog, Goal, MetricKey, Workout, WorkoutCategory } from '@/types'
 import { normalizeHabits } from '@/types'
 import { formatDate, getWeekDates } from '@/lib/utils'
+import { getHabitifyPulseRate } from '@/lib/habitifyStore'
 
 function pulseDayKey(date: string): string {
   return date.slice(0, 10)
@@ -132,6 +133,10 @@ export function computePulseMetricRate(input: {
     return h[habitId] ? 100 : 0
   }
 
+  if (metricKey.startsWith('habitify_')) {
+    return getHabitifyPulseRate(metricKey, date)
+  }
+
   const sleepId = sleepMetricIdFromLibraryKey(metricKey)
   if (sleepId) {
     const metric = getSleepMetricDefinition(sleepConfig, sleepId)
@@ -212,7 +217,7 @@ export function computeDayPulse(
     metricRates[key] = rate
     parts.push({ weight, value: rate })
 
-    if (key.startsWith('habit_')) habitRates.push(rate)
+    if (key.startsWith('habit_') || key.startsWith('habitify_')) habitRates.push(rate)
     else if (key === 'focus') focusRate = rate
     else if (key === 'sleep' || sleepMetricIdFromLibraryKey(key)) sleepRates.push(rate)
     else if (key.startsWith('workout_')) exerciseRates.push(rate)
@@ -236,6 +241,9 @@ export function computeDayPulse(
     const rate = Math.max(0, ...memberRates)
     parts.push({ weight: group.weight, value: rate })
     if (group.metricKeys.some((k) => k.startsWith('workout_'))) exerciseRates.push(rate)
+    if (group.metricKeys.some((k) => k.startsWith('habit_') || k.startsWith('habitify_'))) {
+      habitRates.push(rate)
+    }
   }
 
   // Insights still expect category-ish aggregates.

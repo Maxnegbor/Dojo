@@ -27,6 +27,12 @@ import {
 import { formatDuration } from '@/lib/utils'
 import type { Goal, MetricKey } from '@/types'
 import { cn } from '@/lib/utils'
+import { fetchHabitifyHabits } from '@/lib/habitifyApi'
+import {
+  HABITIFY_CHANGED,
+  HABITIFY_JOURNAL_CHANGED,
+  isHabitifyConnected,
+} from '@/lib/habitifyStore'
 
 interface PulseConfigureModalProps {
   goals: Goal[]
@@ -138,7 +144,12 @@ export function PulseConfigureModal({
   const [draft, setDraft] = useState(() => createDraft(initialFormula, goals))
   const [step, setStep] = useState<ConfigureStep>('weights')
   const [selectedForGroup, setSelectedForGroup] = useState<MetricKey[]>([])
-  const metricOptions = useMemo(() => listPulseMetricOptions(goals), [goals])
+  const [habitifyTick, setHabitifyTick] = useState(0)
+  const [habitifyLoading, setHabitifyLoading] = useState(() => isHabitifyConnected())
+  const metricOptions = useMemo(
+    () => listPulseMetricOptions(goals),
+    [goals, habitifyTick],
+  )
   const groupedKeys = useMemo(() => metricsInOrGroups(draft), [draft])
   const visibleOptions = useMemo(
     () => metricOptions.filter((option) => !groupedKeys.has(option.key)),
@@ -164,6 +175,35 @@ export function PulseConfigureModal({
   useEffect(() => {
     setDraft((prev) => prunePulseFormulaMetrics(prev, goals))
   }, [goals])
+
+  useEffect(() => {
+    const bump = () => setHabitifyTick((n) => n + 1)
+    window.addEventListener(HABITIFY_CHANGED, bump)
+    window.addEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+    return () => {
+      window.removeEventListener(HABITIFY_CHANGED, bump)
+      window.removeEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isHabitifyConnected()) {
+      setHabitifyLoading(false)
+      return
+    }
+    let cancelled = false
+    setHabitifyLoading(true)
+    void fetchHabitifyHabits()
+      .catch(() => undefined)
+      .finally(() => {
+        if (cancelled) return
+        setHabitifyLoading(false)
+        setHabitifyTick((n) => n + 1)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const setMetricWeight = (key: MetricKey, nextValue: number) => {
     setDraft((prev) => {
@@ -431,12 +471,15 @@ export function PulseConfigureModal({
                 </section>
               )}
 
-              {metricOptions.length === 0 ? (
+              {metricOptions.length === 0 && !habitifyLoading ? (
                 <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">
                   Add metrics on the Metrics page first, then choose which ones count toward Pulse.
                 </p>
               ) : (
                 <div className="space-y-5">
+                  {habitifyLoading && (
+                    <p className="text-[11px] text-zinc-500">Loading Habitify habits…</p>
+                  )}
                   {groups.map((group) => (
                     <section key={group.label}>
                       <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500">

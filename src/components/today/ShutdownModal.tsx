@@ -368,9 +368,11 @@ export function ShutdownModal({
                         metric={metric}
                         value={sleepValues[metric.id] ?? null}
                         onChange={(value) => {
-                          const next = { ...sleepValues, [metric.id]: value }
-                          setSleepValues(next)
-                          void persistSleep(next)
+                          setSleepValues((prev) => {
+                            const next = { ...prev, [metric.id]: value }
+                            void persistSleep(next)
+                            return next
+                          })
                         }}
                       />
                     ))}

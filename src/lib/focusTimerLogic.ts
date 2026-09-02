@@ -2,12 +2,17 @@ import type { FocusTimerSettings } from '@/types'
 
 export type TimerPhase = 'focus' | 'break' | 'done'
 
+/** Skip-breaks only applies to single-cycle sessions; multi-cycle always includes breaks. */
+export function shouldSkipBreaks(settings: FocusTimerSettings): boolean {
+  return settings.iterations <= 1 && settings.skipBreaks
+}
+
 /** Break length after completing focus cycle `completedFocusCycle` (1-based). */
 export function getBreakMinutesAfterFocus(
   settings: FocusTimerSettings,
   completedFocusCycle: number,
 ): number {
-  if (settings.skipBreaks || completedFocusCycle >= settings.iterations) return 0
+  if (shouldSkipBreaks(settings) || completedFocusCycle >= settings.iterations) return 0
 
   if (
     settings.longBreakEnabled &&
@@ -23,7 +28,7 @@ export function isLongBreakAfterFocus(
   settings: FocusTimerSettings,
   completedFocusCycle: number,
 ): boolean {
-  if (settings.skipBreaks || completedFocusCycle >= settings.iterations) return false
+  if (shouldSkipBreaks(settings) || completedFocusCycle >= settings.iterations) return false
   return (
     settings.longBreakEnabled &&
     settings.longBreakAfterCycles > 0 &&
@@ -33,7 +38,7 @@ export function isLongBreakAfterFocus(
 
 export function totalSessionSeconds(settings: FocusTimerSettings): number {
   let total = settings.focusMinutes * 60 * settings.iterations
-  if (!settings.skipBreaks) {
+  if (!shouldSkipBreaks(settings)) {
     for (let c = 1; c < settings.iterations; c++) {
       total += getBreakMinutesAfterFocus(settings, c) * 60
     }
@@ -52,19 +57,19 @@ export function remainingSessionSeconds(
   let total = remainingInPhase
 
   if (phase === 'focus') {
-    if (!settings.skipBreaks && cycle < settings.iterations) {
+    if (!shouldSkipBreaks(settings) && cycle < settings.iterations) {
       total += getBreakMinutesAfterFocus(settings, cycle) * 60
     }
     for (let c = cycle + 1; c <= settings.iterations; c++) {
       total += settings.focusMinutes * 60
-      if (!settings.skipBreaks && c < settings.iterations) {
+      if (!shouldSkipBreaks(settings) && c < settings.iterations) {
         total += getBreakMinutesAfterFocus(settings, c) * 60
       }
     }
   } else if (phase === 'break') {
     for (let c = cycle + 1; c <= settings.iterations; c++) {
       total += settings.focusMinutes * 60
-      if (!settings.skipBreaks && c < settings.iterations) {
+      if (!shouldSkipBreaks(settings) && c < settings.iterations) {
         total += getBreakMinutesAfterFocus(settings, c) * 60
       }
     }
