@@ -5,6 +5,7 @@ import { useSettings } from '@/context/SettingsContext'
 import { fetchScheduleBlocksForDate, isGreyBlock } from '@/lib/scheduleBlock'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
 import { computeScheduleScrollToNowTarget } from '@/lib/scheduleScroll'
+import { useStickyScheduleTitles } from '@/hooks/useStickyScheduleTitles'
 import { parseTimeToMinutes, cn, formatDate } from '@/lib/utils'
 
 interface FocusScheduleAgendaProps {
@@ -146,6 +147,12 @@ export function FocusScheduleAgenda({
     return () => ro.disconnect()
   }, [scrollToNow])
 
+  useStickyScheduleTitles(
+    scrollRef,
+    screensaver,
+    `${blocks.length}:${contentHeight}:${hourHeight}:${nowMinutes}`,
+  )
+
   return (
     <aside
       className={cn(
@@ -210,22 +217,36 @@ export function FocusScheduleAgenda({
                 const accent = isGreyBlock(block) ? GREY_BLOCK_HEX : block.color || GREY_BLOCK_HEX
                 const style = minutesToStyle(startMin, endMin, startHour, hourHeight)
 
+                const fill = `color-mix(in srgb, ${accent} 12%, rgb(9 9 11))`
+
                 return (
                   <div
                     key={block.id}
+                    data-schedule-block={screensaver ? '' : undefined}
                     className={cn(
-                      'absolute left-0 right-1 flex overflow-hidden rounded-lg border-2 bg-zinc-950/70 px-2 py-1 shadow-md',
+                      'absolute left-0 right-1 flex flex-col overflow-hidden rounded-lg border-2 bg-zinc-950/70 px-2 py-1 shadow-md',
                       isPast && 'opacity-40',
-                      screensaver && 'px-3 py-2',
+                      screensaver && 'px-0 py-0',
                     )}
                     style={{
                       ...style,
                       borderColor: `color-mix(in srgb, ${accent} 55%, transparent)`,
-                      backgroundColor: `color-mix(in srgb, ${accent} 12%, rgb(9 9 11))`,
+                      backgroundColor: fill,
                       boxShadow: isCurrent ? '0 0 0 1px rgba(255,255,255,0.06)' : undefined,
                     }}
                   >
-                    <div className={cn('min-w-0 flex-1', isShort ? 'pt-0.5' : 'pt-1')}>
+                    <div
+                      data-sticky-block-title={screensaver ? '' : undefined}
+                      className={cn(
+                        'min-w-0',
+                        screensaver
+                          ? 'relative z-[12] w-full shrink-0 px-3 py-2 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]'
+                          : isShort
+                            ? 'pt-0.5'
+                            : 'pt-1',
+                      )}
+                      style={screensaver ? { backgroundColor: fill } : undefined}
+                    >
                       <p
                         className={cn(
                           'truncate font-bold leading-tight',

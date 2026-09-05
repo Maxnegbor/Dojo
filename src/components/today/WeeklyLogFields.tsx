@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
+import { MetricStepper, stepForWeeklyMetric } from '@/components/ui/MetricStepper'
 import { WeightStepper } from '@/components/ui/WeightStepper'
 import { HabitLogRow } from '@/components/today/HabitLogRow'
 import { useSettings } from '@/context/SettingsContext'
@@ -13,7 +14,7 @@ import {
 import { getWeeklyShutdownLogGoals } from '@/lib/trackedLogsNet'
 import { playHabitCheckSound } from '@/lib/timerSound'
 import { resolvePriorWeeklyWeight } from '@/lib/weightAutofill'
-import { getActiveWeightGoal, isWeightGoal } from '@/lib/weightGoal'
+import { getActiveWeightGoal, getPreviousWeekDates, isWeightGoal } from '@/lib/weightGoal'
 import { getWeeklyLog, setWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeeklyShutdownWeekKey } from '@/lib/weeklyShutdown'
 import type { Goal } from '@/types'
@@ -24,14 +25,25 @@ export interface WeeklyLogDraft {
   weeklyValues: Record<string, string>
 }
 
-export function readWeeklyLogDraft(weekDates: string[], goals: Goal[]): WeeklyLogDraft {
+export function readWeeklyLogDraft(
+  weekDates: string[],
+  goals: Goal[],
+  weekStartsOn: 0 | 1 = 1,
+): WeeklyLogDraft {
   const weekKey = getWeeklyShutdownWeekKey(weekDates)
   const stored = getWeeklyLog(weekKey)
+  const prevWeekDates = getPreviousWeekDates(weekDates, weekStartsOn)
+  const prevKey = prevWeekDates[0]
+  const prevStored = prevKey ? getWeeklyLog(prevKey) : {}
   const weeklyValues: Record<string, string> = {}
   for (const goal of getWeeklyShutdownLogGoals(goals)) {
     if (isWeightGoal(goal)) continue
     const value = stored[goal.metric_key]
-    if (value != null) weeklyValues[goal.metric_key] = String(value)
+    if (value != null) {
+      weeklyValues[goal.metric_key] = String(value)
+    } else if (prevStored[goal.metric_key] != null) {
+      weeklyValues[goal.metric_key] = String(prevStored[goal.metric_key])
+    }
   }
   for (const habit of getWeeklyLogHabitTypes()) {
     const key = habitWeeklyLogKey(habit.id)
@@ -43,7 +55,7 @@ export function readWeeklyLogDraft(weekDates: string[], goals: Goal[]): WeeklyLo
     weightKg:
       storedWeight != null
         ? storedWeight
-        : resolvePriorWeeklyWeight(weekDates, 1) ?? null,
+        : resolvePriorWeeklyWeight(weekDates, weekStartsOn) ?? null,
     weeklyValues,
   }
 }
@@ -88,14 +100,12 @@ export function useWeeklyLogDraft(weekDates: string[], goals: Goal[]) {
   const weeklyLogHabits = useMemo(() => getWeeklyLogHabitTypes(), [])
   const { getPhase, startComplete, clearPhase } = useHabitCompleteAnimation()
 
-  const [weightKg, setWeightKg] = useState<number | null>(() => {
-    const stored = getWeeklyLog(getWeeklyShutdownWeekKey(weekDates)).weight
-    if (stored != null) return stored
-    return resolvePriorWeeklyWeight(weekDates, settings.weekStartsOn)
-  })
-  const [weeklyValues, setWeeklyValues] = useState<Record<string, string>>(() => {
-    return readWeeklyLogDraft(weekDates, goals).weeklyValues
-  })
+  const [weightKg, setWeightKg] = useState<number | null>(
+    () => readWeeklyLogDraft(weekDates, goals, settings.weekStartsOn).weightKg,
+  )
+  const [weeklyValues, setWeeklyValues] = useState<Record<string, string>>(
+    () => readWeeklyLogDraft(weekDates, goals, settings.weekStartsOn).weeklyValues,
+  )
 
   const isHabitDone = (habitId: string) => weeklyValues[habitWeeklyLogKey(habitId)] === '1'
 
@@ -221,28 +231,46 @@ export function WeeklyLogFields({ draft, heading, description }: WeeklyLogFields
               />
             )}
 
-            {otherWeeklyGoals.map((goal) => (
-              <GoalMetricInput
-                key={goal.id}
-                label={goal.name}
-                unit={goal.unit}
-                metricKey={goal.metric_key}
-                value={
-                  weeklyValues[goal.metric_key]
-                    ? usesTimedMetricInput(goal.unit, goal.metric_key)
-                      ? parseHrsMinToMinutes(weeklyValues[goal.metric_key]!)
-                      : parseFloat(weeklyValues[goal.metric_key]!)
-                    : null
-                }
-                onChange={(value) =>
-                  setWeeklyValues((prev) => ({
-                    ...prev,
-                    [goal.metric_key]: value != null ? String(value) : '',
-                  }))
-                }
-                placeholder="0"
-              />
-            ))}
+            {otherWeeklyGoals.map((goal) => {
+              const timed = usesTimedMetricInput(goal.unit, goal.metric_key)
+              const raw = weeklyValues[goal.metric_key]
+              const parsed = raw
+                ? timed
+                  ? parseHrsMinToMinutes(raw)
+                  : parseFloat(raw)
+                : null
+              const value = parsed != null && !Number.isNaN(parsed) ? parsed : null
+              const setValue = (next: number | null) =>
+                setWeeklyValues((prev) => ({
+                  ...prev,
+                  [goal.metric_key]: next != null ? String(next) : '',
+                }))
+
+              if (timed) {
+                return (
+                  <GoalMetricInput
+                    key={goal.id}
+                    label={goal.name}
+                    unit={goal.unit}
+                    metricKey={goal.metric_key}
+                    value={value}
+                    onChange={setValue}
+                    placeholder=""
+                  />
+                )
+              }
+
+              return (
+                <MetricStepper
+                  key={goal.id}
+                  label={goal.name}
+                  unit={goal.unit}
+                  value={value}
+                  step={stepForWeeklyMetric(goal.unit)}
+                  onChange={setValue}
+                />
+              )
+            })}
           </div>
         </section>
       )}

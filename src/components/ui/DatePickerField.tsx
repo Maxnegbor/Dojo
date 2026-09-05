@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -48,13 +49,35 @@ export function DatePickerField({
   const [open, setOpen] = useState(false)
   const [month, setMonth] = useState(() => selected ?? min ?? new Date())
 
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 0,
+  })
+
   useEffect(() => {
     if (!open) return
     const onPointerDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+      if (
+        rootRef.current?.contains(e.target as Node) ||
+        dropdownRef.current?.contains(e.target as Node)
+      )
+        return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onPointerDown)
     return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [open])
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return
+    const rect = rootRef.current.getBoundingClientRect()
+    setPos({
+      top: rect.bottom + 6,
+      left: rect.left,
+      width: Math.max(rect.width, 260),
+    })
   }, [open])
 
   useEffect(() => {
@@ -99,65 +122,73 @@ export function DatePickerField({
         <Calendar size={16} className="shrink-0 text-zinc-500" />
       </button>
 
-      {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 rounded-xl border border-zinc-700 bg-zinc-900 p-3 shadow-xl shadow-black/40">
-          <div className="mb-2 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              aria-label="Previous month"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs font-semibold text-zinc-100">{format(month, 'MMMM yyyy')}</span>
-            <button
-              type="button"
-              onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              aria-label="Next month"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
+      {open &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed z-[9999] rounded-xl border border-zinc-700 bg-zinc-900 p-3 shadow-xl shadow-black/40"
+            style={{ top: pos.top, left: pos.left, width: pos.width }}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                aria-label="Previous month"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-xs font-semibold text-zinc-100">
+                {format(month, 'MMMM yyyy')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                aria-label="Next month"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
 
-          <div className="mb-1 grid grid-cols-7 text-center text-[10px] text-zinc-500">
-            {weekdayLabels.map((d) => (
-              <span key={d}>{d}</span>
-            ))}
-          </div>
+            <div className="mb-1 grid grid-cols-7 text-center text-[10px] text-zinc-500">
+              {weekdayLabels.map((d) => (
+                <span key={d}>{d}</span>
+              ))}
+            </div>
 
-          <div className="grid grid-cols-7 gap-0.5">
-            {Array.from({ length: startPad }).map((_, i) => (
-              <div key={`pad-${i}`} />
-            ))}
-            {days.map((day) => {
-              const disabled = isDisabled(day)
-              const isSelected = selected ? isSameDay(day, selected) : false
-              const inMonth = isSameMonth(day, month)
+            <div className="grid grid-cols-7 gap-0.5">
+              {Array.from({ length: startPad }).map((_, i) => (
+                <div key={`pad-${i}`} />
+              ))}
+              {days.map((day) => {
+                const disabled = isDisabled(day)
+                const isSelected = selected ? isSameDay(day, selected) : false
+                const inMonth = isSameMonth(day, month)
 
-              return (
-                <button
-                  key={formatDate(day)}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => selectDay(day)}
-                  className={cn(
-                    'flex h-8 items-center justify-center rounded-md text-xs tabular-nums transition-colors',
-                    !inMonth && 'opacity-40',
-                    disabled && 'cursor-not-allowed opacity-25',
-                    isSelected
-                      ? 'bg-[var(--accent-600)] font-medium text-white'
-                      : !disabled && 'text-zinc-300 hover:bg-zinc-800',
-                  )}
-                >
-                  {format(day, 'd')}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+                return (
+                  <button
+                    key={formatDate(day)}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => selectDay(day)}
+                    className={cn(
+                      'flex h-8 items-center justify-center rounded-md text-xs tabular-nums transition-colors',
+                      !inMonth && 'opacity-40',
+                      disabled && 'cursor-not-allowed opacity-25',
+                      isSelected
+                        ? 'bg-[var(--accent-600)] font-medium text-white'
+                        : !disabled && 'text-zinc-300 hover:bg-zinc-800',
+                    )}
+                  >
+                    {format(day, 'd')}
+                  </button>
+                )
+              })}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

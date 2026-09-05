@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react'
 import { CalendarCheck, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
 import { WeeklyLogFields, useWeeklyLogDraft } from '@/components/today/WeeklyLogFields'
 import { useSettings } from '@/context/SettingsContext'
-import { isTodoistConnected } from '@/lib/todoistStore'
 import {
   activeWeeklyShutdownChecklist,
   allWeeklyShutdownItemIds,
   weekDateRangeLabel,
 } from '@/lib/weeklyShutdown'
 import type { Goal } from '@/types'
-import { cn, formatDate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 interface WeeklyShutdownModalProps {
   weekDates: string[]
@@ -31,8 +29,6 @@ export function WeeklyShutdownModal({
     () => activeWeeklyShutdownChecklist(settings.weeklyShutdownChecklist),
     [settings.weeklyShutdownChecklist],
   )
-  const showTodoist = isTodoistConnected()
-  const todoistDate = formatDate(new Date())
   const itemIds = useMemo(() => allWeeklyShutdownItemIds(checklist), [checklist])
   const weeklyDraft = useWeeklyLogDraft(weekDates, goals)
 
@@ -89,8 +85,7 @@ export function WeeklyShutdownModal({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <p className="text-sm text-zinc-400">
-            Log your weekly metrics, clear Todoist if needed, run through your checklist, then
-            review how the week went.
+            Log your weekly metrics, run through your checklist, then review how the week went.
           </p>
 
           <WeeklyLogFields
@@ -98,16 +93,6 @@ export function WeeklyShutdownModal({
             heading="Weekly log"
             description="Enter your weekly metrics."
           />
-
-          {showTodoist && (
-            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
-              <h3 className="mb-1 text-sm font-semibold text-[var(--accent-300)]">Todoist</h3>
-              <p className="mb-3 text-xs text-zinc-500">
-                Clear today’s tasks or add anything left for the week.
-              </p>
-              <TodoistTasksPanel viewDate={todoistDate} compact hideHeader />
-            </section>
-          )}
 
           {checklist.map((group) => (
             <section key={group.id} className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">

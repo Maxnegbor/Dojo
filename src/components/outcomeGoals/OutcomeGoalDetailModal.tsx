@@ -266,11 +266,16 @@ export function OutcomeGoalDetailModal({
                       ) : null}
                     </p>
                     {period.metricCount > 0 ? (
-                      <p className="truncate text-[10px] text-zinc-500">
-                        {period.outcomes
-                          .map((entry) => `${entry.label} ${entry.display.replace(/ \(.*\)$/, '')}`)
-                          .join(' · ')}
-                      </p>
+                      <ul className="mt-0.5 space-y-0.5">
+                        {period.outcomes.map((entry) => (
+                          <li
+                            key={entry.link.id}
+                            className="text-[10px] leading-snug text-zinc-500"
+                          >
+                            {entry.label} {entry.display.replace(/ \(.*\)$/, '')}
+                          </li>
+                        ))}
+                      </ul>
                     ) : (
                       <p className="text-[10px] text-zinc-600">No metrics</p>
                     )}

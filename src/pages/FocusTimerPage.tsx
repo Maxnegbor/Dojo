@@ -467,6 +467,7 @@ export function FocusTimerPage() {
             <FocusScheduleAgenda
               userId={userId}
               formatTime={formatTime}
+              screensaver
               className="min-h-0 w-full max-h-full flex-1"
             />
           </div>

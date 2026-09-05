@@ -7,7 +7,6 @@ import {
   createEmptyOutcomeGoal,
   createOutcomeGoalLink,
   defaultPeriodForMetric,
-  defaultTargetForMetric,
   listMetricOptionsForGoals,
   type GoalMetricOption,
 } from '@/lib/outcomeGoals'
@@ -70,21 +69,22 @@ function LinkTargetInput({
   const sleepMetric = sleepId
     ? getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
     : undefined
-  const value = field === 'start_value' ? (link.start_value ?? 0) : link.target_value
+  const raw = field === 'start_value' ? link.start_value : link.target_value
+  const value = raw != null && Number.isFinite(raw) ? raw : 0
+  const empty = field === 'target_value' && !(value > 0)
 
-  const setValue = (next: number) => {
+  const setValue = (next: number | null) => {
     if (field === 'start_value') onChange({ ...link, start_value: next })
-    else onChange({ ...link, target_value: next })
+    else onChange({ ...link, target_value: next ?? 0 })
   }
 
   if (sleepMetric && isClockSleepMetric(sleepMetric)) {
     return (
       <input
         type="time"
-        value={sleepMetricTargetToInputValue(sleepMetric, value)}
+        value={empty ? '' : sleepMetricTargetToInputValue(sleepMetric, value)}
         onChange={(e) => {
           const next = sleepMetricTargetFromInputValue(sleepMetric, e.target.value)
-          if (next == null) return
           setValue(next)
         }}
         className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100"
@@ -100,8 +100,9 @@ function LinkTargetInput({
     return (
       <DurationMetricInput
         label=""
-        value={value}
-        onChange={(minutes) => setValue(minutes ?? 0)}
+        value={empty ? null : value}
+        onChange={(minutes) => setValue(minutes)}
+        placeholder=""
       />
     )
   }
@@ -110,8 +111,16 @@ function LinkTargetInput({
     <input
       type="number"
       step="any"
-      value={value}
-      onChange={(e) => setValue(Number(e.target.value) || 0)}
+      value={empty ? '' : value}
+      onChange={(e) => {
+        const rawValue = e.target.value
+        if (rawValue === '') {
+          setValue(null)
+          return
+        }
+        const parsed = Number(rawValue)
+        setValue(Number.isFinite(parsed) ? parsed : null)
+      }}
       aria-label={
         field === 'start_value'
           ? unit
@@ -170,7 +179,7 @@ function LinkRow({
               onChange({
                 ...link,
                 metric_key: key,
-                target_value: defaultTargetForMetric(key),
+                target_value: 0,
                 start_value: null,
                 period: defaultPeriodForMetric(key),
               })
@@ -328,7 +337,15 @@ export function OutcomeGoalEditor({
   )
   const [links, setLinks] = useState<OutcomeGoalLink[]>(initial?.links ?? [])
 
-  const canSave = title.trim().length > 0 && links.length > 0
+  const hasValidLink = links.some((link) => {
+    const sleepId = sleepMetricIdFromLibraryKey(link.metric_key)
+    const metric = sleepId
+      ? getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)
+      : undefined
+    if (metric && isClockSleepMetric(metric)) return Number.isFinite(link.target_value) && link.target_value > 0
+    return link.target_value > 0
+  })
+  const canSave = title.trim().length > 0 && hasValidLink
 
   const addLink = () => {
     const used = new Set(links.map((link) => link.metric_key))
@@ -338,7 +355,7 @@ export function OutcomeGoalEditor({
       ...prev,
       createOutcomeGoalLink({
         metric_key: first.key,
-        target_value: defaultTargetForMetric(first.key),
+        target_value: 0,
         period: defaultPeriodForMetric(first.key),
         comparator: 'gte',
       }),

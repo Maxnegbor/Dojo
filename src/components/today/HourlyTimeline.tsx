@@ -16,6 +16,7 @@ import {
   PLANNED_WORKOUT_DRAG_MIME,
 } from '@/lib/exercisePlan'
 import { SCHEDULE_SCROLL_TO_NOW, computeScheduleScrollToNowTarget } from '@/lib/scheduleScroll'
+import { useStickyScheduleTitles } from '@/hooks/useStickyScheduleTitles'
 import {
   getScheduleBlockAlarmLead,
   isScheduleBlockAlarmEnabled,
@@ -569,6 +570,12 @@ export function HourlyTimeline({
     return () => ro.disconnect()
   }, [isActiveDay, screensaver, scrollToCurrentTime])
 
+  useStickyScheduleTitles(
+    scrollRef,
+    screensaver,
+    `${blocks.length}:${contentHeight}:${nowLine ?? 'none'}:${scrollAreaHeight}`,
+  )
+
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -1099,9 +1106,11 @@ export function HourlyTimeline({
             const bottomEdgeActive =
               (hoverResize?.id === block.id && hoverResize.edge === 'bottom') ||
               (resizing === block.id && resizeMode === 'bottom')
+            const blockFill = `color-mix(in srgb, ${block.color} 12%, rgb(9 9 11))`
             return (
               <div
                 key={block.id}
+                data-schedule-block={screensaver ? '' : undefined}
                 className={cn(
                   'absolute left-0 right-1 z-[2] flex overflow-hidden rounded-lg border-2 bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
                   isLiveGesture && 'z-[3] shadow-lg shadow-black/40',
@@ -1110,11 +1119,12 @@ export function HourlyTimeline({
                     : isCompact
                       ? 'px-1.5 py-0.5'
                       : 'px-2 py-1',
+                  screensaver && !isShortInline && '!px-0 !py-0',
                 )}
                 style={{
                   ...style,
                   borderColor: `color-mix(in srgb, ${block.color} 55%, transparent)`,
-                  backgroundColor: `color-mix(in srgb, ${block.color} 12%, rgb(9 9 11))`,
+                  backgroundColor: blockFill,
                   transition:
                     'top 150ms cubic-bezier(0.22, 1, 0.36, 1), height 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms ease',
                 }}
@@ -1173,13 +1183,30 @@ export function HourlyTimeline({
                 <div
                   className={cn(
                     'min-w-0 flex-1',
-                    isShortInline ? 'pr-9' : isCompact ? 'pt-1.5 pr-9' : 'pt-3 pr-10',
+                    screensaver
+                      ? isShortInline
+                        ? 'pr-2'
+                        : ''
+                      : isShortInline
+                        ? 'pr-9'
+                        : isCompact
+                          ? 'pt-1.5 pr-9'
+                          : 'pt-3 pr-10',
                   )}
                   style={{
                     fontSize: screensaver ? '1rem' : '0.75rem',
                     transition: 'font-size 1200ms cubic-bezier(0.4,0,0.2,1)',
                   }}
                 >
+                  <div
+                    data-sticky-block-title={screensaver ? '' : undefined}
+                    className={cn(
+                      screensaver &&
+                        'relative z-[12] w-full shrink-0 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]',
+                      screensaver && !isShortInline && (isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1'),
+                    )}
+                    style={screensaver ? { backgroundColor: blockFill } : undefined}
+                  >
                   {isShortInline ? (
                     <div className="flex items-center gap-1.5">
                       <ScheduleBlockTitleInput
@@ -1215,6 +1242,7 @@ export function HourlyTimeline({
                       </p>
                     </>
                   )}
+                  </div>
                   {isDefaultGreyTitle(blockTitleValue(block)) && (
                     <ScheduleBlockColorPicker
                       block={block}
@@ -1238,6 +1266,7 @@ export function HourlyTimeline({
                   className={cn(
                     'absolute right-2 z-20 flex flex-row items-center gap-0.5',
                     isCompact ? 'top-1/2 -translate-y-1/2' : 'top-3.5',
+                    screensaver && 'hidden',
                   )}
                 >
                   <button

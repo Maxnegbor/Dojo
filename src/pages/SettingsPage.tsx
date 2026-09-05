@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useLayoutEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Database, LogOut, RotateCcw, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Database, LogOut, RotateCcw, Trash2 } from 'lucide-react'
 import { PulseConfigureModal } from '@/components/pulse/PulseConfigureModal'
 import { AccentPicker } from '@/components/settings/AccentPicker'
 import {
@@ -31,6 +31,7 @@ import { useMorningLogGoalKeys } from '@/hooks/useMorningLogGoalKeys'
 import { useMorningLogYesterdayKeys } from '@/hooks/useMorningLogYesterdayKeys'
 import { useMorningLogSleepFieldIds } from '@/hooks/useMorningLogSleepFieldIds'
 import { usePulseConfig } from '@/hooks/usePulseConfig'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { localStore } from '@/lib/localStore'
 import type { Goal } from '@/types'
 import type { PulseFormula } from '@/lib/pulseConfig'
@@ -67,6 +68,7 @@ export function SettingsPage() {
   const { sleepFieldIds: morningLogSleepFieldIds, saveSleepFieldIds: saveMorningLogSleepFieldIds } =
     useMorningLogSleepFieldIds()
   const { configured: pulseConfigured, currentFormula, saveFormula } = usePulseConfig()
+  const isMobile = useIsMobile()
   const [goals, setGoals] = useState<Goal[]>([])
   const [showPulseConfigure, setShowPulseConfigure] = useState(false)
   const [pulseFormulaNotice, setPulseFormulaNotice] = useState(false)
@@ -83,6 +85,11 @@ export function SettingsPage() {
       ?.settingsSection
     return fromState ?? 'account'
   })
+  const [mobileMenu, setMobileMenu] = useState(() => {
+    const fromState = (location.state as { settingsSection?: SettingsSectionId } | null)
+      ?.settingsSection
+    return !fromState
+  })
   const [morningLogPickerOpen, setMorningLogPickerOpen] = useState(false)
   const [focusTimerSettings, setFocusTimerSettings] = useState(getFocusSettings)
   const settingsLayoutRef = useRef<HTMLDivElement>(null)
@@ -91,7 +98,10 @@ export function SettingsPage() {
   useEffect(() => {
     const fromState = (location.state as { settingsSection?: SettingsSectionId } | null)
       ?.settingsSection
-    if (fromState) setActiveSection(fromState)
+    if (fromState) {
+      setActiveSection(fromState)
+      setMobileMenu(false)
+    }
   }, [location.state])
 
   useLayoutEffect(() => {
@@ -116,6 +126,7 @@ export function SettingsPage() {
       setMorningLogPickerOpen(false)
     }
     setActiveSection(section)
+    if (isMobile) setMobileMenu(false)
   }
 
   const navItems = useMemo((): { id: SettingsSectionId; label: string }[] => {
@@ -236,8 +247,8 @@ export function SettingsPage() {
           }}
         />
         <ToggleRow
-          label="Focus time in sidebar"
-          description="Show today's focus total in the left navigation"
+          label="Focus time in navigation"
+          description="Show today's focus total in the navigation"
           checked={settings.showFocusBadge}
           onChange={(showFocusBadge) => {
             updateSettings({ showFocusBadge })
@@ -728,6 +739,19 @@ export function SettingsPage() {
 
   const renderData = () => (
     <div className="space-y-4">
+      <Card>
+        <SettingsSection title="Developer">
+          <ToggleRow
+            label="Developer mode"
+            description="Unlock extra tools and sample data helpers"
+            checked={settings.devMode}
+            onChange={(devMode) => {
+              updateSettings({ devMode })
+              flashSaved()
+            }}
+          />
+        </SettingsSection>
+      </Card>
       {!isSupabaseConfigured && (
         <Card>
           <SettingsSection
@@ -926,20 +950,50 @@ export function SettingsPage() {
         </span>
       </header>
 
-      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-4 sm:grid-cols-[11rem_32rem] lg:gap-x-16">
-        <SlidingNavList
-          activeId={activeSection}
-          items={navItems}
-          getKey={(item) => item.id}
-          onSelect={(item) => handleSectionChange(item.id)}
-          ariaLabel="Settings sections"
-          className="flex gap-1 overflow-x-auto pb-1 sm:flex-col sm:gap-0.5 sm:overflow-visible sm:pb-0"
-          itemClassName="w-full shrink-0 px-3 py-2"
-          renderItem={(item) => item.label}
-        />
+      {isMobile ? (
+        mobileMenu ? (
+          <nav aria-label="Settings sections" className="flex flex-col gap-1">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSectionChange(item.id)}
+                className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3 text-left text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-700 hover:bg-zinc-900"
+              >
+                {item.label}
+                <ChevronRight size={16} className="shrink-0 text-zinc-600" />
+              </button>
+            ))}
+          </nav>
+        ) : (
+          <div className="min-w-0 w-full [overflow-anchor:none]">
+            <button
+              type="button"
+              onClick={() => setMobileMenu(true)}
+              className="mb-4 inline-flex items-center gap-1 rounded-lg px-1 py-1 text-sm text-zinc-400 hover:text-zinc-200"
+            >
+              <ChevronLeft size={16} />
+              All settings
+            </button>
+            {renderActiveSection()}
+          </div>
+        )
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-x-10 gap-y-4 sm:grid-cols-[11rem_32rem] lg:gap-x-16">
+          <SlidingNavList
+            activeId={activeSection}
+            items={navItems}
+            getKey={(item) => item.id}
+            onSelect={(item) => handleSectionChange(item.id)}
+            ariaLabel="Settings sections"
+            className="flex flex-col gap-0.5"
+            itemClassName="w-full shrink-0 px-3 py-2"
+            renderItem={(item) => item.label}
+          />
 
-        <div className="min-w-0 w-full [overflow-anchor:none]">{renderActiveSection()}</div>
-      </div>
+          <div className="min-w-0 w-full [overflow-anchor:none]">{renderActiveSection()}</div>
+        </div>
+      )}
 
       {showPulseConfigure && (
         <PulseConfigureModal

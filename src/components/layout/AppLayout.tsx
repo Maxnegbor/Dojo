@@ -11,6 +11,7 @@ import { requestScheduleScrollToNow } from '@/lib/scheduleScroll'
 import { useFocus } from '@/context/FocusContext'
 import { useSettings } from '@/context/SettingsContext'
 import { useIdleScreensaver } from '@/hooks/useIdleScreensaver'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { ScreensaverContext, type ScreensaverState } from '@/context/ScreensaverContext'
 
 const NAV = [
@@ -149,6 +150,55 @@ function footerNavLinkClass(isActive: boolean) {
   )
 }
 
+function BottomNav({
+  items,
+  onHomeClick,
+}: {
+  items: NavItem[]
+  onHomeClick: () => void
+}) {
+  const allItems = [...items, { to: '/settings', label: 'Settings', icon: Settings }]
+
+  return (
+    <nav
+      aria-label="Main"
+      className="z-40 flex shrink-0 border-t border-zinc-800/80 bg-[#06060b] px-1 pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))]"
+    >
+      {allItems.map(({ to, label, icon: Icon }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={to === '/'}
+          title={label}
+          aria-label={label}
+          onClick={() => {
+            if (to === '/') onHomeClick()
+          }}
+          className={({ isActive }) =>
+            cn(
+              'flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-medium leading-tight',
+              isActive ? 'text-[var(--accent-300)]' : 'text-zinc-500',
+            )
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <span
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-lg',
+                  isActive && 'bg-[var(--accent-950)] ring-1 ring-inset ring-[var(--accent-ring)]',
+                )}
+              >
+                <Icon size={16} />
+              </span>
+              <span className="w-full truncate text-center">{label}</span>
+            </>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  )
+}
 const SIDEBAR_EXPAND_DELAY_MS = 800
 const SIDEBAR_COLLAPSE_DELAY_MS = 100
 /** Expanded width: 70% of prior w-56 (14rem). */
@@ -168,6 +218,7 @@ export function AppLayout() {
   const { settings, updateSettings } = useSettings()
   const { focusImmersive, setFocusImmersive, focusTimerActive } = useFocus()
   const { pathname } = useLocation()
+  const isMobile = useIsMobile()
   const isIdle = useIdleScreensaver()
   const onScreensaverRoute = pathname === '/' || (pathname === '/focus' && focusTimerActive)
   const [screensaver, setScreensaver] = useState<ScreensaverState>({
@@ -214,7 +265,7 @@ export function AppLayout() {
   }, [])
 
   useEffect(() => {
-    if (isIdle && onScreensaverRoute) {
+    if (isIdle && onScreensaverRoute && !isMobile) {
       setScreensaver({ active: true, waking: false })
       return
     }
@@ -229,7 +280,7 @@ export function AppLayout() {
     }, SCREENSAVER_WAKE_MS)
 
     return () => window.clearTimeout(id)
-  }, [isIdle, onScreensaverRoute])
+  }, [isIdle, onScreensaverRoute, isMobile])
 
   useEffect(() => {
     if (pathname !== '/focus' && focusImmersive) {
@@ -247,8 +298,9 @@ export function AppLayout() {
   }
 
   return (
-    <div className="relative z-10 flex h-dvh overflow-hidden bg-[#06060b] text-zinc-100">
-      {!focusImmersive && (
+    <div className="relative z-10 flex h-dvh flex-col overflow-hidden bg-[#06060b] text-zinc-100">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      {!focusImmersive && !isMobile && (
       <aside className={cn('relative z-30 w-14 shrink-0 transition-opacity duration-[1400ms] ease-in-out', screensaver.active && 'pointer-events-none opacity-0')}>
         <div
           className={cn(
@@ -345,6 +397,13 @@ export function AppLayout() {
         </main>
       </div>
       </ScreensaverContext>
+      </div>
+      {isMobile && !focusImmersive && (
+        <BottomNav
+          items={navItems}
+          onHomeClick={() => requestScheduleScrollToNow()}
+        />
+      )}
     </div>
   )
 }

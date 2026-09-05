@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
-import { CalendarCheck, CalendarDays, ClipboardList, Moon, Sun } from 'lucide-react'
+import { CalendarCheck, CalendarClock, CalendarDays, ClipboardList, LayoutGrid, Moon, Sun } from 'lucide-react'
 import { HomePulseCard } from '@/components/pulse/HomePulseCard'
 import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
@@ -28,6 +28,7 @@ import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { useShutdownAvailable } from '@/hooks/useShutdownAvailable'
 import { usePastScheduleEnd } from '@/hooks/usePastScheduleEnd'
 import { useWeeklyShutdownAvailable } from '@/hooks/useWeeklyShutdownAvailable'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useEndOfDaySave } from '@/hooks/useEndOfDaySave'
 import { markMorningLogSubmitted, isMorningLogSubmitted, MORNING_LOG_CHANGED } from '@/lib/morningLog'
 import {
@@ -107,6 +108,8 @@ import { getPreviousWeekDates } from '@/lib/weightGoal'
 
 export function TodayPage() {
   const { settings } = useSettings()
+  const isMobile = useIsMobile()
+  const [homePane, setHomePane] = useState<'cards' | 'schedule'>('cards')
   const location = useLocation()
   const navigate = useNavigate()
   const [viewDate, setViewDate] = useState(formatDate(new Date()))
@@ -785,6 +788,18 @@ export function TodayPage() {
             )}
           </div>
           <div className="relative z-10 flex shrink-0 items-center gap-1.5 self-center">
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setHomePane((pane) => (pane === 'cards' ? 'schedule' : 'cards'))}
+                className="home-cal-btn rounded-full border border-zinc-800/70 bg-zinc-950/60 p-2 text-zinc-500 backdrop-blur-sm transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
+                aria-label={homePane === 'cards' ? 'Show timeblock plan' : 'Show today cards'}
+                aria-pressed={homePane === 'schedule'}
+                title={homePane === 'cards' ? 'Timeblock plan' : 'Today cards'}
+              >
+                {homePane === 'cards' ? <CalendarClock size={16} /> : <LayoutGrid size={16} />}
+              </button>
+            )}
             <button
               onClick={() => setShowCalendar(true)}
               className="home-cal-btn rounded-full border border-zinc-800/70 bg-zinc-950/60 p-2 text-zinc-500 backdrop-blur-sm transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
@@ -796,15 +811,38 @@ export function TodayPage() {
         </div>
       </div>
 
-      <div className="relative z-20 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)] gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5"
+      <div
+        className={cn(
+          'relative z-20 grid min-h-0 flex-1 gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5',
+          isMobile ? 'grid-cols-1 grid-rows-1' : 'grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)]',
+        )}
         style={{
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
           gap: screensaver ? '0px' : undefined,
         }}
       >
+        {(!isMobile || homePane === 'cards') && (
+        <div
+          className={cn(
+            isMobile
+              ? 'flex min-h-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden'
+              : 'contents',
+          )}
+        >
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => setHomePane('schedule')}
+            className="flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-zinc-800/80 bg-zinc-900/70 px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-700 hover:bg-zinc-900"
+          >
+            <CalendarClock size={16} className="text-[var(--accent-400)]" />
+            Timeblock plan
+          </button>
+        )}
         {/* Left: Exercise plan + workouts + Todoist */}
         <aside className={cn(
-          'home-rail home-rail--left relative z-30 order-3 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
+          'home-rail home-rail--left relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
+          isMobile ? 'order-2 overflow-visible' : 'order-3 overflow-y-auto overscroll-contain scrollbar-hidden',
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
           screensaver && 'pointer-events-none invisible !opacity-0',
         )}>
@@ -861,39 +899,10 @@ export function TodayPage() {
           />
         </aside>
 
-        {/* Center: schedule */}
-        <div
-          data-schedule-height-host
-          className="home-canvas order-1 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[36rem] flex-col overflow-hidden lg:order-2"
-        >
-          {!showShutdown && (
-            <HourlyTimeline
-              blocks={blocks}
-              date={viewDate}
-              userId={userId}
-              isActiveDay={isActiveDay}
-              startHour={settings.timelineStartHour}
-              endHour={settings.timelineEndHour}
-              onUpdate={saveBlock}
-              onDelete={removeBlock}
-              onCreate={saveBlock}
-              onAssignExercise={assignExerciseBlock}
-              onDropPlannedWorkout={dropPlannedWorkout}
-              screensaver={screensaver}
-              headerActions={
-                <ScheduleTemplateMenu
-                  iconOnly
-                  applying={applyingTemplate}
-                  onApply={applyTemplateToViewDate}
-                />
-              }
-            />
-          )}
-        </div>
-
         {/* Right: Log / Shutdown + Habitify */}
         <aside className={cn(
-          'home-rail home-rail--right relative z-30 order-2 flex min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-y-auto overscroll-contain scrollbar-hidden lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
+          'home-rail home-rail--right relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
+          isMobile ? 'order-1 overflow-visible' : 'order-2 overflow-y-auto overscroll-contain scrollbar-hidden',
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
           screensaver && 'pointer-events-none invisible !opacity-0',
         )}>
@@ -955,6 +964,49 @@ export function TodayPage() {
           />
           <ExperimentHomeCard date={viewDate} />
         </aside>
+        </div>
+        )}
+
+        {(!isMobile || homePane === 'schedule') && (
+        <div
+          data-schedule-height-host
+          className="home-canvas order-1 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[36rem] flex-col overflow-hidden lg:order-2"
+        >
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => setHomePane('cards')}
+              className="mb-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-zinc-800/80 bg-zinc-900/70 px-3 py-2 text-sm font-medium text-zinc-200"
+            >
+              <LayoutGrid size={16} className="text-[var(--accent-400)]" />
+              Today cards
+            </button>
+          )}
+          {!showShutdown && (
+            <HourlyTimeline
+              blocks={blocks}
+              date={viewDate}
+              userId={userId}
+              isActiveDay={isActiveDay}
+              startHour={settings.timelineStartHour}
+              endHour={settings.timelineEndHour}
+              onUpdate={saveBlock}
+              onDelete={removeBlock}
+              onCreate={saveBlock}
+              onAssignExercise={assignExerciseBlock}
+              onDropPlannedWorkout={dropPlannedWorkout}
+              screensaver={screensaver}
+              headerActions={
+                <ScheduleTemplateMenu
+                  iconOnly
+                  applying={applyingTemplate}
+                  onApply={applyTemplateToViewDate}
+                />
+              }
+            />
+          )}
+        </div>
+        )}
       </div>
 
       {showWeeklyShutdown && (
