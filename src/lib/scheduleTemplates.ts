@@ -3,7 +3,7 @@ import { GREY_BLOCK_HEX, GREY_BLOCK_TITLE } from '@/types'
 import { scheduleColorDefaultTitle, scheduleColorHex } from '@/lib/scheduleColors'
 import { normalizeScheduleBlock } from '@/lib/scheduleBlock'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
-import { generateId } from '@/lib/utils'
+import { generateId, minutesToTime, parseTimeToMinutes } from '@/lib/utils'
 
 const STORAGE_KEY = 'personal-os-schedule-templates'
 export const SCHEDULE_TEMPLATES_CHANGED = 'personal-os-schedule-templates-changed'
@@ -166,4 +166,46 @@ export function summarizeScheduleTemplate(template: ScheduleTemplate): string {
   const first = template.blocks[0]!
   const last = template.blocks[count - 1]!
   return `${count} block${count === 1 ? '' : 's'} · ${first.start_time}–${last.end_time}`
+}
+
+/** Shift amount that keeps every block inside 00:00–24:00. */
+export function clampedScheduleTemplateShift(
+  template: ScheduleTemplate,
+  deltaMinutes: number,
+): number {
+  if (template.blocks.length === 0 || deltaMinutes === 0) return 0
+  const starts = template.blocks.map((block) => parseTimeToMinutes(block.start_time))
+  const ends = template.blocks.map((block) => parseTimeToMinutes(block.end_time))
+  const earliest = Math.min(...starts)
+  const latest = Math.max(...ends)
+  let delta = deltaMinutes
+  if (earliest + delta < 0) delta = -earliest
+  if (latest + delta > 24 * 60) delta = 24 * 60 - latest
+  return delta
+}
+
+export function shiftScheduleTemplate(
+  template: ScheduleTemplate,
+  deltaMinutes: number,
+): ScheduleTemplate {
+  const delta = clampedScheduleTemplateShift(template, deltaMinutes)
+  if (delta === 0) return template
+  return {
+    ...template,
+    blocks: template.blocks.map((block) => ({
+      ...block,
+      start_time: minutesToTime(parseTimeToMinutes(block.start_time) + delta),
+      end_time: minutesToTime(parseTimeToMinutes(block.end_time) + delta),
+    })),
+    updated_at: new Date().toISOString(),
+  }
+}
+
+export function upsertScheduleTemplate(template: ScheduleTemplate): ScheduleTemplate[] {
+  const templates = getScheduleTemplates()
+  const exists = templates.some((entry) => entry.id === template.id)
+  const next = exists
+    ? templates.map((entry) => (entry.id === template.id ? template : entry))
+    : [...templates, template]
+  return saveScheduleTemplates(next)
 }
