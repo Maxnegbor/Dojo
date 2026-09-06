@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CalendarCheck, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { WeeklyLogFields, useWeeklyLogDraft } from '@/components/today/WeeklyLogFields'
 import { useSettings } from '@/context/SettingsContext'
 import {
@@ -60,8 +61,8 @@ export function WeeklyShutdownModal({
       : 'Review my week'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
-      <div className="relative flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/40 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10">
+    <ModalOverlay align="center" onBackdropClick={onClose} className="bg-black/80 backdrop-blur-md">
+      <div className="relative flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/40 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 z-10 rounded-lg p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
@@ -142,6 +143,6 @@ export function WeeklyShutdownModal({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

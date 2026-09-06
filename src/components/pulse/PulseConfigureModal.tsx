@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, Equal, GitMerge, Minus, Plus, Unlink, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   PULSE_POINTS_TOTAL,
   assignPointsPulseFormula,
@@ -144,6 +145,7 @@ export function PulseConfigureModal({
   const [draft, setDraft] = useState(() => createDraft(initialFormula, goals))
   const [step, setStep] = useState<ConfigureStep>('weights')
   const [selectedForGroup, setSelectedForGroup] = useState<MetricKey[]>([])
+  const [isGrouping, setIsGrouping] = useState(false)
   const [habitifyTick, setHabitifyTick] = useState(0)
   const [habitifyLoading, setHabitifyLoading] = useState(() => isHabitifyConnected())
   const metricOptions = useMemo(
@@ -174,7 +176,7 @@ export function PulseConfigureModal({
 
   useEffect(() => {
     setDraft((prev) => prunePulseFormulaMetrics(prev, goals))
-  }, [goals])
+  }, [goals, habitifyTick])
 
   useEffect(() => {
     const bump = () => setHabitifyTick((n) => n + 1)
@@ -243,13 +245,20 @@ export function PulseConfigureModal({
     )
   }
 
+  const cancelGrouping = () => {
+    setIsGrouping(false)
+    setSelectedForGroup([])
+  }
+
   const handleCreateGroup = () => {
     if (selectedForGroup.length < 2) return
     setDraft((prev) => createPulseOrGroup(prev, selectedForGroup, goals))
     setSelectedForGroup([])
+    setIsGrouping(false)
   }
 
   const goToDailyTargetsStep = () => {
+    cancelGrouping()
     setDraft((prev) => ensureDailyTargets(prev, goals))
     setStep('daily-targets')
   }
@@ -286,14 +295,11 @@ export function PulseConfigureModal({
         : `Distribute ${PULSE_POINTS_TOTAL} points across individual metrics. Each point is 10% of your daily score.`
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm sm:p-6"
-      onClick={onClose}
-    >
+    <ModalOverlay align="center" onBackdropClick={onClose}>
       <div
         role="dialog"
         aria-labelledby="pulse-configure-title"
-        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
+        className="flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-zinc-800/80 px-6 py-5">
@@ -375,18 +381,26 @@ export function PulseConfigureModal({
 
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2.5">
                 <p className="text-[11px] text-zinc-500">
-                  Select 2+ metrics, then group them so hitting either one counts as full success.
+                  {isGrouping
+                    ? 'Select 2 or more metrics, then confirm.'
+                    : 'Group metrics so hitting either one counts as full success.'}
                 </p>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!canCreateGroup}
-                  onClick={handleCreateGroup}
-                >
-                  <GitMerge size={13} />
-                  Either/or group
-                  {selectedForGroup.length > 0 ? ` (${selectedForGroup.length})` : ''}
-                </Button>
+                {isGrouping ? (
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={cancelGrouping}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" disabled={!canCreateGroup} onClick={handleCreateGroup}>
+                      Confirm
+                      {selectedForGroup.length > 0 ? ` (${selectedForGroup.length})` : ''}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => setIsGrouping(true)}>
+                    <GitMerge size={13} />
+                    Either / or
+                  </Button>
+                )}
               </div>
 
               {(draft.orGroups ?? []).length > 0 && (
@@ -489,7 +503,7 @@ export function PulseConfigureModal({
                         {group.options.map((option) => {
                           const value = draft.metricWeights[option.key] ?? 0
                           const included = value > 0
-                          const selected = selectedForGroup.includes(option.key)
+                          const selected = isGrouping && selectedForGroup.includes(option.key)
 
                           return (
                             <div
@@ -502,21 +516,37 @@ export function PulseConfigureModal({
                               )}
                             >
                               <div className="flex items-center justify-between gap-3">
-                                <div className="flex min-w-0 items-start gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={selected}
-                                    onChange={() => toggleSelectForGroup(option.key)}
-                                    className="mt-1 h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 text-[var(--accent-500)]"
+                                {isGrouping ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSelectForGroup(option.key)}
+                                    aria-pressed={selected}
                                     aria-label={`Select ${option.label} for either/or group`}
-                                  />
+                                    className="flex min-w-0 items-start gap-2.5 text-left"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={selected}
+                                      readOnly
+                                      tabIndex={-1}
+                                      className="pointer-events-none mt-1 h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 text-[var(--accent-500)]"
+                                      aria-hidden
+                                    />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-zinc-200">
+                                        {option.label}
+                                      </p>
+                                      <p className="text-[11px] text-zinc-500">{option.description}</p>
+                                    </div>
+                                  </button>
+                                ) : (
                                   <div className="min-w-0">
                                     <p className="text-sm font-medium text-zinc-200">
                                       {option.label}
                                     </p>
                                     <p className="text-[11px] text-zinc-500">{option.description}</p>
                                   </div>
-                                </div>
+                                )}
                                 {equalMode ? (
                                   <IncludeToggle
                                     included={included}
@@ -608,6 +638,6 @@ export function PulseConfigureModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

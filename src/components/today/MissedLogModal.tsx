@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import type { DailyLog, Goal, MetricKey } from '@/types'
 import {
@@ -198,12 +199,12 @@ export function MissedLogModal({
   const dayLabel = remaining.length === 1 ? 'day' : 'days'
 
   return (
-    <div className="fixed inset-0 z-[96] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center">
+    <ModalOverlay>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="missed-log-title"
-        className="flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
+        className="flex max-h-[min(85dvh,640px)] w-full max-w-md flex-col rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-zinc-800/80 p-5 pb-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-950/60 text-amber-400">
@@ -241,6 +242,6 @@ export function MissedLogModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

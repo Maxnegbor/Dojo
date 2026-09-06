@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { ChevronDown, History, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import { MetricInput } from '@/components/ui/MetricInput'
 import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
@@ -882,10 +883,7 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
-      onClick={() => void handleDone()}
-    >
+    <ModalOverlay align="center" onBackdropClick={() => void handleDone()}>
       <div
         role="dialog"
         aria-labelledby="edit-logs-title"
@@ -982,6 +980,6 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

@@ -836,9 +836,10 @@ export function ensureDailyTargets(formula: PulseFormula, goals: Goal[]): PulseF
 /** Drop weights for metrics that no longer exist in the library. */
 export function prunePulseFormulaMetrics(formula: PulseFormula, goals: Goal[]): PulseFormula {
   const eligible = new Set(listPulseMetricOptions(goals).map((option) => option.key as string))
-  const keepHabitify = isHabitifyConnected()
+  const keepUnknownHabitify =
+    isHabitifyConnected() && getHabitifyHabitCatalog().length === 0
   const isEligible = (key: string) =>
-    eligible.has(key) || (keepHabitify && key.startsWith('habitify_'))
+    eligible.has(key) || (keepUnknownHabitify && key.startsWith('habitify_'))
   const metricWeights: Record<string, number> = {}
   for (const [key, value] of Object.entries(formula.metricWeights ?? {})) {
     if (isEligible(key) && value > 0) metricWeights[key] = value

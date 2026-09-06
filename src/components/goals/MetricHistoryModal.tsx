@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { Check, X } from 'lucide-react'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import type { DailyLog, Goal, Workout } from '@/types'
 import { normalizeHabits } from '@/types'
 import { formatEditLogWeekLabel } from '@/lib/editLogsRange'
@@ -544,14 +545,11 @@ export function MetricHistoryModal({
   const rowChunks = chunkRowsRecentRight(rows, gridCols)
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm sm:p-6"
-      onClick={onClose}
-    >
+    <ModalOverlay align="center" onBackdropClick={onClose}>
       <div
         role="dialog"
         aria-labelledby="metric-history-title"
-        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
+        className="flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-zinc-800/80 px-5 py-4 sm:px-6">
@@ -841,6 +839,6 @@ export function MetricHistoryModal({
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

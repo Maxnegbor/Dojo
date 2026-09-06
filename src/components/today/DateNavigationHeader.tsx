@@ -22,7 +22,7 @@ export function DateNavigationHeader({
 
   return (
     <header className="home-date-nav flex min-w-0 flex-1 flex-wrap items-center gap-3">
-      <div className="home-date-nav__controls flex shrink-0 items-center gap-0.5 rounded-full border border-zinc-800/70 bg-zinc-950/60 p-0.5 backdrop-blur-sm">
+      <div className="home-date-nav__controls flex shrink-0 items-center gap-0.5">
         <button
           onClick={onPrev}
           aria-label="Previous day"

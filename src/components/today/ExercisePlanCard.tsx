@@ -292,7 +292,7 @@ export function ExercisePlanCard({
   ) : null
 
   return (
-    <Card className={className}>
+    <Card className={cn('home-panel-plain border-0 shadow-none', className)}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold text-zinc-200">Exercise plan</h3>
         <div className="flex items-center gap-1">

@@ -19,6 +19,7 @@ import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { useDailyLogDraftRevision } from '@/hooks/useDailyLogDraftRevision'
 import type { DailyLog, Goal, Workout } from '@/types'
 import { useSettings } from '@/context/SettingsContext'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { cn, formatDate, getMonthStartPad, getWeekdayLabels } from '@/lib/utils'
 
 interface MonthCalendarModalProps {
@@ -146,7 +147,7 @@ export function MonthCalendarModal({
   const weekdayLabels = getWeekdayLabels(settings.weekStartsOn)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <ModalOverlay align="center" onBackdropClick={onClose}>
       <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <button
@@ -218,6 +219,6 @@ export function MonthCalendarModal({
           })}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

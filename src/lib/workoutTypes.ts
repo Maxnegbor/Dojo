@@ -212,6 +212,13 @@ export function formatWorkoutPlanLabel(category: WorkoutCategory, subtype?: stri
   return sub ? `${label} · ${sub}` : label
 }
 
+/** Join distinct workouts with +; subcategory stays on the type with ·. */
+export function formatWorkoutPlanList(
+  items: { category: WorkoutCategory; subtype?: string | null }[],
+): string {
+  return items.map((item) => formatWorkoutPlanLabel(item.category, item.subtype)).join(' + ')
+}
+
 export function getWorkoutTypeUnit(id: WorkoutCategory): string {
   return getWorkoutTypes().find((t) => t.id === id)?.unit ?? DEFAULT_WORKOUT_UNIT
 }

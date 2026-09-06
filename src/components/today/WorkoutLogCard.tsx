@@ -165,55 +165,45 @@ export function WorkoutLogCard({
             const progressPct = hasWeeklyTarget
               ? Math.min(100, (weeklyGoal.logged / weeklyGoal.target) * 100)
               : 0
-            const weeklyComplete = hasWeeklyTarget && weeklyGoal.logged >= weeklyGoal.target
 
             return (
               <li
                 key={type.id}
-                className={cn(
-                  'relative overflow-hidden rounded-lg border px-2.5 py-2',
-                  weeklyComplete
-                    ? 'border-[var(--accent-500)]/60 ring-1 ring-[var(--accent-ring)]'
-                    : 'border-zinc-800/80',
-                )}
-                style={{ backgroundColor: 'rgb(24 24 27)' }}
+                className="rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-2.5 py-2"
               >
-                {/* Weekly target progress — accent fills left → right behind content */}
-                {hasWeeklyTarget ? (
-                  <div
-                    className="pointer-events-none absolute inset-y-0 left-0 transition-[width] duration-300 ease-out"
-                    style={{
-                      width: `${progressPct}%`,
-                      backgroundColor:
-                        'color-mix(in srgb, var(--accent-500) 55%, rgb(24 24 27))',
-                    }}
-                    role="progressbar"
-                    aria-valuenow={Math.round(progressPct)}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label={`${type.label} weekly progress`}
-                  />
-                ) : null}
-
-                <div className="relative z-[1] flex items-center gap-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent-500)]" />
-                    <div className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-zinc-100">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate text-sm font-medium text-zinc-100">
                         {type.label}
                       </span>
                       {hasWeeklyTarget ? (
-                        <span className="block text-[10px] tabular-nums text-zinc-300/90">
+                        <span className="shrink-0 text-[10px] tabular-nums text-zinc-500">
                           {formatVolume(weeklyGoal.logged, weeklyGoal.unit || unit)}
                           {' / '}
                           {formatVolume(weeklyGoal.target, weeklyGoal.unit || unit)}
                         </span>
                       ) : null}
                     </div>
+                    {hasWeeklyTarget ? (
+                      <div
+                        className="mt-1.5 h-1 max-w-[10.5rem] overflow-hidden rounded-full bg-zinc-800"
+                        role="progressbar"
+                        aria-valuenow={Math.round(progressPct)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`${type.label} weekly progress`}
+                      >
+                        <div
+                          className="h-full rounded-full bg-[var(--accent-500)] transition-[width] duration-300 ease-out"
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <div className="relative w-[4.75rem]">
+                  <div className="flex shrink-0 items-center gap-1">
+                    <div className="relative w-14">
                       <input
                         type="number"
                         min={0}
@@ -229,13 +219,13 @@ export function WorkoutLogCard({
                           if (e.key === 'Enter') void logWorkout(type.id)
                         }}
                         className={cn(
-                          'w-full rounded-lg border border-zinc-700 bg-zinc-950 py-1.5 pl-2 pr-7 text-sm text-zinc-100',
+                          'w-full rounded-md border border-zinc-700 bg-zinc-950 py-1 pl-1.5 pr-6 text-xs text-zinc-100',
                           'placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)]',
                           'disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500',
                           '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
                         )}
                       />
-                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">
+                      <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-zinc-500">
                         {unit}
                       </span>
                     </div>
@@ -246,12 +236,12 @@ export function WorkoutLogCard({
                       disabled={disabled || isSaving || !inputValue.trim()}
                       onClick={() => void logWorkout(type.id)}
                       className={cn(
-                        'h-[34px] shrink-0 border-zinc-700 bg-zinc-950 px-2.5 hover:bg-zinc-900',
+                        'h-7 w-7 shrink-0 border-zinc-700 bg-zinc-950 p-0 hover:bg-zinc-900',
                         'disabled:pointer-events-none disabled:opacity-100 disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600',
                       )}
                       aria-label={`Add ${type.label} ${unit}`}
                     >
-                      <Plus size={14} />
+                      <Plus size={12} />
                     </Button>
                   </div>
                 </div>

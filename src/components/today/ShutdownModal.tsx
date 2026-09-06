@@ -8,6 +8,7 @@ import {
   ListTodo,
   Moon,
   PenLine,
+  Repeat,
   X,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -19,6 +20,7 @@ import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { TypedReminderConfirm } from '@/components/today/TypedReminderConfirm'
 import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
+import { HabitifyHabitsPanel } from '@/components/today/HabitifyHabitsPanel'
 import { useSettings } from '@/context/SettingsContext'
 import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
@@ -48,6 +50,7 @@ import {
   typedReminderMatches,
 } from '@/lib/typedReminder'
 import { isTodoistConnected } from '@/lib/todoistStore'
+import { isHabitifyConnected } from '@/lib/habitifyStore'
 import { experimentsNeedingDailyLogStep } from '@/lib/experiments'
 import { ExperimentConfoundersSection } from '@/components/experiments/ExperimentConfoundersSection'
 import type { DailyLog, DailyShutdownStepId, Goal, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
@@ -168,9 +171,16 @@ export function ShutdownModal({
       if (id === 'habits') return false
       if (id === 'checklist') return checklistGroups.length > 0
       if (id === 'todoist') return isTodoistConnected()
+      if (id === 'habitify') return isHabitifyConnected()
       if (id === 'experiments') return needsExperiments
       return true
     })
+    // Saved flows from before this step still get Habitify when connected.
+    if (isHabitifyConnected() && !next.includes('habitify')) {
+      const wrapIdx = next.indexOf('wrap-up')
+      if (wrapIdx >= 0) next.splice(wrapIdx + 1, 0, 'habitify')
+      else next.unshift('habitify')
+    }
     // Older saved step lists may omit experiments — still show when running.
     if (needsExperiments && !next.includes('experiments')) {
       const scheduleIdx = next.indexOf('schedule')
@@ -291,7 +301,7 @@ export function ShutdownModal({
     <div
       className={cn(
         'fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm',
-        step === 'schedule' ? 'p-2 sm:p-3' : 'p-4',
+        step === 'schedule' ? 'p-2 sm:p-3' : 'p-4 pb-[max(1rem,env(safe-area-inset-bottom))]',
       )}
     >
       <div
@@ -316,6 +326,8 @@ export function ShutdownModal({
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-950">
               {step === 'schedule' ? (
                 <CalendarDays size={20} className="text-violet-400" />
+              ) : step === 'habitify' ? (
+                <Repeat size={20} className="text-violet-400" />
               ) : step === 'todoist' ? (
                 <ListTodo size={20} className="text-violet-400" />
               ) : step === 'checklist' ? (
@@ -333,7 +345,9 @@ export function ShutdownModal({
               <p className="text-xs text-zinc-400">
                 {step === 'schedule'
                   ? `Sketch ${tomorrowLabel} — schedule and workouts`
-                  : step === 'todoist'
+                  : step === 'habitify'
+                    ? 'Tick off today’s habits before you close out.'
+                    : step === 'todoist'
                     ? 'Tick off tasks or add anything you still need to do.'
                       : step === 'checklist'
                       ? 'Tick anything you still want to close out tonight.'
@@ -398,6 +412,12 @@ export function ShutdownModal({
                 ) : null}
               </section>
             </div>
+          )}
+
+          {step === 'habitify' && (
+            <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4">
+              <HabitifyHabitsPanel viewDate={viewDate} compact />
+            </section>
           )}
 
           {step === 'todoist' && (

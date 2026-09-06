@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, Target, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SegmentedControl } from '@/components/settings/SettingsControls'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import type { FocusGoalFormValues } from '@/lib/focusGoalSync'
 import { cn } from '@/lib/utils'
 
@@ -68,7 +69,7 @@ export function FocusGoalModal({ initial, onSave, onClose, mode = 'create' }: Fo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center">
+    <ModalOverlay onBackdropClick={onClose}>
       <div
         role="dialog"
         aria-labelledby="focus-goal-title"
@@ -177,6 +178,6 @@ export function FocusGoalModal({ initial, onSave, onClose, mode = 'create' }: Fo
           </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

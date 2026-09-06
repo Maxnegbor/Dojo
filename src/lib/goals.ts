@@ -55,9 +55,7 @@ export function goalLogPeriod(goal: Goal): GoalPeriod {
   return goal.log_period ?? goal.target_type ?? 'daily'
 }
 
-/** Track-only metrics always log daily; weekly/daily applies to targeted goals. */
 export function effectiveLogPeriod(goal: Goal): GoalPeriod {
-  if (!hasTarget(goal)) return 'daily'
   return goalLogPeriod(goal)
 }
 
@@ -67,14 +65,13 @@ export function normalizeGoal(goal: Goal): Goal {
     target_value: goal.target_value ?? null,
   }
   const hasGoalTarget = hasTarget(normalized)
+  const log_period: GoalPeriod =
+    goal.log_period ??
+    goal.target_type ??
+    (goal.metric_key === 'weight' ? 'weekly' : 'daily')
   const target_period = hasGoalTarget
     ? (goal.target_period ??
-        (goal.metric_key.startsWith('workout_')
-          ? 'weekly'
-          : goal.log_period ?? goal.target_type ?? 'daily'))
-    : 'daily'
-  const log_period: GoalPeriod = hasGoalTarget
-    ? (goal.log_period ?? goal.target_type ?? (goal.metric_key === 'weight' ? 'weekly' : 'daily'))
+        (goal.metric_key.startsWith('workout_') ? 'weekly' : log_period))
     : 'daily'
 
   const log_when =
@@ -191,10 +188,7 @@ export function getShutdownAskGoals(goals: Goal[]): Goal[] {
 
 export function getWeeklyLogGoals(goals: Goal[]): Goal[] {
   return getActiveGoals(goals).filter(
-    (g) =>
-      hasTarget(g) &&
-      effectiveLogPeriod(g) === 'weekly' &&
-      !isAggregatedFromDailyLogs(g),
+    (g) => effectiveLogPeriod(g) === 'weekly' && !isAggregatedFromDailyLogs(g),
   )
 }
 

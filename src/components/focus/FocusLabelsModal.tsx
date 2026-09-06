@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import { ColorDotPicker } from '@/components/ui/ColorDotPicker'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   createFocusLabel,
   FOCUS_LABEL_SWATCHES,
@@ -80,16 +81,11 @@ export function FocusLabelsModal({ selectedId, onSelect, onClose }: FocusLabelsM
   )
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
+    <ModalOverlay onBackdropClick={onClose}>
       <div
         role="dialog"
         aria-labelledby="focus-labels-title"
-        className="flex max-h-[min(36rem,90vh)] w-full max-w-md flex-col rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
+        className="flex max-h-[min(36rem,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-md flex-col rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
           <div>
@@ -192,6 +188,6 @@ export function FocusLabelsModal({ selectedId, onSelect, onClose }: FocusLabelsM
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

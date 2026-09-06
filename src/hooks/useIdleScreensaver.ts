@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-const IDLE_MS = 10 * 1000 // 10 seconds
+const IDLE_MS = 60 * 1000 // 1 minute
 
 /** Returns true after IDLE_MS of no mouse/touch/keyboard activity on the page. */
 export function useIdleScreensaver(): boolean {

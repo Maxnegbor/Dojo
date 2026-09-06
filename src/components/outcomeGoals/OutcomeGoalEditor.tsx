@@ -478,6 +478,7 @@ export function OutcomeGoalEditor({
                   onChange={(e) => setRecurrence(e.target.value as OutcomeGoalRecurrence)}
                   className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
                 >
+                  <option value="never">Never</option>
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                   <option value="every_14">Every 14 days</option>

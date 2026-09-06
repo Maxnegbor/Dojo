@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Check, Sparkles, Trophy, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { GoalPaceBar } from '@/components/ui/GoalPaceBar'
 import {
   SplitAccentProgressBar,
@@ -536,7 +537,7 @@ export function WeeklyGoalRevealModal({
   }, [barsActive, footerDelay])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-md sm:p-5">
+    <ModalOverlay align="center" onBackdropClick={onClose} className="bg-black/80 backdrop-blur-md">
       <style>{`
         @keyframes goalCardShineSweep {
           0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
@@ -696,6 +697,6 @@ export function WeeklyGoalRevealModal({
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

@@ -148,13 +148,20 @@ export function saveHabitifyHabitCatalog(habits: HabitifyHabitSummary[]): Habiti
   return next
 }
 
-function upsertHabitifyCatalog(habits: HabitifyHabitSummary[]) {
-  const byId = new Map(getHabitifyHabitCatalog().map((habit) => [habit.id, habit]))
+function refreshKnownCatalogHabits(habits: HabitifyHabitSummary[]) {
+  const existing = getHabitifyHabitCatalog()
+  if (existing.length === 0) return
+  const byId = new Map(existing.map((habit) => [habit.id, habit]))
+  let changed = false
   for (const habit of habits) {
     const normalized = normalizeSummary(habit)
-    if (normalized) byId.set(normalized.id, normalized)
+    if (!normalized || !byId.has(normalized.id)) continue
+    const prev = byId.get(normalized.id)
+    if (!prev || (prev.name === normalized.name && prev.type === normalized.type)) continue
+    byId.set(normalized.id, normalized)
+    changed = true
   }
-  saveHabitifyHabitCatalog([...byId.values()])
+  if (changed) saveHabitifyHabitCatalog([...byId.values()])
 }
 
 function readJournalCache(): Record<string, HabitifyJournalCacheEntry[]> {
@@ -213,7 +220,7 @@ export function cacheHabitifyJournal(
   const normalized = entries
     .map(normalizeJournalEntry)
     .filter((entry): entry is HabitifyJournalCacheEntry => entry != null)
-  upsertHabitifyCatalog(
+  refreshKnownCatalogHabits(
     normalized.map((entry) => ({ id: entry.id, name: entry.name, type: entry.type })),
   )
   const cache = readJournalCache()

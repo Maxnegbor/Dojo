@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Sparkles, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   SplitAccentProgressBar,
   barLegendColors,
@@ -371,7 +372,7 @@ export function GoalProgressModal({
   }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <ModalOverlay align="center" onBackdropClick={onClose}>
       <div className="relative w-full max-w-lg rounded-2xl border border-zinc-700/80 bg-[#0c0c14] p-5 shadow-2xl">
         <button
           onClick={onClose}
@@ -443,6 +444,6 @@ export function GoalProgressModal({
           {buttonLabel}
         </Button>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

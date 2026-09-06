@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { ExperimentScheduleOverview } from '@/components/experiments/ExperimentScheduleOverview'
 import {
   armLabel,
@@ -156,14 +157,11 @@ export function ExperimentDetailModal({
         : 'Draft'
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
-      onClick={onClose}
-    >
+    <ModalOverlay onBackdropClick={onClose}>
       <div
         role="dialog"
         aria-labelledby="experiment-detail-title"
-        className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
+        className="flex max-h-[min(94dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-6 py-4">
@@ -453,6 +451,6 @@ export function ExperimentDetailModal({
           </div>
         </footer>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

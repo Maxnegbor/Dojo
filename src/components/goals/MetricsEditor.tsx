@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl'
 import { Card } from '@/components/ui/Card'
 import { MetricInput } from '@/components/ui/MetricInput'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { EditLogsModal } from '@/components/goals/EditLogsModal'
 import { MetricHistoryModal } from '@/components/goals/MetricHistoryModal'
 import type { MetricHistoryTarget } from '@/lib/metricHistory'
@@ -711,6 +712,14 @@ export function MetricsEditor({
         delete nextGoal.log_when
         delete nextGoal.morning_day
         onSaveGoal(normalizeGoal(nextGoal))
+        if (form.logPeriod === 'weekly') {
+          saveMorningLogGoalKeys(
+            getMorningLogGoalKeys().filter((key) => key !== existing.metric_key),
+          )
+          saveMorningLogYesterdayKeys(
+            getMorningLogYesterdayKeys().filter((key) => key !== existing.metric_key),
+          )
+        }
       } else {
         const resolvedKey = goalKeyFromName(name)
         const nextGoal: Goal = {
@@ -960,12 +969,6 @@ export function MetricsEditor({
   }
 
   const renderHabitCard = (habit: HabitTypeDefinition) => {
-    const isEditing = form?.kind === 'habit' && form.habitId === habit.id
-
-    if (isEditing) {
-      return renderInlineFormCard(habit.id)
-    }
-
     if (isPendingDelete('habit', habit.id)) {
       return (
         <Card key={habit.id} className="border-red-900/40 bg-red-950/20">
@@ -1019,13 +1022,6 @@ export function MetricsEditor({
 
   const renderGoalCard = (goal: Goal) => {
     const isTimerFocusGoal = goal.metric_key === 'focus'
-    const isEditing =
-      (form?.kind === 'goal' || form?.kind === 'focus' || form?.kind === 'sleep') &&
-      form.goalId === goal.id
-
-    if (isEditing) {
-      return renderInlineFormCard(goal.id)
-    }
 
     if (isPendingDelete('goal', goal.id)) {
       return (
@@ -1081,12 +1077,6 @@ export function MetricsEditor({
   }
 
   const renderWorkoutCard = (type: WorkoutTypeDefinition) => {
-    const isEditing = form?.kind === 'workout' && form.workoutId === type.id
-
-    if (isEditing) {
-      return renderInlineFormCard(type.id)
-    }
-
     if (isPendingDelete('workout', type.id)) {
       return (
         <Card key={type.id} className="border-red-900/40 bg-red-950/20">
@@ -1147,12 +1137,6 @@ export function MetricsEditor({
   }
 
   const renderWeightCard = (goal: Goal) => {
-    const isEditing = form?.kind === 'weight' && form.goalId === goal.id
-
-    if (isEditing) {
-      return renderInlineFormCard(goal.id)
-    }
-
     if (isPendingDelete('goal', goal.id)) {
       return (
         <Card key={goal.id} className="border-red-900/40 bg-red-950/20">
@@ -1495,7 +1479,15 @@ export function MetricsEditor({
 
     if (isEditingSettings) {
       return (
-        <Card key={metric.id} className="ring-1 ring-[var(--accent-500)]/25">
+        <ModalOverlay
+          key={metric.id}
+          onBackdropClick={() => setEditingSleepMetricId(null)}
+        >
+          <div
+            className="w-full max-w-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+        <Card className="ring-1 ring-[var(--accent-500)]/25">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h3 className="text-sm font-medium text-zinc-200">{metric.label}</h3>
@@ -1565,6 +1557,8 @@ export function MetricsEditor({
             </Button>
           </div>
         </Card>
+          </div>
+        </ModalOverlay>
       )
     }
 
@@ -1828,34 +1822,6 @@ export function MetricsEditor({
         </div>
       ) : (
         <div className="space-y-8">
-          {kindPickerOpen && renderKindPickerCard()}
-          {addingSleepMetric && (
-            <Card className="p-3 ring-1 ring-[var(--accent-500)]/25">
-              <SleepMetricTemplatePicker
-                config={sleepMetricsConfig}
-                onChange={(config) => {
-                  enableMetricsSection('sleep')
-                  const added = config.enabledIds.filter(
-                    (id) => !sleepMetricsConfig.enabledIds.includes(id),
-                  )
-                  let next = config
-                  for (const id of added) {
-                    next = setSleepMetricCategory(
-                      next,
-                      id,
-                      storedLibraryCategoryId(kindPickerCategoryId),
-                    )
-                  }
-                  saveSleepMetricsConfig(next)
-                  for (const id of added) {
-                    autoEnrollInMorningLog({ kind: 'sleep', logPeriod: 'daily', sleepFieldId: id })
-                  }
-                }}
-                onDone={() => setAddingSleepMetric(false)}
-              />
-            </Card>
-          )}
-          {form?.mode === 'add' && renderInlineFormCard(`add-${form.kind}`)}
           {groupedCategories.map((category) => {
             const collapsed = collapsedCategoryIds.includes(category.id)
             return (
@@ -1974,6 +1940,62 @@ export function MetricsEditor({
           })}
         </div>
       )}
+
+      {kindPickerOpen ? (
+        <ModalOverlay onBackdropClick={closeForm}>
+          <div
+            className="w-full max-w-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {renderKindPickerCard()}
+          </div>
+        </ModalOverlay>
+      ) : null}
+
+      {addingSleepMetric ? (
+        <ModalOverlay onBackdropClick={() => setAddingSleepMetric(false)}>
+          <div
+            className="scrollbar-hidden max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-lg overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Card className="p-3 ring-1 ring-[var(--accent-500)]/25">
+              <SleepMetricTemplatePicker
+                config={sleepMetricsConfig}
+                onChange={(config) => {
+                  enableMetricsSection('sleep')
+                  const added = config.enabledIds.filter(
+                    (id) => !sleepMetricsConfig.enabledIds.includes(id),
+                  )
+                  let next = config
+                  for (const id of added) {
+                    next = setSleepMetricCategory(
+                      next,
+                      id,
+                      storedLibraryCategoryId(kindPickerCategoryId),
+                    )
+                  }
+                  saveSleepMetricsConfig(next)
+                  for (const id of added) {
+                    autoEnrollInMorningLog({ kind: 'sleep', logPeriod: 'daily', sleepFieldId: id })
+                  }
+                }}
+                onDone={() => setAddingSleepMetric(false)}
+              />
+            </Card>
+          </div>
+        </ModalOverlay>
+      ) : null}
+
+      {form ? (
+        <ModalOverlay onBackdropClick={closeForm}>
+          <div
+            className="scrollbar-hidden max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-lg overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {renderInlineFormCard(`form-${form.kind}`)}
+          </div>
+        </ModalOverlay>
+      ) : null}
 
       {editLogsOpen && (
         <EditLogsModal

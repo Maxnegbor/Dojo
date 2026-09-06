@@ -13,6 +13,11 @@ export const DAILY_SHUTDOWN_STEP_PRESETS: DailyShutdownStepPreset[] = [
     description: 'Anything still missing today',
   },
   {
+    id: 'habitify',
+    label: 'Habitify',
+    description: 'Tick off today’s Habitify habits (skipped if Habitify is not connected)',
+  },
+  {
     id: 'todoist',
     label: 'Todoist',
     description: 'Tick off and add Todoist tasks (skipped if Todoist is not connected)',
@@ -36,6 +41,7 @@ export const DAILY_SHUTDOWN_STEP_PRESETS: DailyShutdownStepPreset[] = [
 
 export const DEFAULT_DAILY_SHUTDOWN_STEPS: DailyShutdownStepId[] = [
   'wrap-up',
+  'habitify',
   'todoist',
   'schedule',
   'experiments',
@@ -53,8 +59,9 @@ export function normalizeDailyShutdownSteps(
   if (!steps?.length) return [...DEFAULT_DAILY_SHUTDOWN_STEPS]
   const seen = new Set<DailyShutdownStepId>()
   const next: DailyShutdownStepId[] = []
-  for (const step of steps) {
-    if (!isDailyShutdownStepId(step) || seen.has(step) || step === 'habits') continue
+  for (const raw of steps) {
+    const step = raw === 'habits' ? 'habitify' : raw
+    if (!isDailyShutdownStepId(step) || seen.has(step)) continue
     seen.add(step)
     next.push(step)
   }

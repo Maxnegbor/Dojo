@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Dumbbell, Plus, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import type { Goal } from '@/types'
 import { normalizeGoal } from '@/lib/goals'
 import {
@@ -103,14 +104,11 @@ export function WorkoutGoalsModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <ModalOverlay align="center" onBackdropClick={onClose}>
       <div
         role="dialog"
         aria-labelledby="workout-goals-title"
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
+        className="flex max-h-[min(88dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-zinc-800/80 px-6 py-5">
@@ -213,6 +211,6 @@ export function WorkoutGoalsModal({
           <Button onClick={onClose}>Done</Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

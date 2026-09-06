@@ -21,6 +21,7 @@ import { localStore } from '@/lib/localStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import {
   formatWorkoutPlanLabel,
+  formatWorkoutPlanList,
   getWorkoutTypes,
   isTimedWorkoutUnit,
   workoutMetricKey,
@@ -340,9 +341,7 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
                     <p className="mt-0.5 text-[11px] text-zinc-600">Rest · tap to add</p>
                   ) : (
                     <p className="mt-0.5 truncate text-[11px] text-zinc-500">
-                      {slots
-                        .map((slot) => formatWorkoutPlanLabel(slot.category, slot.subtype))
-                        .join(' · ')}
+                      {formatWorkoutPlanList(slots)}
                     </p>
                   )}
                 </div>

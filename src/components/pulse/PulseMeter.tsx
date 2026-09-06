@@ -95,9 +95,6 @@ export function PulseMeter({
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}
-            style={{
-              filter: 'drop-shadow(0 0 4px color-mix(in srgb, var(--accent-400) 55%, transparent))',
-            }}
           />
         )}
       </svg>

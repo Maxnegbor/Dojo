@@ -133,6 +133,15 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* iPhone Safari zooms focused fields whose computed text is under 16px. */
+@media (max-width: 1023px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 .scrollbar-hidden {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -761,6 +770,12 @@ input[type="number"] {
     inset 0 1px 0 var(--home-panel-shine),
     0 10px 28px -18px rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(10px);
+}
+
+.home-stage .home-rail > section.home-panel-plain {
+  border: none;
+  box-shadow: none;
+  background: var(--home-panel-bg);
 }
 
 .home-stage .home-rail > section > header h3,

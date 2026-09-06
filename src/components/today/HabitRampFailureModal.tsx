@@ -1,5 +1,6 @@
 import { TrendingDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { getConsistencyHeatColor } from '@/lib/habitStreaks'
 import type { HabitRampFailurePrompt } from '@/lib/habitRamp'
 
@@ -19,7 +20,7 @@ export function HabitRampFailureModal({ prompt, onDecrease, onKeep }: HabitRampF
   const consistencyColor = getConsistencyHeatColor(consistency)
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center">
+    <ModalOverlay>
       <div
         role="dialog"
         aria-labelledby="habit-ramp-failure-title"
@@ -83,6 +84,6 @@ export function HabitRampFailureModal({ prompt, onDecrease, onKeep }: HabitRampF
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

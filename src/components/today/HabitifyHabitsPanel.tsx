@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { HabitStreakBadge } from '@/components/today/HabitStreakBadge'
 import {
   completeHabitifyHabit,
+  fetchHabitifyHabits,
   fetchHabitifyJournal,
   HabitifyApiError,
   undoHabitifyHabit,
@@ -54,7 +55,9 @@ export function HabitifyHabitsPanel({
     setLoading(true)
     setError(null)
     try {
+      const catalogPromise = fetchHabitifyHabits().catch(() => undefined)
       const next = await fetchHabitifyJournal(viewDate)
+      await catalogPromise
       setEntries(next)
     } catch (err) {
       const message =

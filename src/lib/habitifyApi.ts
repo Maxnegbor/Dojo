@@ -1,7 +1,6 @@
 import {
   cacheHabitifyJournal,
   getHabitifyApiKey,
-  getHabitifyHabitCatalog,
   saveHabitifyHabitCatalog,
   type HabitifyHabitSummary,
   type HabitifyJournalCacheEntry,
@@ -216,8 +215,7 @@ export async function fetchHabitifyHabits(): Promise<HabitifyHabitSummary[]> {
     offset += limit
   }
 
-  if (habits.length === 0) return getHabitifyHabitCatalog()
-  return saveHabitifyHabitCatalog([...getHabitifyHabitCatalog(), ...habits])
+  return saveHabitifyHabitCatalog(habits)
 }
 
 async function postLogAction(

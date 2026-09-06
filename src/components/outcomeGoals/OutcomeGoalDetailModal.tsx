@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Check, Pencil, Target, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   computeOutcomeGoalDetailStats,
   formatDeadlineLabel,
@@ -49,16 +50,14 @@ export function OutcomeGoalDetailModal({
 
   const deadlineLabel = formatDeadlineLabel(goal.deadline)
   const recurrenceLabel = formatOutcomeGoalRecurrence(goal)
+  const isOneTime = goal.recurrence === 'never'
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
-      onClick={onClose}
-    >
+    <ModalOverlay onBackdropClick={onClose}>
       <div
         role="dialog"
         aria-labelledby="outcome-goal-detail-title"
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
+        className="flex max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
@@ -110,7 +109,7 @@ export function OutcomeGoalDetailModal({
           {/* This period */}
           <section>
             <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              This {goal.recurrence === 'daily' ? 'day' : 'period'}
+              {isOneTime ? 'Progress' : goal.recurrence === 'daily' ? 'This day' : 'This period'}
             </h3>
             {outcomes.length === 0 ? (
               <p className="text-sm text-zinc-500">No metrics linked yet.</p>
@@ -162,7 +161,9 @@ export function OutcomeGoalDetailModal({
           </section>
 
           {/* Stats strip */}
-          <section className="grid grid-cols-3 gap-2">
+          <section className={cn('grid gap-2', isOneTime ? 'grid-cols-1' : 'grid-cols-3')}>
+            {!isOneTime ? (
+              <>
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-zinc-500">Hit rate</p>
               <p className="mt-0.5 text-lg font-semibold tabular-nums text-zinc-100">
@@ -181,12 +182,16 @@ export function OutcomeGoalDetailModal({
               </p>
               <p className="text-[10px] text-zinc-600">in a row</p>
             </div>
+              </>
+            ) : null}
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-zinc-500">Cadence</p>
               <p className="mt-0.5 text-sm font-semibold leading-tight text-zinc-100">
                 {recurrenceLabel}
               </p>
-              <p className="text-[10px] text-zinc-600">review cycle</p>
+              <p className="text-[10px] text-zinc-600">
+                {isOneTime ? 'one-time goal' : 'review cycle'}
+              </p>
             </div>
           </section>
 
@@ -297,6 +302,6 @@ export function OutcomeGoalDetailModal({
           </Button>
         </footer>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

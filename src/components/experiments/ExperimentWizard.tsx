@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { DatePickerField } from '@/components/ui/DatePickerField'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   EXPERIMENT_PROTOCOLS,
   createConfounder,
@@ -298,14 +299,11 @@ export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWi
   const meta = STEP_META[step]
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
-      onClick={onCancel}
-    >
+    <ModalOverlay onBackdropClick={onCancel}>
       <div
         role="dialog"
         aria-labelledby="experiment-wizard-title"
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
+        className="flex max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
@@ -882,7 +880,7 @@ export function ExperimentWizard({ hybridGoals, onSave, onCancel }: ExperimentWi
           )}
         </footer>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }
 

@@ -125,8 +125,8 @@ export interface Goal {
   created_at: string
 }
 
-/** How often an outcome goal repeats / resets. */
-export type OutcomeGoalRecurrence = 'daily' | 'weekly' | 'every_14' | 'custom'
+/** How often an outcome goal repeats / resets. `never` is a one-time window. */
+export type OutcomeGoalRecurrence = 'never' | 'daily' | 'weekly' | 'every_14' | 'custom'
 
 /** @deprecated Migrated to OutcomeGoalRecurrence. */
 export type OutcomeGoalReview = 'weekly' | 'monthly'
@@ -308,6 +308,7 @@ export type DailyCheckGroup = WeeklyShutdownCheckGroup
 export type DailyShutdownStepId =
   | 'wrap-up'
   | 'habits'
+  | 'habitify'
   | 'todoist'
   | 'schedule'
   | 'checklist'
@@ -358,7 +359,7 @@ export interface AppSettings {
   dailyShutdownChecklist: DailyCheckGroup[]
   /**
    * Ordered preset steps for the daily shutdown modal.
-   * Habits may still be skipped at runtime when nothing is pending.
+   * Habitify / Todoist are skipped at runtime when that integration is off.
    */
   dailyShutdownSteps: DailyShutdownStepId[]
   /** When true, blur-lock screens after the require time until shutdown is completed. */
@@ -473,7 +474,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   morningLogChecklist: [],
   requireMorningLog: false,
   dailyShutdownChecklist: [],
-  dailyShutdownSteps: ['wrap-up', 'todoist', 'schedule'],
+  dailyShutdownSteps: ['wrap-up', 'habitify', 'todoist', 'schedule'],
   requireShutdown: false,
   shutdownRequireAt: 'schedule_end',
   shutdownCustomTime: '21:00',

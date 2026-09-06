@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { OutcomeGoalCard } from '@/components/outcomeGoals/OutcomeGoalCard'
 import { OutcomeGoalDetailModal } from '@/components/outcomeGoals/OutcomeGoalDetailModal'
 import { OutcomeGoalEditor } from '@/components/outcomeGoals/OutcomeGoalEditor'
@@ -197,14 +198,11 @@ export function OutcomeGoalsPage() {
       )}
 
       {editing != null ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
-          onClick={() => setEditing(null)}
-        >
+        <ModalOverlay onBackdropClick={() => setEditing(null)}>
           <div
             role="dialog"
             aria-label={editing === 'new' ? 'New goal' : 'Edit goal'}
-            className="scrollbar-hidden max-h-[90vh] w-full max-w-lg overflow-y-auto"
+            className="scrollbar-hidden max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-bottom)-1.5rem))] w-full max-w-lg overflow-y-auto"
             onClick={(event) => event.stopPropagation()}
           >
             <OutcomeGoalEditor
@@ -214,14 +212,11 @@ export function OutcomeGoalsPage() {
               onCancel={() => setEditing(null)}
             />
           </div>
-        </div>
+        </ModalOverlay>
       ) : null}
 
       {pendingDelete ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6"
-          onClick={() => setConfirmDeleteId(null)}
-        >
+        <ModalOverlay onBackdropClick={() => setConfirmDeleteId(null)}>
           <div
             role="dialog"
             aria-labelledby="delete-goal-title"
@@ -247,7 +242,7 @@ export function OutcomeGoalsPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       ) : null}
 
       {detailProgress && editing == null && confirmDeleteId == null ? (

@@ -88,7 +88,11 @@ function normalizeRecurrence(raw: Record<string, unknown>): {
         : NaN
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.round(daysRaw) : undefined
 
-  if (raw.recurrence === 'daily' || raw.recurrence === 'weekly') {
+  if (
+    raw.recurrence === 'never' ||
+    raw.recurrence === 'daily' ||
+    raw.recurrence === 'weekly'
+  ) {
     return { recurrence: raw.recurrence }
   }
   if (raw.recurrence === 'every_14') {
@@ -104,6 +108,7 @@ function normalizeRecurrence(raw: Record<string, unknown>): {
 }
 
 export function formatOutcomeGoalRecurrence(goal: Pick<OutcomeGoal, 'recurrence' | 'recurrence_days'>): string {
+  if (goal.recurrence === 'never') return 'Never'
   if (goal.recurrence === 'daily') return 'Daily'
   if (goal.recurrence === 'weekly') return 'Weekly'
   if (goal.recurrence === 'every_14') return 'Every 14 days'
@@ -988,6 +993,24 @@ export function listOutcomeGoalPeriods(
   const asOfStr = formatDate(asOf)
   const goalStart = resolveOutcomeGoalStartDate(goal)
   const periods: Array<{ start: string; end: string; isCurrent: boolean }> = []
+
+  if (goal.recurrence === 'never') {
+    const deadline =
+      goal.deadline && /^\d{4}-\d{2}-\d{2}$/.test(goal.deadline) ? goal.deadline : null
+    const end =
+      deadline && deadline >= goalStart
+        ? deadline
+        : asOfStr < goalStart
+          ? goalStart
+          : asOfStr
+    return [
+      {
+        start: goalStart,
+        end,
+        isCurrent: asOfStr >= goalStart && asOfStr <= end,
+      },
+    ]
+  }
 
   if (goal.recurrence === 'weekly') {
     // Week containing goal start is the first countable week (Mon–Sun), even mid-week starts.

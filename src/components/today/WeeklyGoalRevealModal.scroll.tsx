@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, Trophy, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   playWeeklyGoalFailSound,
   playWeeklyGoalWinSound,
@@ -458,7 +459,7 @@ export function WeeklyGoalRevealModal({
   const reviewStarted = showGoals || showStats || showFinale
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+    <ModalOverlay align="center" onBackdropClick={onClose} className="bg-black/80 backdrop-blur-md">
       <style>{`
         @keyframes slideUp {
           from { opacity: 0; transform: translateY(10px); }
@@ -601,6 +602,6 @@ export function WeeklyGoalRevealModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

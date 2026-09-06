@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   pulseCorePx,
   pulseMeterVisuals,
@@ -284,8 +285,8 @@ export function WeeklyPulseRevealModal({
   }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-md sm:p-5">
-      <div className="flex max-h-[min(92vh,640px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/30 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10 sm:max-w-lg">
+    <ModalOverlay align="center" className="bg-black/80 backdrop-blur-md">
+      <div className="flex max-h-[min(92dvh,640px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--accent-500)]/30 bg-[#0c0c14] shadow-2xl shadow-[var(--accent-500)]/10 sm:max-w-lg">
         <div className="shrink-0 border-b border-zinc-800/80 bg-gradient-to-br from-[var(--accent-950)]/60 via-transparent to-transparent px-4 py-3 sm:px-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -366,6 +367,6 @@ export function WeeklyPulseRevealModal({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }
