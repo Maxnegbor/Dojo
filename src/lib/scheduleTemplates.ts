@@ -168,6 +168,26 @@ export function summarizeScheduleTemplate(template: ScheduleTemplate): string {
   return `${count} block${count === 1 ? '' : 's'} · ${first.start_time}–${last.end_time}`
 }
 
+/** Visible hour range for the template editor: Home window, expanded to fit every block. */
+export function hoursForTemplateEditor(
+  blocks: { start_time: string; end_time: string }[],
+  windowStartHour: number,
+  windowEndHour: number,
+): { startHour: number; endHour: number } {
+  let startHour = Math.max(0, Math.min(23, Math.round(windowStartHour)))
+  let endHour = Math.max(startHour + 1, Math.min(24, Math.round(windowEndHour)))
+  if (blocks.length === 0) return { startHour, endHour }
+
+  const starts = blocks.map((block) => parseTimeToMinutes(block.start_time))
+  const ends = blocks.map((block) => parseTimeToMinutes(block.end_time))
+  const earliest = Math.min(...starts)
+  const latest = Math.max(...ends)
+  startHour = Math.min(startHour, Math.max(0, Math.floor(earliest / 60)))
+  endHour = Math.max(endHour, Math.min(24, Math.ceil(latest / 60)))
+  if (endHour <= startHour) endHour = Math.min(24, startHour + 1)
+  return { startHour, endHour }
+}
+
 /** Shift amount that keeps every block inside 00:00–24:00. */
 export function clampedScheduleTemplateShift(
   template: ScheduleTemplate,

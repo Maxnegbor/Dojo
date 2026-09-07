@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { format } from 'date-fns'
 import { Plus, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { DatePickerField } from '@/components/ui/DatePickerField'
@@ -323,9 +324,11 @@ export function OutcomeGoalEditor({
   const [startMode, setStartMode] = useState<'now' | 'select'>(() =>
     initial?.start_date ? 'select' : 'now',
   )
-  const [startDate, setStartDate] = useState(
-    () => initial?.start_date ?? formatDate(new Date()),
-  )
+  const [startDate, setStartDate] = useState(() => {
+    const today = format(new Date(), 'yyyy-MM-dd')
+    const raw = initial?.start_date ?? formatDate(new Date())
+    return raw < today ? today : raw
+  })
   const [deadline, setDeadline] = useState(initial?.deadline ?? '')
   const [recurrence, setRecurrence] = useState<OutcomeGoalRecurrence>(
     initial?.recurrence ?? 'weekly',
@@ -366,10 +369,17 @@ export function OutcomeGoalEditor({
     if (!canSave) return
     const base = initial ?? createEmptyOutcomeGoal()
     const parsedDays = Math.max(1, Math.round(Number(recurrenceDays)) || 30)
+    const today = format(new Date(), 'yyyy-MM-dd')
+    const selectedStart = startDate.trim()
     onSave({
       ...base,
       title: title.trim(),
-      start_date: startMode === 'select' && startDate.trim() ? startDate.trim() : undefined,
+      start_date:
+        startMode === 'select' && selectedStart
+          ? selectedStart < today
+            ? today
+            : selectedStart
+          : undefined,
       deadline: deadline.trim() || undefined,
       recurrence,
       recurrence_days:
@@ -440,7 +450,11 @@ export function OutcomeGoalEditor({
                 type="button"
                 onClick={() => {
                   setStartMode('select')
-                  if (!startDate) setStartDate(formatDate(new Date()))
+                  const today = format(new Date(), 'yyyy-MM-dd')
+                  setStartDate((current) => {
+                    if (!current || current < today) return today
+                    return current
+                  })
                 }}
                 className={cn(
                   'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',

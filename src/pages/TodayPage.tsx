@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
-import { CalendarCheck, CalendarClock, CalendarDays, ClipboardList, LayoutGrid, Moon, Sun } from 'lucide-react'
+import { CalendarCheck, CalendarClock, CalendarDays, ClipboardList, LayoutGrid, Moon } from 'lucide-react'
 import { HomePulseCard } from '@/components/pulse/HomePulseCard'
 import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { HabitifyHabitsCard } from '@/components/today/HabitifyHabitsCard'
+import { WhoopCard } from '@/components/today/WhoopCard'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
 import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
 import { ExperimentHomeCard } from '@/components/today/ExperimentHomeCard'
+import { CoachCard } from '@/components/today/CoachCard'
 import { getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
 import { HomeLogModal } from '@/components/today/HomeLogModal'
@@ -45,6 +47,7 @@ import { normalizeDailyShutdownSteps } from '@/lib/dailyShutdownSteps'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habitTypes'
 import { HABITIFY_CHANGED, HABITIFY_JOURNAL_CHANGED } from '@/lib/habitifyStore'
+import { isWhoopConnected, WHOOP_CHANGED, WHOOP_DAYS_CHANGED } from '@/lib/whoopStore'
 import { computeDayPulse, PULSE_HEADER_SCALE, pulseCorePx } from '@/lib/pulse'
 import { buildPulseContributors } from '@/lib/pulseBreakdown'
 import { getPulseFormulaForDate } from '@/lib/pulseConfig'
@@ -151,9 +154,13 @@ export function TodayPage() {
     const bump = () => setHabitifyRevision((n) => n + 1)
     window.addEventListener(HABITIFY_JOURNAL_CHANGED, bump)
     window.addEventListener(HABITIFY_CHANGED, bump)
+    window.addEventListener(WHOOP_DAYS_CHANGED, bump)
+    window.addEventListener(WHOOP_CHANGED, bump)
     return () => {
       window.removeEventListener(HABITIFY_JOURNAL_CHANGED, bump)
       window.removeEventListener(HABITIFY_CHANGED, bump)
+      window.removeEventListener(WHOOP_DAYS_CHANGED, bump)
+      window.removeEventListener(WHOOP_CHANGED, bump)
     }
   }, [])
 
@@ -740,10 +747,12 @@ export function TodayPage() {
           screensaver && 'home-stage--screensaver',
           screensaverWaking && 'home-stage--screensaver-wake',
           (screensaverActive || screensaverWaking) && 'home-stage--suppress-enter',
+          settings.showHomePulse && 'home-stage--pulse',
         )}
         style={{
           gap: screensaver ? '0px' : undefined,
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
+          ['--home-pulse-core' as string]: `${pulseCorePx(PULSE_HEADER_SCALE)}px`,
         }}
       >
       <div
@@ -779,7 +788,14 @@ export function TodayPage() {
             )}
           >
             {settings.showHomePulse && (
-              <div className="pointer-events-auto">
+              <div
+                className="pointer-events-auto"
+                style={{
+                  // Match `.home-schedule-panel::before` shadow: center sits 1.125rem into the schedule.
+                  transform:
+                    'translateY(calc(var(--home-pulse-core) / 2 + 1.125rem + 0.25rem + 4px))',
+                }}
+              >
                 <HomePulseCard
                   score={headerPulseScore}
                   contributors={pulseContributors}
@@ -841,7 +857,7 @@ export function TodayPage() {
         )}
         {/* Left: Exercise plan + workouts + Todoist */}
         <aside className={cn(
-          'home-rail home-rail--left relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
+          'home-rail home-rail--left relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 pt-2 pr-2 lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
           isMobile ? 'order-2 overflow-visible' : 'order-3 overflow-y-auto overscroll-contain scrollbar-hidden',
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
           screensaver && 'pointer-events-none invisible !opacity-0',
@@ -925,11 +941,10 @@ export function TodayPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="relative z-30 min-w-0 flex-1 rounded-xl border-zinc-700/60 bg-zinc-900/80"
+                  className="relative z-30 min-w-0 flex-1 rounded-xl border-0 bg-zinc-900/80"
                   aria-label="Morning Log"
                   onClick={() => setShowMorningLog(true)}
                 >
-                  <Sun size={14} className="text-amber-400" />
                   Morning
                 </Button>
               )}
@@ -938,7 +953,7 @@ export function TodayPage() {
                   size="sm"
                   variant="secondary"
                   className={cn(
-                    'relative z-30 min-w-0 flex-1 rounded-xl border-zinc-700/60 bg-zinc-900/80',
+                    'relative z-30 min-w-0 flex-1 rounded-xl border-0 bg-zinc-900/80',
                     shutdownBreathing && 'today-btn-breathe-violet',
                   )}
                   onClick={() => requestOpenShutdown()}
@@ -958,6 +973,7 @@ export function TodayPage() {
               )}
             </div>
           ) : null}
+          {isWhoopConnected() && <WhoopCard viewDate={viewDate} className="w-full" />}
           <HabitifyHabitsCard
             viewDate={viewDate}
             className="w-full"
@@ -1135,6 +1151,17 @@ export function TodayPage() {
           onSelectDate={setViewDate}
         />
       )}
+
+      <CoachCard
+        viewDate={viewDate}
+        log={log ?? undefined}
+        goals={goals}
+        workouts={[...weekWorkouts, ...workouts]}
+        logs={streakLogs}
+        blocks={blocks}
+        contributors={pulseContributors}
+        pulseScore={headerPulseScore}
+      />
     </div>
   )
 }

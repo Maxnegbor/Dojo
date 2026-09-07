@@ -149,7 +149,7 @@ export function FocusScheduleAgenda({
 
   useStickyScheduleTitles(
     scrollRef,
-    screensaver,
+    true,
     `${blocks.length}:${contentHeight}:${hourHeight}:${nowMinutes}`,
   )
 
@@ -222,7 +222,7 @@ export function FocusScheduleAgenda({
                 return (
                   <div
                     key={block.id}
-                    data-schedule-block={screensaver ? '' : undefined}
+                    data-schedule-block=""
                     className={cn(
                       'absolute left-0 right-1 flex flex-col overflow-hidden rounded-lg border-2 bg-zinc-950/70 px-2 py-1 shadow-md',
                       isPast && 'opacity-40',
@@ -236,16 +236,12 @@ export function FocusScheduleAgenda({
                     }}
                   >
                     <div
-                      data-sticky-block-title={screensaver ? '' : undefined}
+                      data-sticky-block-title=""
                       className={cn(
-                        'min-w-0',
-                        screensaver
-                          ? 'relative z-[12] w-full shrink-0 px-3 py-2 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]'
-                          : isShort
-                            ? 'pt-0.5'
-                            : 'pt-1',
+                        'relative z-[12] min-w-0 w-full shrink-0 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]',
+                        screensaver ? 'px-3 py-2' : isShort ? 'pt-0.5' : 'pt-1',
                       )}
-                      style={screensaver ? { backgroundColor: fill } : undefined}
+                      style={{ backgroundColor: fill }}
                     >
                       <p
                         className={cn(

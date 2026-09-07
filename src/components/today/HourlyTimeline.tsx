@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Bell, Trash2, X } from 'lucide-react'
 import { GREY_BLOCK_TITLE, type ScheduleBlock, type WorkoutCategory } from '@/types'
 import { createScheduleBlock, isGreyBlock, setScheduleBlockColor } from '@/lib/scheduleBlock'
@@ -28,11 +28,14 @@ import { ScheduleBlockAlarmMenu } from '@/components/schedule/ScheduleBlockAlarm
 import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
+import { formatHourLabel } from '@/components/settings/TimelineRangeSlider'
 import { generateId, formatDuration, minutesToTime, parseTimeToMinutes, cn } from '@/lib/utils'
 
 const HOUR_HEIGHT = 88
-const TIMELINE_TOP_INSET = 12
+const TIMELINE_TOP_INSET = 0
 const NOW_DOT_GUTTER = 16
+/** Hour-label column; mirrored on the right so timeblocks center under the Pulse. */
+const HOUR_LABEL_COL_CLASS = 'w-11 shrink-0'
 /** Schedule snap + minimum block length (minutes). */
 const GRID_MINUTES = 30
 /** Blocks at or under this use the tight layout; 60+ matches the tall layout. */
@@ -117,6 +120,8 @@ interface HourlyTimelineProps {
   onDropPlannedWorkout?: (planId: string, startMinutes: number) => void
   /** When true, enlarge text for ambient/screensaver display. */
   screensaver?: boolean
+  /** Dim hours outside this range (template editor: current Home schedule window). */
+  homeWindow?: { startHour: number; endHour: number }
 }
 
 function isDefaultGreyTitle(title: string) {
@@ -310,6 +315,7 @@ export function HourlyTimeline({
   headerActions,
   onDropPlannedWorkout,
   screensaver = false,
+  homeWindow,
 }: HourlyTimelineProps) {
   const { formatTime, settings } = useSettings()
   const use24h = settings.timeFormat === '24h'
@@ -366,7 +372,6 @@ export function HourlyTimeline({
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const headerRef = useRef<HTMLDivElement>(null)
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const dragOffsetRef = useRef(0)
   const interactionBlockRef = useRef<ScheduleBlock | null>(null)
@@ -432,7 +437,6 @@ export function HourlyTimeline({
     ro.observe(document.documentElement)
     const host = scrollEl.closest('[data-schedule-height-host]')
     if (host) ro.observe(host)
-    if (headerRef.current) ro.observe(headerRef.current)
     window.addEventListener('resize', measure)
     window.visualViewport?.addEventListener('resize', measure)
 
@@ -572,7 +576,7 @@ export function HourlyTimeline({
 
   useStickyScheduleTitles(
     scrollRef,
-    screensaver,
+    true,
     `${blocks.length}:${contentHeight}:${nowLine ?? 'none'}:${scrollAreaHeight}`,
   )
 
@@ -885,42 +889,13 @@ export function HourlyTimeline({
     <div className="flex h-full max-h-full min-h-0 flex-col pl-4">
       <div
         ref={panelRef}
-        className="relative isolate flex h-full max-h-full min-h-0 w-full -ml-4 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900"
+        className="home-schedule-panel relative isolate flex h-full max-h-full min-h-0 w-full -ml-4 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900"
       >
-        <div
-          ref={headerRef}
-          className={cn(
-            'flex shrink-0 items-start justify-between gap-3 rounded-t-xl border-zinc-800/80 px-3 py-2',
-            'transition-[max-height,opacity,padding,border-color] duration-[1600ms] ease-in-out',
-            screensaver ? 'overflow-hidden border-b-transparent opacity-0' : 'border-b opacity-100',
-          )}
-          style={{
-            maxHeight: screensaver ? '0px' : '4.5rem',
-            paddingTop: screensaver ? '0px' : undefined,
-            paddingBottom: screensaver ? '0px' : undefined,
-          }}
-        >
-          <div className="min-w-0">
-            {isActiveDay ? (
-              <button
-                type="button"
-                onClick={() => scrollToCurrentTime({ smooth: true })}
-                className="rounded-lg px-2 py-0.5 text-xs font-semibold text-[var(--accent-400)] transition-colors hover:bg-[var(--accent-500)]/10 hover:text-[var(--accent-300)]"
-                aria-label="Scroll to current time"
-              >
-                Now
-              </button>
-            ) : (
-              <span className="block h-5" aria-hidden />
-            )}
-            <p className="text-[10px] text-zinc-600">
-              Drag grid to create · drag exercise plan onto schedule · drag blocks to move
-            </p>
+        {headerActions && !screensaver ? (
+          <div className="schedule-template-action absolute right-2 top-2 z-20 flex items-center gap-1 rounded-lg bg-zinc-950/90">
+            {headerActions}
           </div>
-          {headerActions ? (
-            <div className="flex shrink-0 items-center gap-1">{headerActions}</div>
-          ) : null}
-        </div>
+        ) : null}
 
       <div
         ref={scrollRef}
@@ -941,7 +916,7 @@ export function HourlyTimeline({
             style={{ width: NOW_DOT_GUTTER, height: contentHeight }}
           />
           <div
-            className="relative w-11 shrink-0 border-r border-zinc-800/80"
+            className={cn('relative', HOUR_LABEL_COL_CLASS)}
             style={{
               height: contentHeight,
               minHeight: contentHeight,
@@ -971,7 +946,7 @@ export function HourlyTimeline({
           <div
             ref={containerRef}
             className={cn(
-              'relative min-w-0 flex-1 select-none overflow-hidden',
+              'home-timeblock-space relative min-w-0 flex-1 select-none overflow-hidden',
               onDropPlannedWorkout && planDropPreview && 'ring-1 ring-inset ring-[var(--accent-500)]/40',
             )}
             style={{
@@ -1048,7 +1023,7 @@ export function HourlyTimeline({
 
           {createPreview && (
             <div
-              className="pointer-events-none absolute left-0 right-1 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--accent-400)]/60 bg-[var(--accent-500)]/10 transition-[top,height] duration-150 ease-out"
+              className="pointer-events-none absolute left-0 right-0 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--accent-400)]/60 bg-[var(--accent-500)]/10 transition-[top,height] duration-150 ease-out"
               style={{ top: createPreview.top, height: createPreview.height }}
             >
               {createPreview.durationMins >= GRID_MINUTES && (
@@ -1068,7 +1043,7 @@ export function HourlyTimeline({
 
           {planDropStyle && planDropPreview && (
             <div
-              className="pointer-events-none absolute left-0 right-1 z-[3] flex items-center justify-center rounded-lg border-2 border-dashed border-red-400/70 bg-red-500/15"
+              className="pointer-events-none absolute left-0 right-0 z-[3] flex items-center justify-center rounded-lg border-2 border-dashed border-red-400/70 bg-red-500/15"
               style={{ top: planDropStyle.top, height: planDropStyle.height }}
             >
               <div className="flex flex-col items-center gap-0.5 px-2 text-center">
@@ -1100,19 +1075,24 @@ export function HourlyTimeline({
             const displayEnd = isInteracting
               ? minutesToTime(Math.round(preview.endMin))
               : block.end_time
+            const blockEnd = isInteracting ? preview.endMin : parseTimeToMinutes(block.end_time)
+            const touchesNext = blocks.some((other) => other.id !== block.id &&
+              (preview?.id === other.id ? preview.startMin : parseTimeToMinutes(other.start_time)) === blockEnd)
             const topEdgeActive =
               (hoverResize?.id === block.id && hoverResize.edge === 'top') ||
               (resizing === block.id && resizeMode === 'top')
             const bottomEdgeActive =
               (hoverResize?.id === block.id && hoverResize.edge === 'bottom') ||
               (resizing === block.id && resizeMode === 'bottom')
-            const blockFill = `color-mix(in srgb, ${block.color} 12%, rgb(9 9 11))`
+            const blockFill = isGreyBlock(block)
+              ? 'rgb(32 32 37)'
+              : `color-mix(in srgb, ${block.color} 12%, rgb(9 9 11))`
             return (
               <div
                 key={block.id}
-                data-schedule-block={screensaver ? '' : undefined}
+                data-schedule-block=""
                 className={cn(
-                  'absolute left-0 right-1 z-[2] flex overflow-hidden rounded-lg border-2 bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
+                  'absolute left-0 right-0 z-[2] flex overflow-hidden rounded-lg border border-[var(--timeblock-rest-edge)] hover:border-[var(--timeblock-edge)] bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
                   isLiveGesture && 'z-[3] shadow-lg shadow-black/40',
                   isShortInline
                     ? 'items-center px-1.5'
@@ -1123,11 +1103,15 @@ export function HourlyTimeline({
                 )}
                 style={{
                   ...style,
-                  borderColor: `color-mix(in srgb, ${block.color} 55%, transparent)`,
+                  // Overlap touching 1px borders so rounded blocks retain a single divider.
+                  height: style.height + (touchesNext ? 1 : 0),
+                  '--timeblock-rest-edge': `color-mix(in srgb, ${block.color} 25%, ${blockFill})`,
+                  '--timeblock-edge': `color-mix(in srgb, ${block.color} 55%, transparent)`,
+                  borderColor: isLiveGesture ? 'var(--timeblock-edge)' : undefined,
                   backgroundColor: blockFill,
                   transition:
-                    'top 150ms cubic-bezier(0.22, 1, 0.36, 1), height 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms ease',
-                }}
+                    'top 150ms cubic-bezier(0.22, 1, 0.36, 1), height 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms ease, border-color 150ms ease',
+                } as CSSProperties}
                 onMouseDown={(e) => {
                   const target = e.target as HTMLElement
                   if (target.closest('input, button, [data-resize-handle]')) return
@@ -1183,15 +1167,7 @@ export function HourlyTimeline({
                 <div
                   className={cn(
                     'min-w-0 flex-1',
-                    screensaver
-                      ? isShortInline
-                        ? 'pr-2'
-                        : ''
-                      : isShortInline
-                        ? 'pr-9'
-                        : isCompact
-                          ? 'pt-1.5 pr-9'
-                          : 'pt-3 pr-10',
+                    screensaver && isShortInline && 'pr-2',
                   )}
                   style={{
                     fontSize: screensaver ? '1rem' : '0.75rem',
@@ -1199,14 +1175,18 @@ export function HourlyTimeline({
                   }}
                 >
                   <div
-                    data-sticky-block-title={screensaver ? '' : undefined}
+                    data-sticky-block-title=""
                     className={cn(
-                      screensaver &&
-                        'relative z-[12] w-full shrink-0 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]',
+                      'relative z-[20] flex shrink-0 items-start gap-1 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]',
+                      isShortInline && 'items-center',
                       screensaver && !isShortInline && (isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1'),
+                      !screensaver && isShortInline && '-mx-1.5 w-[calc(100%+0.75rem)] px-1.5',
+                      !screensaver && !isShortInline && isCompact && '-mx-1.5 -mt-0.5 w-[calc(100%+0.75rem)] px-1.5 pt-0.5',
+                      !screensaver && !isShortInline && !isCompact && '-mx-2 -mt-1 w-[calc(100%+1rem)] px-2 pt-1 pb-0.5',
                     )}
-                    style={screensaver ? { backgroundColor: blockFill } : undefined}
+                    style={{ backgroundColor: blockFill }}
                   >
+                    <div className="min-w-0 flex-1">
                   {isShortInline ? (
                     <div className="flex items-center gap-1.5">
                       <ScheduleBlockTitleInput
@@ -1242,6 +1222,64 @@ export function HourlyTimeline({
                       </p>
                     </>
                   )}
+                    </div>
+                    {!screensaver && (
+                      <div className="-mr-1 flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleScheduleBlockAlarm(block.id)
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setAlarmMenu({ blockId: block.id, x: e.clientX, y: e.clientY })
+                          }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          className={cn(
+                            'group/alarm flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-black/20',
+                            alarmEnabled
+                              ? 'text-red-500 hover:text-red-400'
+                              : 'text-zinc-500 hover:text-zinc-300',
+                          )}
+                          aria-label={
+                            alarmEnabled
+                              ? `Block alarm on (${formatScheduleBlockAlarmLead(alarmLead)}). Click to turn off, right-click to change timing.`
+                              : 'Turn on block alarm. Right-click for early alarm timing.'
+                          }
+                          aria-pressed={alarmEnabled}
+                          title={
+                            alarmEnabled
+                              ? `${formatScheduleBlockAlarmLead(alarmLead)} — right-click to change`
+                              : 'Right-click for 15m, 30m, or 1h before'
+                          }
+                        >
+                          <Bell
+                            size={12}
+                            className={cn(
+                              'transition-transform duration-200 ease-out group-hover/alarm:scale-[1.35]',
+                              alarmEnabled && 'fill-current',
+                            )}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDelete(block.id)
+                          }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          className="group/trash flex items-center justify-center rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-black/20 hover:text-red-400"
+                          aria-label="Delete block"
+                        >
+                          <Trash2
+                            size={12}
+                            className="transition-transform duration-200 ease-out group-hover/trash:scale-[1.35]"
+                          />
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {isDefaultGreyTitle(blockTitleValue(block)) && (
                     <ScheduleBlockColorPicker
@@ -1261,67 +1299,6 @@ export function HourlyTimeline({
                         onAssignExercise={onAssignExercise}
                       />
                     )}
-                </div>
-                <div
-                  className={cn(
-                    'absolute right-2 z-20 flex flex-row items-center gap-0.5',
-                    isCompact ? 'top-1/2 -translate-y-1/2' : 'top-3.5',
-                    screensaver && 'hidden',
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleScheduleBlockAlarm(block.id)
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setAlarmMenu({ blockId: block.id, x: e.clientX, y: e.clientY })
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className={cn(
-                      'group/alarm flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-black/20',
-                      alarmEnabled
-                        ? 'text-red-500 hover:text-red-400'
-                        : 'text-zinc-500 hover:text-zinc-300',
-                    )}
-                    aria-label={
-                      alarmEnabled
-                        ? `Block alarm on (${formatScheduleBlockAlarmLead(alarmLead)}). Click to turn off, right-click to change timing.`
-                        : 'Turn on block alarm. Right-click for early alarm timing.'
-                    }
-                    aria-pressed={alarmEnabled}
-                    title={
-                      alarmEnabled
-                        ? `${formatScheduleBlockAlarmLead(alarmLead)} — right-click to change`
-                        : 'Right-click for 15m, 30m, or 1h before'
-                    }
-                  >
-                    <Bell
-                      size={12}
-                      className={cn(
-                        'transition-transform duration-200 ease-out group-hover/alarm:scale-[1.35]',
-                        alarmEnabled && 'fill-current',
-                      )}
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDelete(block.id)
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="group/trash flex items-center justify-center rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-black/20 hover:text-red-400"
-                    aria-label="Delete block"
-                  >
-                    <Trash2
-                      size={12}
-                      className="transition-transform duration-200 ease-out group-hover/trash:scale-[1.35]"
-                    />
-                  </button>
                 </div>
                 <div
                   data-resize-handle
@@ -1364,6 +1341,61 @@ export function HourlyTimeline({
             )
           })}
           </div>
+
+          <div
+            aria-hidden
+            className={HOUR_LABEL_COL_CLASS}
+            style={{ height: contentHeight }}
+          />
+
+          {homeWindow && (
+            <div className="pointer-events-none absolute inset-0 z-[4]" aria-hidden>
+              {(() => {
+                const top =
+                  (homeWindow.startHour - startHour) * HOUR_HEIGHT + TIMELINE_TOP_INSET
+                const height = Math.max(
+                  0,
+                  (homeWindow.endHour - homeWindow.startHour) * HOUR_HEIGHT,
+                )
+                const beforeH = Math.max(0, top)
+                const afterTop = top + height
+                const afterH = Math.max(0, contentHeight - afterTop)
+                return (
+                  <>
+                    {beforeH > 0 && (
+                      <div
+                        className="absolute inset-x-0 bg-black/40"
+                        style={{ top: 0, height: beforeH }}
+                      />
+                    )}
+                    {afterH > 0 && (
+                      <div
+                        className="absolute inset-x-0 bg-black/40"
+                        style={{ top: afterTop, height: afterH }}
+                      />
+                    )}
+                    {height > 0 && (
+                      <div
+                        className="absolute inset-x-0 border-y border-dashed border-[var(--accent-500)]/45"
+                        style={{ top, height }}
+                      >
+                        <span
+                          className="absolute top-1 rounded bg-zinc-950/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-[var(--accent-400)]"
+                          style={{ left: NOW_DOT_GUTTER + 44 + 8 }}
+                        >
+                          Home window
+                          {' · '}
+                          {formatHourLabel(homeWindow.startHour, settings.timeFormat, 'start')}
+                          {' – '}
+                          {formatHourLabel(homeWindow.endHour, settings.timeFormat, 'end')}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          )}
 
           {nowLine != null && (
             <div

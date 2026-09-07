@@ -113,14 +113,21 @@
 html {
   font-family: var(--font-sans);
   background: #06060b;
+  color-scheme: dark;
+  height: 100%;
 }
 
 body {
   margin: 0;
+  height: 100%;
   font-family: inherit;
   background: #06060b;
   color: #fafafa;
   -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
 }
 
 input[type="number"]::-webkit-inner-spin-button,
@@ -153,6 +160,35 @@ input[type="number"] {
 
 .scrollbar-gutter-stable {
   scrollbar-gutter: stable;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(63 63 70 / 0.85) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(63 63 70 / 0.85);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(82 82 91 / 0.95);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .reminder-row {
@@ -690,31 +726,6 @@ input[type="number"] {
   }
 }
 
-.home-atmosphere::before {
-  content: '';
-  position: absolute;
-  inset: -20% -10% auto;
-  height: 55%;
-  background:
-    radial-gradient(
-      55% 70% at 50% 0%,
-      color-mix(in srgb, var(--accent-500) 16%, transparent) 0%,
-      transparent 72%
-    ),
-    radial-gradient(
-      40% 50% at 18% 12%,
-      color-mix(in srgb, var(--accent-600) 10%, transparent) 0%,
-      transparent 70%
-    ),
-    radial-gradient(
-      36% 48% at 82% 8%,
-      color-mix(in srgb, var(--accent-400) 8%, transparent) 0%,
-      transparent 68%
-    );
-  pointer-events: none;
-  transition: opacity 1400ms ease-in-out;
-}
-
 .home-atmosphere::after {
   content: '';
   position: absolute;
@@ -774,26 +785,83 @@ input[type="number"] {
   box-shadow: none;
 }
 
+@media (hover: hover) {
+  .home-integration-card .integration-toolbar,
+  .home-workout-card .workout-edit-action,
+  .home-exercise-card .exercise-plan-actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+  }
+
+  .home-integration-card:hover .integration-toolbar,
+  .home-integration-card:focus-within .integration-toolbar,
+  .home-workout-card:hover .workout-edit-action,
+  .home-workout-card:focus-within .workout-edit-action,
+  .home-exercise-card:hover .exercise-plan-actions,
+  .home-exercise-card:focus-within .exercise-plan-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.home-stage .home-workout-card:hover,
+.home-stage .home-workout-card:focus-within,
+.home-stage .home-exercise-card:hover,
+.home-stage .home-exercise-card:focus-within {
+  z-index: 20;
+}
+
 /* Schedule as the focal hearth */
-.home-stage .home-canvas > div > .relative.isolate {
+.home-canvas > div > .relative.isolate {
   border: none;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--accent-500) 6%, #18181b) 0%,
-      #141418 28%,
-      #101014 100%
-    );
+  background: transparent;
   box-shadow: none;
 }
 
-.home-stage .home-canvas > div > .relative.isolate > div:first-child {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent-500) 5%, transparent) 0%,
-    transparent 100%
-  );
-  border-bottom-color: color-mix(in srgb, var(--accent-500) 14%, #27272a);
+.home-timeblock-space {
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+  background:
+    linear-gradient(
+      180deg,
+      #18181b 0%,
+      #141418 28%,
+      #101014 100%
+    );
+}
+
+/* Pulse drop shadow — clipped to the schedule panel, not the black around the meter. */
+.home-stage--pulse .home-schedule-panel::before {
+  content: '';
+  position: absolute;
+  left: calc(50% + 0.5rem);
+  top: calc(var(--home-pulse-core, 6.75rem) / -2 + 1.125rem);
+  z-index: 8;
+  width: var(--home-pulse-core, 6.75rem);
+  height: var(--home-pulse-core, 6.75rem);
+  border-radius: 9999px;
+  transform: translateX(-50%);
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.home-stage--screensaver .home-schedule-panel::before {
+  display: none;
+}
+
+@media (hover: hover) {
+  .home-schedule-panel .schedule-template-action {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+  }
+
+  .home-schedule-panel:hover .schedule-template-action,
+  .home-schedule-panel .schedule-template-action:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -835,7 +903,6 @@ input[type="number"] {
   pointer-events: auto !important;
 }
 
-.home-atmosphere--screensaver::before,
 .home-atmosphere--screensaver::after {
   opacity: 0;
   transition: opacity 1400ms ease-in-out;

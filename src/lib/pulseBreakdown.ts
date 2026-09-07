@@ -18,6 +18,7 @@ import { formatDuration } from '@/lib/utils'
 import type { DailyLog, Goal, MetricKey, Workout } from '@/types'
 import { normalizeHabits } from '@/types'
 import { formatHabitifyPulseDetail } from '@/lib/habitifyStore'
+import { formatWhoopPulseDetail, isWhoopPulseMetric } from '@/lib/whoopStore'
 
 export interface PulseContributor {
   id: string
@@ -108,6 +109,10 @@ function formatMetricDetail(input: {
 
   if (metricKey.startsWith('habitify_')) {
     return formatHabitifyPulseDetail(metricKey, date)
+  }
+
+  if (isWhoopPulseMetric(metricKey)) {
+    return formatWhoopPulseDetail(metricKey, date)
   }
 
   const sleepId = sleepMetricIdFromLibraryKey(metricKey)

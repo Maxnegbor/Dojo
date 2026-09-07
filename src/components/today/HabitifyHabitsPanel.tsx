@@ -188,7 +188,7 @@ export function HabitifyHabitsPanel({
   }
 
   const toolbar = !hideToolbar && connected && (
-    <div className="flex shrink-0 items-center gap-0.5">
+    <div className="integration-toolbar flex shrink-0 items-center gap-0.5">
       <button
         type="button"
         onClick={() => void load()}

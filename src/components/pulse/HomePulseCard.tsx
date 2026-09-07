@@ -40,7 +40,7 @@ function PulseBreakdownPanel({
   return (
     <div
       className={cn(
-        'w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-zinc-700/80 bg-zinc-950/95 p-3 shadow-2xl shadow-black/50 ring-1 ring-[var(--accent-500)]/20 backdrop-blur-md',
+        'w-[min(20rem,calc(100vw-2rem))] rounded-2xl bg-zinc-950/95 p-3 shadow-2xl shadow-black/50 backdrop-blur-md',
         closing ? 'pulse-breakdown-close' : 'pulse-breakdown-open',
       )}
       role="tooltip"
@@ -104,18 +104,6 @@ function PulseBreakdownPanel({
                           / {formatScorePts(row.scoreMax)}
                         </span>
                       </p>
-                    </div>
-                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-800">
-                      <div
-                        className="h-full rounded-full bg-[var(--accent-500)]/80"
-                        style={{
-                          width: `${
-                            row.scoreMax > 0
-                              ? Math.min(100, Math.max(0, (row.scoreEarned / row.scoreMax) * 100))
-                              : 0
-                          }%`,
-                        }}
-                      />
                     </div>
                   </li>
                 ))}

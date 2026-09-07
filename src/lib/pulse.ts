@@ -27,6 +27,7 @@ import type { DailyLog, Goal, MetricKey, Workout, WorkoutCategory } from '@/type
 import { normalizeHabits } from '@/types'
 import { formatDate, getWeekDates } from '@/lib/utils'
 import { getHabitifyPulseRate } from '@/lib/habitifyStore'
+import { getWhoopPulseRate, getWhoopPulseValue, isWhoopPulseMetric } from '@/lib/whoopStore'
 
 function pulseDayKey(date: string): string {
   return date.slice(0, 10)
@@ -48,6 +49,9 @@ export function getPulseDayMetricValue(
   workouts: Workout[],
 ): number {
   const day = pulseDayKey(date)
+  if (isWhoopPulseMetric(metricKey)) {
+    return getWhoopPulseValue(metricKey, day) ?? 0
+  }
   const dayWorkouts = workoutsOnPulseDay(workouts, day)
 
   if (metricKey.startsWith('workout_')) {
@@ -135,6 +139,11 @@ export function computePulseMetricRate(input: {
 
   if (metricKey.startsWith('habitify_')) {
     return getHabitifyPulseRate(metricKey, date)
+  }
+
+  if (isWhoopPulseMetric(metricKey)) {
+    const target = resolvePulseMetricTarget(metricKey, goals, formula, sleepConfig)
+    return getWhoopPulseRate(metricKey, date, target)
   }
 
   const sleepId = sleepMetricIdFromLibraryKey(metricKey)
@@ -496,7 +505,7 @@ export const PULSE_CORE_PX = 96
 export const PULSE_COMPACT_SCALE = 0.5
 
 /** Inline pulse in the Home header. */
-export const PULSE_HEADER_SCALE = 0.95
+export const PULSE_HEADER_SCALE = 1.12
 /** Smaller meter on the Pulse page — less reserved glow space than the home header. */
 export const PULSE_PAGE_SCALE = 1.1
 

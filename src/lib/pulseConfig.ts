@@ -28,6 +28,14 @@ import {
   habitifyMetricKey,
   isHabitifyConnected,
 } from '@/lib/habitifyStore'
+import {
+  WHOOP_CATEGORY_ID,
+  WHOOP_METRIC_RECOVERY,
+  WHOOP_METRIC_SLEEP,
+  WHOOP_METRIC_STRAIN,
+  isWhoopConnected,
+  isWhoopPulseMetric,
+} from '@/lib/whoopStore'
 import type { Goal, MetricKey, Workout } from '@/types'
 
 const STORAGE_KEY = 'personal-os-pulse-config'
@@ -471,6 +479,7 @@ export function metricNeedsPulseDailyTarget(
 ): boolean {
   if (metricKey.startsWith('habit_')) return false
   if (metricKey.startsWith('habitify_')) return false
+  if (isWhoopPulseMetric(metricKey)) return true
   if (sleepMetricIdFromLibraryKey(metricKey)) return false
 
   if (resolveWeeklyQuantityTarget(metricKey, hybridGoals) != null) return true
@@ -524,10 +533,14 @@ export function defaultPulseDailyTarget(
   }
   if (metricKey.startsWith('workout_')) return 30
   if (metricKey === 'focus') return 60
+  if (metricKey.startsWith('habit_') || metricKey.startsWith('habitify_')) return 1
+  if (metricKey === WHOOP_METRIC_RECOVERY) return 67
+  if (metricKey === WHOOP_METRIC_SLEEP) return 85
+  if (metricKey === WHOOP_METRIC_STRAIN) return 12
   return null
 }
 
-/** Included metric keys that still need a daily Pulse target step. */
+/** Included metrics that should be shown on the daily-target step. */
 export function getIncludedMetricsNeedingDailyTarget(
   formula: PulseFormula,
   goals: Goal[],
@@ -540,7 +553,7 @@ export function getIncludedMetricsNeedingDailyTarget(
   const out: PulseMetricOption[] = []
   for (const key of used) {
     const option = optionsByKey.get(key)
-    if (!option?.needsDailyTarget) continue
+    if (!option) continue
     out.push(option)
   }
   return out.sort((a, b) => a.label.localeCompare(b.label))
@@ -616,6 +629,33 @@ export function listPulseMetricOptions(hybridGoals: Goal[]): PulseMetricOption[]
         'daily',
       )
     }
+  }
+
+  if (isWhoopConnected()) {
+    push(
+      WHOOP_METRIC_RECOVERY,
+      'WHOOP recovery',
+      '%',
+      WHOOP_CATEGORY_ID,
+      'Recovery score vs your daily target (green is 67+)',
+      'daily',
+    )
+    push(
+      WHOOP_METRIC_SLEEP,
+      'WHOOP sleep',
+      '%',
+      WHOOP_CATEGORY_ID,
+      'Sleep performance vs your daily target',
+      'daily',
+    )
+    push(
+      WHOOP_METRIC_STRAIN,
+      'WHOOP strain',
+      'strain',
+      WHOOP_CATEGORY_ID,
+      'Day strain vs your daily target',
+      'daily',
+    )
   }
 
   const sleepConfig = getSleepMetricsConfig()
@@ -813,9 +853,8 @@ export function assignPointsPulseFormula(formula: PulseFormula, goals: Goal[]): 
   return ensureDailyTargets(next, goals)
 }
 
-/** Seed / keep Pulse daily targets for weekly metrics that are included. */
+/** Seed / keep Pulse daily targets for every included metric. */
 export function ensureDailyTargets(formula: PulseFormula, goals: Goal[]): PulseFormula {
-  const optionsByKey = new Map(listPulseMetricOptions(goals).map((o) => [o.key as string, o]))
   const usedKeys = new Set<string>([
     ...Object.keys(formula.metricWeights ?? {}).filter((k) => (formula.metricWeights[k] ?? 0) > 0),
     ...(formula.orGroups ?? [])
@@ -823,11 +862,10 @@ export function ensureDailyTargets(formula: PulseFormula, goals: Goal[]): PulseF
       .flatMap((g) => g.metricKeys),
   ])
   const dailyTargets = { ...(formula.dailyTargets ?? {}) }
+  const withoutTargets: PulseFormula = { ...formula, dailyTargets: {} }
   for (const key of usedKeys) {
-    const option = optionsByKey.get(key)
-    if (!option?.needsDailyTarget) continue
     if ((dailyTargets[key] ?? 0) > 0) continue
-    const fallback = defaultPulseDailyTarget(key as MetricKey, goals)
+    const fallback = resolvePulseMetricTarget(key as MetricKey, goals, withoutTargets)
     if (fallback != null && fallback > 0) dailyTargets[key] = fallback
   }
   return { ...formula, dailyTargets }
@@ -1085,12 +1123,11 @@ export function isValidPulseFormula(
   ])
   for (const key of usedKeys) {
     const option = optionsByKey.get(key)
-    if (!option?.needsDailyTarget) continue
     const target = resolvePulseMetricTarget(key as MetricKey, goals, pruned)
     if (target == null || target <= 0) {
       return {
         valid: false,
-        reason: `Set a daily Pulse target for ${option.label}.`,
+        reason: `Set a daily Pulse target for ${option?.label ?? key}.`,
       }
     }
   }
@@ -1156,6 +1193,9 @@ export function pulseMetricOptionLabel(
     const habit = getHabitifyHabitCatalog().find((entry) => entry.id === id)
     if (habit) return habit.name
   }
+  if (key === WHOOP_METRIC_RECOVERY) return 'WHOOP recovery'
+  if (key === WHOOP_METRIC_SLEEP) return 'WHOOP sleep'
+  if (key === WHOOP_METRIC_STRAIN) return 'WHOOP strain'
   if (key.startsWith('workout_')) {
     const type = getWorkoutTypes().find((t) => workoutMetricKey(t.id) === key)
     if (type) return type.label

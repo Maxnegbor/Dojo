@@ -133,7 +133,7 @@ export function TodoistTasksPanel({
   }
 
   const toolbar = !hideToolbar && connected && (
-    <div className="flex shrink-0 items-center gap-0.5">
+    <div className="integration-toolbar flex shrink-0 items-center gap-0.5">
       <button
         type="button"
         onClick={() => void load()}
@@ -226,7 +226,7 @@ export function TodoistTasksPanel({
                 <Check size={11} className="scale-0 transition-transform group-hover:scale-100" />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="text-sm leading-snug text-zinc-200">{task.content}</p>
+                <p className="text-xs leading-snug text-zinc-200">{task.content}</p>
                 {task.due?.string && (
                   <p
                     className={cn(

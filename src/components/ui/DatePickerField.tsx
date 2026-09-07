@@ -11,7 +11,7 @@ import {
 } from 'date-fns'
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useSettings } from '@/context/SettingsContext'
-import { cn, formatDate, getMonthStartPad, getWeekdayLabels } from '@/lib/utils'
+import { cn, getMonthStartPad, getWeekdayLabels } from '@/lib/utils'
 
 interface DatePickerFieldProps {
   value: string
@@ -27,6 +27,10 @@ function parseValue(value: string): Date | null {
   if (!value) return null
   const d = parseISO(value + 'T12:00:00')
   return Number.isNaN(d.getTime()) ? null : d
+}
+
+function localDateKey(date: Date): string {
+  return format(date, 'yyyy-MM-dd')
 }
 
 export function DatePickerField({
@@ -45,9 +49,13 @@ export function DatePickerField({
       ? parseValue(minDate)
       : allowPast
         ? null
-        : parseValue(formatDate(new Date()))
+        : parseValue(localDateKey(new Date()))
   const [open, setOpen] = useState(false)
-  const [month, setMonth] = useState(() => selected ?? min ?? new Date())
+  const [month, setMonth] = useState(() => {
+    const initial = selected ?? min ?? new Date()
+    if (min && startOfMonth(initial) < startOfMonth(min)) return min
+    return initial
+  })
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ top: number; left: number; width: number }>({
@@ -81,7 +89,12 @@ export function DatePickerField({
   }, [open])
 
   useEffect(() => {
-    if (selected) setMonth(selected)
+    if (!selected) return
+    if (min && startOfMonth(selected) < startOfMonth(min)) {
+      setMonth(min)
+      return
+    }
+    setMonth(selected)
   }, [value])
 
   const days = eachDayOfInterval({
@@ -93,14 +106,14 @@ export function DatePickerField({
 
   const isDisabled = (day: Date) => {
     if (!min) return false
-    const dayStr = formatDate(day)
-    const minStr = formatDate(min)
-    return dayStr < minStr
+    return localDateKey(day) < localDateKey(min)
   }
+
+  const canGoPrev = !min || startOfMonth(month) > startOfMonth(min)
 
   const selectDay = (day: Date) => {
     if (isDisabled(day)) return
-    onChange(formatDate(day))
+    onChange(localDateKey(day))
     setOpen(false)
   }
 
@@ -133,7 +146,11 @@ export function DatePickerField({
               <button
                 type="button"
                 onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-                className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                disabled={!canGoPrev}
+                className={cn(
+                  'rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200',
+                  !canGoPrev && 'cursor-not-allowed opacity-25 hover:bg-transparent hover:text-zinc-400',
+                )}
                 aria-label="Previous month"
               >
                 <ChevronLeft size={16} />
@@ -168,7 +185,7 @@ export function DatePickerField({
 
                 return (
                   <button
-                    key={formatDate(day)}
+                    key={localDateKey(day)}
                     type="button"
                     disabled={disabled}
                     onClick={() => selectDay(day)}

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { parseISO } from 'date-fns'
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
 import { WorkoutWeekEditModal } from '@/components/today/WorkoutWeekEditModal'
 import { useSettings } from '@/context/SettingsContext'
 import { getActiveGoalByMetricKey, hasTarget, normalizeGoal } from '@/lib/goals'
@@ -135,26 +134,19 @@ export function WorkoutLogCard({
 
   return (
     <>
-      <Card
-        className="w-full shrink-0"
-        title={
-          <span className="inline-flex items-center gap-1.5">
-            Workouts
-            {userId ? (
-              <button
-                type="button"
-                onClick={() => setEditOpen(true)}
-                disabled={disabled}
-                className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-50"
-                aria-label="Edit this week’s workouts"
-                title="Edit week"
-              >
-                <Pencil size={13} />
-              </button>
-            ) : null}
-          </span>
-        }
-      >
+      <Card className="home-workout-card relative w-full shrink-0 overflow-visible">
+        {userId ? (
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            disabled={disabled}
+            className="workout-edit-action absolute -right-2 -top-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-zinc-200 shadow-sm transition-colors hover:bg-zinc-700 disabled:opacity-50"
+            aria-label="Edit this week’s workouts"
+            title="Edit week"
+          >
+            <Pencil size={13} />
+          </button>
+        ) : null}
         <ul className="space-y-1.5">
           {workoutTypes.map((type) => {
             const inputValue = inputs[type.id] ?? ''
@@ -173,8 +165,8 @@ export function WorkoutLogCard({
               >
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-baseline gap-1.5">
-                      <span className="truncate text-sm font-medium text-zinc-100">
+                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+                      <span className="break-words text-sm font-medium text-zinc-100">
                         {type.label}
                       </span>
                       {hasWeeklyTarget ? (
@@ -187,7 +179,7 @@ export function WorkoutLogCard({
                     </div>
                     {hasWeeklyTarget ? (
                       <div
-                        className="mt-1.5 h-1 max-w-[10.5rem] overflow-hidden rounded-full bg-zinc-800"
+                        className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-zinc-800"
                         role="progressbar"
                         aria-valuenow={Math.round(progressPct)}
                         aria-valuemin={0}
@@ -209,7 +201,9 @@ export function WorkoutLogCard({
                         min={0}
                         step="any"
                         inputMode="decimal"
-                        placeholder="Add"
+                        aria-label={`Add ${type.label} ${unit}`}
+                        title="Press Enter to add"
+                        enterKeyHint="done"
                         disabled={disabled || isSaving}
                         value={inputValue}
                         onChange={(e) =>
@@ -229,20 +223,6 @@ export function WorkoutLogCard({
                         {unit}
                       </span>
                     </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={disabled || isSaving || !inputValue.trim()}
-                      onClick={() => void logWorkout(type.id)}
-                      className={cn(
-                        'h-7 w-7 shrink-0 border-zinc-700 bg-zinc-950 p-0 hover:bg-zinc-900',
-                        'disabled:pointer-events-none disabled:opacity-100 disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600',
-                      )}
-                      aria-label={`Add ${type.label} ${unit}`}
-                    >
-                      <Plus size={12} />
-                    </Button>
                   </div>
                 </div>
               </li>

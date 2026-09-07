@@ -19,8 +19,11 @@ import { ScheduleColorsEditor } from '@/components/settings/ScheduleColorsEditor
 import { ScheduleTemplatesEditor } from '@/components/settings/ScheduleTemplatesEditor'
 import { ExerciseWeekPlanEditor } from '@/components/settings/ExerciseWeekPlanEditor'
 import { FocusLabelsEditor } from '@/components/settings/FocusLabelsEditor'
+import { OpenAIIntegrationEditor } from '@/components/settings/OpenAIIntegrationEditor'
+import { SettingsCoachEditor } from '@/components/settings/SettingsCoachEditor'
 import { HabitifyIntegrationEditor } from '@/components/settings/HabitifyIntegrationEditor'
 import { TodoistIntegrationEditor } from '@/components/settings/TodoistIntegrationEditor'
+import { WhoopIntegrationEditor } from '@/components/settings/WhoopIntegrationEditor'
 import { WorkoutSubcategoriesEditor } from '@/components/settings/WorkoutSubcategoriesEditor'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -54,6 +57,7 @@ type SettingsSectionId =
   | 'routines'
   | 'notifications'
   | 'integrations'
+  | 'coach'
   | 'data'
   | 'developer'
 
@@ -145,6 +149,7 @@ export function SettingsPage() {
       { id: 'routines', label: 'Routines' },
       { id: 'notifications', label: 'Notifications' },
       { id: 'integrations', label: 'Integrations' },
+      { id: 'coach', label: 'Coach' },
       { id: 'data', label: 'Data' },
     )
     if (settings.devMode) {
@@ -729,12 +734,24 @@ export function SettingsPage() {
   const renderIntegrations = () => (
     <div className="space-y-4">
       <Card>
+        <OpenAIIntegrationEditor onSaved={flashSaved} />
+      </Card>
+      <Card>
+        <WhoopIntegrationEditor onSaved={flashSaved} />
+      </Card>
+      <Card>
         <TodoistIntegrationEditor onSaved={flashSaved} />
       </Card>
       <Card>
         <HabitifyIntegrationEditor onSaved={flashSaved} />
       </Card>
     </div>
+  )
+
+  const renderCoach = () => (
+    <Card>
+      <SettingsCoachEditor onSaved={flashSaved} />
+    </Card>
   )
 
   const renderData = () => (
@@ -925,6 +942,8 @@ export function SettingsPage() {
         return renderNotifications()
       case 'integrations':
         return renderIntegrations()
+      case 'coach':
+        return renderCoach()
       case 'data':
         return renderData()
       case 'developer':

@@ -364,10 +364,10 @@ export function ShutdownModal({
 
         <div
           className={cn(
-            'min-h-0 flex-1 px-6 py-5',
+            'min-h-0 flex-1',
             step === 'schedule'
-              ? 'flex flex-col overflow-hidden'
-              : 'overflow-y-auto overscroll-contain scrollbar-hidden',
+              ? 'flex flex-col overflow-hidden px-3 py-3 sm:px-4 sm:py-3'
+              : 'overflow-y-auto overscroll-contain px-6 py-5 scrollbar-hidden',
           )}
         >
           {step === 'wrap-up' && (
@@ -432,33 +432,25 @@ export function ShutdownModal({
                 <p className="text-xs text-zinc-500">
                   Drag exercise plan onto the schedule · or delete plans you won’t do
                 </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <ScheduleTemplateMenu
-                    label="Template"
-                    applying={applyingTemplate}
-                    disabled={pasting}
-                    onApply={handleApplyTemplate}
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handlePasteToday}
-                    disabled={pasting || applyingTemplate || todayBlocks.length === 0}
-                  >
-                    <ClipboardCopy size={14} />
-                    {pasting ? 'Pasting…' : 'Paste today'}
-                  </Button>
-                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handlePasteToday}
+                  disabled={pasting || applyingTemplate || todayBlocks.length === 0}
+                >
+                  <ClipboardCopy size={14} />
+                  {pasting ? 'Pasting…' : 'Paste today'}
+                </Button>
               </div>
               {todayBlocks.length === 0 && (
                 <p className="shrink-0 text-[10px] text-zinc-600">
                   Today has no schedule blocks — paste is unavailable until you plan today.
                 </p>
               )}
-              <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:items-stretch">
+              <div className="flex min-h-0 flex-1 items-stretch justify-center gap-4 overflow-hidden">
                 <div
                   data-schedule-height-host
-                  className="min-h-0 min-w-0 flex-1 overflow-hidden"
+                  className="home-canvas min-h-0 w-full min-w-0 max-w-[36rem] overflow-hidden"
                 >
                   <HourlyTimeline
                     blocks={tomorrowBlocks}
@@ -472,6 +464,14 @@ export function ShutdownModal({
                     onCreate={onCreateTomorrowBlock}
                     onAssignExercise={onAssignTomorrowExercise}
                     onDropPlannedWorkout={dropPlannedWorkoutOnTomorrow}
+                    headerActions={
+                      <ScheduleTemplateMenu
+                        iconOnly
+                        applying={applyingTemplate}
+                        disabled={pasting}
+                        onApply={handleApplyTemplate}
+                      />
+                    }
                   />
                 </div>
 

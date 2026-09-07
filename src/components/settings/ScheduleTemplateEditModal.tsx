@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { LayoutTemplate, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -6,6 +6,7 @@ import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { useSettings } from '@/context/SettingsContext'
 import {
   createScheduleTemplate,
+  hoursForTemplateEditor,
   scheduleBlocksFromTemplate,
   templateBlocksFromSchedule,
   type ScheduleTemplate,
@@ -33,6 +34,15 @@ export function ScheduleTemplateEditModal({
   const [name, setName] = useState(initial?.name ?? 'New template')
   const [blocks, setBlocks] = useState<ScheduleBlock[]>(() =>
     initial ? scheduleBlocksFromTemplate(initial, TEMPLATE_EDIT_DATE, userId) : [],
+  )
+  const editorHours = useMemo(
+    () =>
+      hoursForTemplateEditor(
+        blocks,
+        settings.timelineStartHour,
+        settings.timelineEndHour,
+      ),
+    [blocks, settings.timelineStartHour, settings.timelineEndHour],
   )
 
   const save = () => {
@@ -87,7 +97,7 @@ export function ScheduleTemplateEditModal({
                 {initial ? 'Edit template' : 'New schedule template'}
               </h2>
               <p className="text-xs text-zinc-400">
-                Drag to create blocks · this won’t change today’s Home schedule
+                Drag to create blocks · shaded hours sit outside your current Home window
               </p>
             </div>
           </div>
@@ -114,8 +124,12 @@ export function ScheduleTemplateEditModal({
             date={TEMPLATE_EDIT_DATE}
             userId={userId}
             isActiveDay={false}
-            startHour={settings.timelineStartHour}
-            endHour={settings.timelineEndHour}
+            startHour={editorHours.startHour}
+            endHour={editorHours.endHour}
+            homeWindow={{
+              startHour: settings.timelineStartHour,
+              endHour: settings.timelineEndHour,
+            }}
             onUpdate={upsertBlock}
             onCreate={upsertBlock}
             onDelete={(id) => setBlocks((prev) => prev.filter((block) => block.id !== id))}

@@ -20,6 +20,7 @@ import {
   listPulseMetricOptions,
   metricsInOrGroups,
   prunePulseFormulaMetrics,
+  resolvePulseMetricTarget,
   resolveWeeklyQuantityTarget,
   setPulseOrGroupWeight,
   type PulseFormula,
@@ -34,6 +35,7 @@ import {
   HABITIFY_JOURNAL_CHANGED,
   isHabitifyConnected,
 } from '@/lib/habitifyStore'
+import { WHOOP_CHANGED } from '@/lib/whoopStore'
 
 interface PulseConfigureModalProps {
   goals: Goal[]
@@ -50,14 +52,50 @@ function createDraft(initialFormula: PulseFormula | null, goals: Goal[]): PulseF
   return createDefaultPulseFormula(goals)
 }
 
-function formatTargetHint(value: number | null, unit: string, metricKey: string): string {
-  if (value == null || value <= 0) return 'No weekly target found'
-  if (metricKey === 'focus' || unit === 'min' || unit === 'minutes') {
-    return `Weekly ${formatDuration(value)} → default ${formatDuration(Math.round(value / 7))}/day`
+function formatTargetHint(
+  option: PulseMetricOption,
+  weekly: number | null,
+  suggested: number | null,
+): string {
+  const unit = option.unit
+  const metricKey = option.key
+  const isCheckOff =
+    metricKey.startsWith('habit_') ||
+    metricKey.startsWith('habitify_') ||
+    unit === 'check'
+
+  if (weekly != null && weekly > 0) {
+    if (metricKey === 'focus' || unit === 'min' || unit === 'minutes') {
+      return `Weekly ${formatDuration(weekly)} → default ${formatDuration(Math.round(weekly / 7))}/day`
+    }
+    const daily = Math.round((weekly / 7) * 100) / 100
+    const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+    return `Weekly ${fmt(weekly)}${unit ? ` ${unit}` : ''} → default ${fmt(daily)}${unit ? ` ${unit}` : ''}/day`
   }
-  const daily = Math.round((value / 7) * 100) / 100
-  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
-  return `Weekly ${fmt(value)}${unit ? ` ${unit}` : ''} → default ${fmt(daily)}${unit ? ` ${unit}` : ''}/day`
+
+  if (isCheckOff) {
+    return '1 = done for the day'
+  }
+
+  if (metricKey === 'whoop_recovery') {
+    return 'WHOOP green starts at 67'
+  }
+  if (metricKey === 'whoop_sleep') {
+    return 'Sleep performance %, 85 is a solid night'
+  }
+  if (metricKey === 'whoop_strain') {
+    return 'Day strain, typically 0–21'
+  }
+
+  if (suggested != null && suggested > 0) {
+    if (metricKey === 'focus' || unit === 'min' || unit === 'minutes') {
+      return `Default ${formatDuration(suggested)}/day`
+    }
+    const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+    return `Default ${fmt(suggested)}${unit ? ` ${unit}` : ''}/day`
+  }
+
+  return 'Set how much counts as a full day'
 }
 
 function WeightStepper({
@@ -182,9 +220,11 @@ export function PulseConfigureModal({
     const bump = () => setHabitifyTick((n) => n + 1)
     window.addEventListener(HABITIFY_CHANGED, bump)
     window.addEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+    window.addEventListener(WHOOP_CHANGED, bump)
     return () => {
       window.removeEventListener(HABITIFY_CHANGED, bump)
       window.removeEventListener(HABITIFY_JOURNAL_CHANGED, bump)
+      window.removeEventListener(WHOOP_CHANGED, bump)
     }
   }, [])
 
@@ -266,11 +306,7 @@ export function PulseConfigureModal({
   const handlePrimaryAction = () => {
     if (step === 'weights') {
       if (!weightsValid) return
-      if (needingDailyTargets.length > 0) {
-        goToDailyTargetsStep()
-        return
-      }
-      onSave(prunePulseFormulaMetrics(draft, goals))
+      goToDailyTargetsStep()
       return
     }
     if (!canSave) return
@@ -289,7 +325,7 @@ export function PulseConfigureModal({
 
   const subtitle =
     step === 'daily-targets'
-      ? 'These metrics have weekly targets. Set how much counts as a full day for Pulse (default = weekly ÷ 7).'
+      ? 'Set a daily target for each included metric. This is how much counts as a full day for Pulse.'
       : equalMode
         ? 'Included metrics each make up an equal share of your daily score.'
         : `Distribute ${PULSE_POINTS_TOTAL} points across individual metrics. Each point is 10% of your daily score.`
@@ -312,11 +348,9 @@ export function PulseConfigureModal({
                 {title}
               </h2>
               <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
-              {needingDailyTargets.length > 0 && (
-                <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-zinc-600">
-                  Step {step === 'weights' ? '1' : '2'} of 2
-                </p>
-              )}
+              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-zinc-600">
+                Step {step === 'weights' ? '1' : '2'} of 2
+              </p>
             </div>
           </div>
           <button
@@ -432,7 +466,6 @@ export function PulseConfigureModal({
                                 return (
                                   <li key={key} className="text-[11px] text-zinc-400">
                                     · {option?.label ?? key}
-                                    {option?.needsDailyTarget ? ' · daily target next' : ''}
                                   </li>
                                 )
                               })}
@@ -573,8 +606,14 @@ export function PulseConfigureModal({
             <div className="space-y-3">
               {needingDailyTargets.map((option) => {
                 const weekly = resolveWeeklyQuantityTarget(option.key, goals)
+                const suggested = resolvePulseMetricTarget(option.key, goals, {
+                  ...draft,
+                  dailyTargets: {},
+                })
                 const dailyTarget =
-                  draft.dailyTargets[option.key] ?? defaultPulseDailyTarget(option.key, goals)
+                  draft.dailyTargets[option.key] ??
+                  defaultPulseDailyTarget(option.key, goals) ??
+                  suggested
                 return (
                   <div
                     key={option.key}
@@ -584,7 +623,7 @@ export function PulseConfigureModal({
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-zinc-200">{option.label}</p>
                         <p className="mt-0.5 text-[11px] text-zinc-500">
-                          {formatTargetHint(weekly, option.unit, option.key)}
+                          {formatTargetHint(option, weekly, suggested)}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -631,9 +670,7 @@ export function PulseConfigureModal({
               disabled={step === 'weights' ? !weightsValid : !canSave}
               onClick={handlePrimaryAction}
             >
-              {step === 'weights' && needingDailyTargets.length > 0
-                ? 'Continue'
-                : 'Save formula'}
+              {step === 'weights' ? 'Continue' : 'Save formula'}
             </Button>
           </div>
         </div>

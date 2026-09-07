@@ -13,6 +13,7 @@ import { ExperimentsPage } from '@/pages/ExperimentsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { WhoopCallbackPage } from '@/pages/WhoopCallbackPage'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<RequireAuth />}>
+            <Route path="whoop/callback" element={<WhoopCallbackPage />} />
             <Route element={<AppShell />}>
               <Route path="onboarding" element={<OnboardingPage />} />
               <Route element={<OnboardingGate />}>

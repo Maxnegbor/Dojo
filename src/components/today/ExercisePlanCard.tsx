@@ -262,8 +262,10 @@ export function ExercisePlanCard({
         if (pickerOpen) resetDraft()
       }}
       disabled={workoutTypes.length === 0}
+      aria-label={pickerOpen ? 'Close exercise picker' : 'Add exercise'}
+      title={pickerOpen ? 'Close exercise picker' : 'Add exercise'}
       className={cn(
-        'inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold transition-colors',
+        'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
         pickerOpen
           ? 'bg-zinc-800 text-zinc-200'
           : 'bg-[var(--accent-500)] text-black hover:bg-[var(--accent-400)]',
@@ -271,7 +273,6 @@ export function ExercisePlanCard({
       )}
     >
       {pickerOpen ? <X size={11} /> : <Plus size={11} />}
-      {pickerOpen ? 'Close' : 'Add'}
     </button>
   )
 
@@ -283,22 +284,19 @@ export function ExercisePlanCard({
         resetDraft()
         setWeekEditOpen(true)
       }}
-      className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-zinc-700/80 bg-zinc-900/80 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-800 text-zinc-200 shadow-sm transition-colors hover:bg-zinc-700"
       aria-label="Edit week plan"
+      title="Edit week plan"
     >
       <Pencil size={11} />
-      Edit
     </button>
   ) : null
 
   return (
-    <Card className={cn('border-0 shadow-none', className)}>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold text-zinc-200">Exercise plan</h3>
-        <div className="flex items-center gap-1">
-          {editWeekButton}
-          {addButton}
-        </div>
+    <Card className={cn('home-exercise-card relative overflow-visible border-0 shadow-none', className)}>
+      <div className="exercise-plan-actions absolute -right-2 -top-2 z-20 flex items-center gap-1">
+        {addButton}
+        {editWeekButton}
       </div>
       {weekEditOpen && (
         <ExerciseWeekEditModal

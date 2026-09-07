@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { OverviewCategoryPanel } from '@/components/overview/OverviewCategoryPanel'
 import { OverviewHome } from '@/components/overview/OverviewHome'
+import { OverviewCoachCard } from '@/components/overview/OverviewCoachCard'
 import { OverviewPeriodNav } from '@/components/overview/OverviewPeriodNav'
 import { OverviewPeriodTabs } from '@/components/overview/OverviewPeriodTabs'
 import { useSettings } from '@/context/SettingsContext'
@@ -256,14 +257,25 @@ export function OverviewPage() {
       {detailCategory ? (
         <OverviewCategoryPanel {...panelProps} category={detailCategory} />
       ) : (
-        <OverviewHome
-          period={period}
-          categories={overviewCategories}
-          stats={stats}
-          goals={goals}
-          outcomeProgress={outcomeProgress}
-          onOpenCategory={setDetailCategory}
-        />
+        <>
+          <OverviewCoachCard
+            period={period}
+            label={navLabel}
+            stats={stats}
+            logs={logs}
+            workouts={workouts}
+            goals={goals}
+            asOf={asOf}
+          />
+          <OverviewHome
+            period={period}
+            categories={overviewCategories}
+            stats={stats}
+            goals={goals}
+            outcomeProgress={outcomeProgress}
+            onOpenCategory={setDetailCategory}
+          />
+        </>
       )}
     </div>
   )

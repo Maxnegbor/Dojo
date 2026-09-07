@@ -24,7 +24,7 @@ export function TodoistTasksCard({ viewDate, className }: TodoistTasksCardProps)
   return (
     <Card
       className={cn(
-        'min-w-0 w-full overflow-visible',
+        'home-integration-card min-w-0 w-full overflow-visible',
         !collapsed && className,
       )}
     >

@@ -31,6 +31,7 @@ export type MetricKey =
   | `workout_${string}`
   | `habit_${string}`
   | `habitify_${string}`
+  | `whoop_${string}`
   | `sleep:${string}`
   | `custom:${string}`
 
