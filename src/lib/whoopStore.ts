@@ -1,5 +1,4 @@
 import { storageGetItem, storageRemoveItem, storageSetItem } from '@/lib/userStorage'
-import type { MetricKey } from '@/types'
 
 const CREDENTIALS_KEY = 'personal-os-whoop-credentials'
 const TOKENS_KEY = 'personal-os-whoop-tokens'
@@ -15,9 +14,9 @@ export const WHOOP_OAUTH_RESULT_KEY = 'personal-os-whoop-oauth-result'
 
 export const WHOOP_CATEGORY_ID = 'whoop'
 
-export const WHOOP_METRIC_RECOVERY = 'whoop_recovery' as MetricKey
-export const WHOOP_METRIC_SLEEP = 'whoop_sleep' as MetricKey
-export const WHOOP_METRIC_STRAIN = 'whoop_strain' as MetricKey
+export const WHOOP_METRIC_RECOVERY = 'whoop_recovery'
+export const WHOOP_METRIC_SLEEP = 'whoop_sleep'
+export const WHOOP_METRIC_STRAIN = 'whoop_strain'
 
 export const WHOOP_PULSE_METRICS = [
   WHOOP_METRIC_RECOVERY,

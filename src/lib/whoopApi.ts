@@ -315,9 +315,9 @@ async function fetchCollection<T>(path: string, start: string, end: string): Pro
   const records: T[] = []
   let nextPath: string | null = collectionPath(path, start, end)
   while (nextPath) {
-    const page = await whoopFetch<CollectionResponse<T>>(nextPath)
+    const page: CollectionResponse<T> = await whoopFetch(nextPath)
     records.push(...(page.records ?? []))
-    const token = page.next_token
+    const token: string | null | undefined = page.next_token
     nextPath = token
       ? `${collectionPath(path, start, end)}&nextToken=${encodeURIComponent(token)}`
       : null
