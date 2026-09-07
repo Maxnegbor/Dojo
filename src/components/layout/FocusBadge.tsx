@@ -42,19 +42,17 @@ export function FocusBadge({ className }: FocusBadgeProps) {
   return (
     <div
       className={cn(
-        'relative w-full min-w-0 overflow-hidden rounded-full border border-[var(--accent-600)] bg-[var(--accent-950)]',
+        'relative w-full min-w-0 overflow-hidden rounded-full border border-[var(--accent-600)]',
         className,
       )}
+      style={{
+        background:
+          percent != null
+            ? `linear-gradient(to right, color-mix(in srgb, var(--accent-500) 20%, var(--accent-950)) 0%, color-mix(in srgb, var(--accent-500) 20%, var(--accent-950)) max(0%, calc(${percent}% - 8px)), var(--accent-950) ${percent}%)`
+            : 'var(--accent-950)',
+        transition: isLive ? 'none' : 'background 0.4s ease-out',
+      }}
     >
-      {percent != null && (
-        <div
-          className="absolute inset-y-0 left-0 bg-[var(--accent-500)]/30"
-          style={{
-            width: `${percent}%`,
-            transition: isLive ? 'none' : 'width 0.4s ease-out',
-          }}
-        />
-      )}
       <div className="relative flex min-h-[2rem] items-center justify-center px-2 py-1.5 text-center text-[var(--accent-200)]">
         <span className="text-xs font-medium tabular-nums whitespace-nowrap">
           {durationLabel} focused

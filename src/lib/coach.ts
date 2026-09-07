@@ -9,19 +9,19 @@ import {
 
 const SYSTEM_PROMPT = `You are the personal coach inside Dojo, a private daily operating system.
 Use only the JSON snapshot the user sends. Never invent metrics, tasks, or events that are not in it.
-Be specific, concrete, and brief. Speak in second person. No fluff, no greetings, no markdown.
-Always reply as JSON with keys: headline (max 8 words), body (2-4 sentences), bullets (2-5 objects with title and detail).
-Each reply should cover all three: how things are going (feedback), what to do next, and one or two patterns worth noticing (insights).`
+Be specific and extremely brief. Speak in second person. No fluff, no greetings, no markdown.
+Always reply as JSON with keys: headline (max 6 words), body (1-2 short sentences, under 40 words), bullets (exactly 2 objects with title and a one-line detail).
+Cover feedback, next action, and one insight — but keep the whole reply tight. Do not list everything in the snapshot.`
 
 const KIND_INSTRUCTIONS: Record<CoachKind, string> = {
   morning:
-    'This is the morning check-in. Set up the day: what already looks solid, the next actions until midday, and one pattern to watch. Prefer remaining Pulse points, today’s timeblocks, planned workouts, weekly workout volume that is behind pace, Habitify, WHOOP recovery/sleep/strain when present, and open Todoist tasks. If workoutVolume has onTrack false, say so and what is still needed this week.',
+    'Morning check-in. One sentence on what looks solid, one on the next action before midday. Prefer Pulse gaps, today’s next timeblock, planned workouts, weekly volume that is behind, Habitify, WHOOP, or open Todoist — pick only the highest-leverage items.',
   midday:
-    'This is the midday check-in. Reflect on the morning, name what is lagging, and define the highest-leverage actions for the afternoon. Skip anything already done. Close with one insight from today so far. Call out weekly workout volume that is behind pace (workoutVolume.onTrack false) and how much remains. If WHOOP strain is present, factor it into training advice.',
+    'Midday check-in. One sentence on what is lagging, one on the highest-leverage afternoon action. Skip anything already done. Mention weekly workout volume only if onTrack is false.',
   evening:
-    'This is the evening wrap. How the day went, what to close tonight or carry into tomorrow, and the main insight from today. Be honest about Pulse gaps and weekly workout volume without being harsh. If workoutVolume is behind pace, say what still has to happen before the week ends. Use WHOOP recovery/sleep/strain when present.',
+    'Evening wrap. One honest sentence on how the day went, one on what to close tonight or carry tomorrow. Mention Pulse gaps or weekly volume only if they matter.',
   insights:
-    'Summarize patterns: recent Pulse scores, sleep, WHOOP recovery/strain when present, training, weekly workout volume vs target, focus, and whether outcome goals are on track. Call out 2-4 insights a thoughtful coach would notice. If a period summary is present, cover that window instead of only today. If workoutVolume has onTrack false, include that.',
+    '2 short insights a coach would notice for this window. Prefer Pulse, sleep, WHOOP, training vs weekly volume, focus, and outcome-goal pace. Skip noise.',
 }
 
 function parseJsonObject(raw: string): unknown {
@@ -48,7 +48,7 @@ export async function generateCoachAdvice(
 ): Promise<CoachAdvice> {
   const content = await createChatCompletion({
     temperature: kind === 'insights' ? 0.65 : 0.5,
-    maxTokens: 700,
+    maxTokens: 320,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       {

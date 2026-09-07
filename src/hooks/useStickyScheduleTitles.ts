@@ -3,7 +3,7 @@ import { useLayoutEffect, type RefObject } from 'react'
 const BLOCK_SELECTOR = '[data-schedule-block]'
 const TITLE_SELECTOR = '[data-sticky-block-title]'
 /** Keep pinned titles just inside the rounded schedule viewport. */
-const VIEW_TOP_INSET_PX = 8
+const VIEW_TOP_INSET_PX = 12
 
 function stickyTitleOffset(
   viewTop: number,

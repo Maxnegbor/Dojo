@@ -212,10 +212,20 @@ export function HabitifyHabitsPanel({
   )
 
   const showTitleHeader = !hideHeader || headerLeading != null
+  const doneCount = entries.filter((e) => e.status === 'completed').length
+  const showProgress = connected && (entries.length > 0 || (!loading && !error))
   const header = showTitleHeader ? (
     <div className={cn('flex items-center justify-between gap-2', !collapsed && 'mb-2')}>
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         {headerLeading ?? <p className="text-sm font-semibold text-zinc-200">Habitify</p>}
+        {showProgress ? (
+          <span
+            className="shrink-0 text-xs font-medium tabular-nums text-zinc-400"
+            aria-label={`${doneCount} of ${entries.length} Habitify habits done`}
+          >
+            {doneCount}/{entries.length}
+          </span>
+        ) : null}
       </div>
       {toolbar}
     </div>
@@ -247,8 +257,6 @@ export function HabitifyHabitsPanel({
       </div>
     )
   }
-
-  const doneCount = entries.filter((e) => e.status === 'completed').length
 
   return (
     <div className={cn('flex h-fit flex-col', className)}>

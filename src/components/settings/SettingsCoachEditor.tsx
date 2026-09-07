@@ -39,7 +39,7 @@ export function SettingsCoachEditor({ onSaved }: SettingsCoachEditorProps) {
   return (
     <SettingsSection
       title="Daily coaching"
-      description="Coach writes three check-ins a day on Home: morning, midday, and evening. Each one covers how things are going, what to do next, and a short insight. Times use your local clock."
+      description="Coach writes three short check-ins a day on Home: morning, midday, and evening. Times use your local clock."
     >
       <div className="space-y-3">
         {COACH_SLOTS.map((slot) => (

@@ -17,13 +17,19 @@ const whoopTokenProxy: ProxyOptions = {
 const whoopDeveloperProxy: ProxyOptions = {
   target: 'https://api.prod.whoop.com',
   changeOrigin: true,
-  rewrite: (path) => path.replace(/^\/api\/whoop\/developer/, '/developer'),
+  rewrite: (incoming) => {
+    const url = new URL(incoming, 'http://localhost')
+    const whoopPath = url.searchParams.get('path') || ''
+    url.searchParams.delete('path')
+    const search = url.searchParams.toString()
+    return `/developer/${whoopPath}${search ? `?${search}` : ''}`
+  },
 }
 
 const whoopProxy = {
   '/api/openai': openaiProxy,
   '/api/whoop/token': whoopTokenProxy,
-  '/api/whoop/developer': whoopDeveloperProxy,
+  '/api/whoop/proxy': whoopDeveloperProxy,
 }
 
 export default defineConfig({

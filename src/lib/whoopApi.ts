@@ -6,6 +6,7 @@ import {
   getWhoopTokens,
   saveWhoopProfile,
   saveWhoopTokens,
+  WHOOP_DATA_SCOPES,
   WHOOP_SCOPES,
   whoopRedirectUri,
   type WhoopCredentials,
@@ -16,7 +17,7 @@ import {
 } from '@/lib/whoopStore'
 
 const TOKEN_URL = '/api/whoop/token'
-const API_BASE = '/api/whoop/developer'
+const API_BASE = '/api/whoop/proxy'
 
 const TOKEN_SKEW_MS = 60_000
 
@@ -60,8 +61,6 @@ interface WhoopRecoveryRaw {
     recovery_score?: number
     resting_heart_rate?: number
     hrv_rmssd_milli?: number
-    spo2_percentage?: number
-    skin_temp_celsius?: number
   } | null
 }
 
@@ -103,24 +102,43 @@ interface WhoopWorkoutRaw {
   id?: string
   start?: string
   end?: string | null
+  timezone_offset?: string
   sport_name?: string
   score?: { strain?: number } | null
 }
 
 let refreshInFlight: Promise<WhoopTokens> | null = null
 
-function errorMessage(payload: unknown, fallback: string, status: number): string {
-  if (payload && typeof payload === 'object') {
-    const obj = payload as { error?: unknown; error_description?: unknown; message?: unknown }
-    if (typeof obj.error_description === 'string' && obj.error_description.trim()) {
-      return obj.error_description
-    }
-    if (typeof obj.message === 'string' && obj.message.trim()) return obj.message
-    if (typeof obj.error === 'string' && obj.error.trim()) return obj.error
+function nestedMessage(value: unknown, depth = 0): string | null {
+  if (depth > 4) return null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
   }
+  if (!value || typeof value !== 'object') return null
+  const obj = value as Record<string, unknown>
+  for (const key of ['error_description', 'message', 'error', 'detail']) {
+    const inner = nestedMessage(obj[key], depth + 1)
+    if (inner) return inner
+  }
+  return null
+}
+
+function errorMessage(payload: unknown, fallback: string, status: number): string {
+  const extracted = nestedMessage(payload)
+  if (extracted) return extracted
   if (status === 401) return 'WHOOP authorization expired. Reconnect in Settings → Integrations.'
+  if (status === 403) {
+    return 'WHOOP denied access. In the WHOOP Developer Dashboard, enable recovery, sleep, cycle, workout, and profile scopes, then reconnect.'
+  }
   if (status === 429) return 'WHOOP rate limit hit. Wait a moment and try again.'
-  return fallback
+  return status ? `${fallback} (${status})` : fallback
+}
+
+function missingWhoopDataScopes(scope: string): string[] {
+  const granted = new Set(scope.split(/[\s+]+/).filter(Boolean))
+  if (granted.size === 0) return []
+  return WHOOP_DATA_SCOPES.filter((item) => !granted.has(item))
 }
 
 async function postToken(params: URLSearchParams): Promise<WhoopTokens> {
@@ -138,11 +156,14 @@ async function postToken(params: URLSearchParams): Promise<WhoopTokens> {
     throw new WhoopApiError('Could not reach WHOOP. Check your connection and try again.', 0)
   }
 
+  const text = await res.text()
   let payload: TokenResponse | null = null
-  try {
-    payload = (await res.json()) as TokenResponse
-  } catch {
-    payload = null
+  if (text.trim()) {
+    try {
+      payload = JSON.parse(text) as TokenResponse
+    } catch {
+      payload = { error_description: text.trim() }
+    }
   }
 
   if (!res.ok) {
@@ -186,7 +207,7 @@ export function buildWhoopAuthorizeUrl(input: {
     scope: WHOOP_SCOPES,
     state: input.state,
   })
-  return `https://api.prod.whoop.com/oauth/oauth2/auth?${params.toString()}`
+  return `https://api.prod.whoop.com/oauth/oauth2/auth?${params.toString().replace(/\+/g, '%20')}`
 }
 
 export async function exchangeWhoopCode(input: {
@@ -205,6 +226,13 @@ export async function exchangeWhoopCode(input: {
       redirect_uri: input.redirectUri ?? whoopRedirectUri(),
     }),
   )
+  const missing = missingWhoopDataScopes(tokens.scope)
+  if (missing.length > 0) {
+    throw new WhoopApiError(
+      `WHOOP did not grant ${missing.join(', ')}. Edit your app in the WHOOP Developer Dashboard, enable those scopes, add the redirect URL from Settings, then reconnect.`,
+      403,
+    )
+  }
   return saveWhoopTokens(tokens)
 }
 
@@ -242,11 +270,18 @@ async function validAccessToken(): Promise<string> {
   return refreshed.accessToken
 }
 
+function whoopProxyUrl(path: string): string {
+  const [pathname, qs = ''] = path.replace(/^\//, '').split('?')
+  const params = new URLSearchParams(qs)
+  params.set('path', pathname)
+  return `${API_BASE}?${params.toString()}`
+}
+
 async function whoopFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const run = async (accessToken: string) => {
     let res: Response
     try {
-      res = await fetch(`${API_BASE}/${path.replace(/^\//, '')}`, {
+      res = await fetch(whoopProxyUrl(path), {
         ...init,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -269,17 +304,20 @@ async function whoopFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (res.status === 204) return undefined as T
 
+  const text = await res.text()
   let payload: unknown = null
-  try {
-    payload = await res.json()
-  } catch {
-    payload = null
+  if (text.trim()) {
+    try {
+      payload = JSON.parse(text) as unknown
+    } catch {
+      payload = text.trim()
+    }
   }
 
   if (!res.ok) {
     throw new WhoopApiError(errorMessage(payload, 'WHOOP request failed', res.status), res.status)
   }
-  return payload as T
+  return (payload ?? undefined) as T
 }
 
 export async function revokeWhoopAccess(): Promise<void> {
@@ -347,6 +385,17 @@ function milliToMinutes(ms: number | null | undefined): number | null {
   return Math.round(ms / 60000)
 }
 
+function clockMinutesFromWhoop(iso: string | null | undefined, tzOffset?: string | null): number | null {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  if (tzOffset && /^[+-]\d{2}:\d{2}$/.test(tzOffset)) {
+    const local = new Date(date.getTime() + parseOffsetMs(tzOffset))
+    return local.getUTCHours() * 60 + local.getUTCMinutes()
+  }
+  return date.getHours() * 60 + date.getMinutes()
+}
+
 function sleepMinutesFrom(sleep: WhoopSleepRaw): number | null {
   const stages = sleep.score?.stage_summary
   if (!stages) return null
@@ -363,8 +412,6 @@ function emptyDay(date: string): WhoopDaySnapshot {
     recoveryScore: null,
     restingHr: null,
     hrvMs: null,
-    spo2: null,
-    skinTempC: null,
     strain: null,
     kilojoule: null,
     sleepPerformance: null,
@@ -372,9 +419,43 @@ function emptyDay(date: string): WhoopDaySnapshot {
     sleepConsistency: null,
     sleepMinutes: null,
     inBedMinutes: null,
+    bedtimeMinutes: null,
+    wakeMinutes: null,
+    lightSleepMinutes: null,
+    swsMinutes: null,
+    remMinutes: null,
+    awakeMinutes: null,
     workouts: [],
     fetchedAt: Date.now(),
   }
+}
+
+function pickCycleForDate(cycles: WhoopCycleRaw[], date: string): WhoopCycleRaw | null {
+  const dated = cycles
+    .map((cycle) => {
+      const startDate = localDateFromWhoop(cycle.start, cycle.timezone_offset)
+      const endDate = localDateFromWhoop(cycle.end, cycle.timezone_offset)
+      const startMs = cycle.start ? new Date(cycle.start).getTime() : 0
+      return { cycle, startDate, endDate, startMs }
+    })
+    .filter((row) => Number.isFinite(row.startMs))
+
+  const startedToday = dated
+    .filter((row) => row.startDate === date)
+    .sort((a, b) => b.startMs - a.startMs)
+  const startedTodayScored = startedToday.find((row) => row.cycle.score?.strain != null)
+  if (startedTodayScored) return startedTodayScored.cycle
+  if (startedToday[0]) return startedToday[0].cycle
+
+  const covering = dated
+    .filter((row) => {
+      if (!row.startDate || row.startDate > date) return false
+      if (!row.endDate) return true
+      return row.endDate > date
+    })
+    .sort((a, b) => b.startMs - a.startMs)
+  const coveringScored = covering.find((row) => row.cycle.score?.strain != null)
+  return coveringScored?.cycle ?? covering[0]?.cycle ?? null
 }
 
 export async function syncWhoopDay(date: string): Promise<WhoopDaySnapshot> {
@@ -402,6 +483,12 @@ export async function syncWhoopDay(date: string): Promise<WhoopDaySnapshot> {
     day.sleepConsistency = sleepForDay.score?.sleep_consistency_percentage ?? null
     day.sleepMinutes = sleepMinutesFrom(sleepForDay)
     day.inBedMinutes = milliToMinutes(sleepForDay.score?.stage_summary?.total_in_bed_time_milli)
+    day.bedtimeMinutes = clockMinutesFromWhoop(sleepForDay.start, sleepForDay.timezone_offset)
+    day.wakeMinutes = clockMinutesFromWhoop(sleepForDay.end, sleepForDay.timezone_offset)
+    day.lightSleepMinutes = milliToMinutes(sleepForDay.score?.stage_summary?.total_light_sleep_time_milli)
+    day.swsMinutes = milliToMinutes(sleepForDay.score?.stage_summary?.total_slow_wave_sleep_time_milli)
+    day.remMinutes = milliToMinutes(sleepForDay.score?.stage_summary?.total_rem_sleep_time_milli)
+    day.awakeMinutes = milliToMinutes(sleepForDay.score?.stage_summary?.total_awake_time_milli)
     const recovery =
       recoveries.find((row) => row.sleep_id && row.sleep_id === sleepForDay.id) ??
       recoveries.find((row) => row.cycle_id != null && row.cycle_id === sleepForDay.cycle_id)
@@ -409,29 +496,17 @@ export async function syncWhoopDay(date: string): Promise<WhoopDaySnapshot> {
       day.recoveryScore = recovery.score.recovery_score ?? null
       day.restingHr = recovery.score.resting_heart_rate ?? null
       day.hrvMs = recovery.score.hrv_rmssd_milli ?? null
-      day.spo2 = recovery.score.spo2_percentage ?? null
-      day.skinTempC = recovery.score.skin_temp_celsius ?? null
     }
   }
 
-  const cycleForDay =
-    cycles.find((cycle) => {
-      const startDate = localDateFromWhoop(cycle.start, cycle.timezone_offset)
-      const endDate = localDateFromWhoop(cycle.end, cycle.timezone_offset)
-      if (startDate && endDate) return date >= startDate && date <= endDate
-      return startDate === date
-    }) ??
-    cycles.find((cycle) => localDateFromWhoop(cycle.start, cycle.timezone_offset) === date)
-
-  if (cycleForDay?.score) {
-    day.strain = cycleForDay.score.strain ?? null
-    day.kilojoule = cycleForDay.score.kilojoule ?? null
-  }
+  const cycleForDay = pickCycleForDate(cycles, date)
 
   day.workouts = workouts
     .map((workout): WhoopWorkoutSummary | null => {
       if (!workout.id || !workout.start) return null
-      const local = localDateFromWhoop(workout.start)
+      const local =
+        localDateFromWhoop(workout.start, workout.timezone_offset) ??
+        localDateFromWhoop(workout.start)
       if (local !== date) return null
       return {
         id: workout.id,
@@ -442,6 +517,18 @@ export async function syncWhoopDay(date: string): Promise<WhoopDaySnapshot> {
       }
     })
     .filter((row): row is WhoopWorkoutSummary => row != null)
+
+  if (cycleForDay?.score?.strain != null) {
+    day.strain = cycleForDay.score.strain
+  } else {
+    const workoutStrain = day.workouts
+      .map((workout) => workout.strain)
+      .filter((value): value is number => value != null)
+    if (workoutStrain.length > 0) {
+      day.strain = workoutStrain.reduce((sum, value) => sum + value, 0)
+    }
+  }
+  day.kilojoule = cycleForDay?.score?.kilojoule ?? null
 
   cacheWhoopDay(day)
   return day

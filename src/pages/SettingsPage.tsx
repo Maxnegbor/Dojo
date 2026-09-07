@@ -956,7 +956,6 @@ export function SettingsPage() {
       <header className="mb-6 flex min-h-10 items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-zinc-100">Settings</h1>
-          <p className="text-xs text-zinc-500">Make Dojo yours — changes apply instantly</p>
         </div>
         <span
           className={cn(

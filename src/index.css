@@ -746,6 +746,7 @@ input[type="number"] {
 
 .home-stage {
   --home-panel-bg: color-mix(in srgb, #121217 88%, var(--accent-950));
+  --home-pulse-overlap: -0.85rem;
 }
 
 .home-stage .home-rail {
@@ -819,9 +820,24 @@ input[type="number"] {
   box-shadow: none;
 }
 
+.home-schedule-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 0.75rem;
+  clip-path: inset(0 round 0.75rem);
+}
+
+.home-schedule-panel {
+  overflow: hidden;
+  border-radius: 0.75rem;
+  clip-path: inset(0 round 0.75rem);
+}
+
 .home-timeblock-space {
-  border-top-left-radius: 0.5rem;
-  border-top-right-radius: 0.5rem;
+  --home-timeblock-radius: 0.75rem;
+  --home-timeblock-cut: #06060b;
+  isolation: isolate;
+  border-radius: var(--home-timeblock-radius);
   background:
     linear-gradient(
       180deg,
@@ -831,12 +847,48 @@ input[type="number"] {
     );
 }
 
+/* The gray column is taller than the viewport, so its own radius only
+   rounds the start/end of the day. This sticky overlay bites the four
+   visible corners while scrolling so blocks clip as a rounded rect. */
+.home-timeblock-viewport-clip {
+  pointer-events: none;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  width: 100%;
+  background:
+    radial-gradient(
+        circle at 100% 100%,
+        transparent var(--home-timeblock-radius),
+        var(--home-timeblock-cut) calc(var(--home-timeblock-radius) + 0.5px)
+      )
+      top left / var(--home-timeblock-radius) var(--home-timeblock-radius) no-repeat,
+    radial-gradient(
+        circle at 0 100%,
+        transparent var(--home-timeblock-radius),
+        var(--home-timeblock-cut) calc(var(--home-timeblock-radius) + 0.5px)
+      )
+      top right / var(--home-timeblock-radius) var(--home-timeblock-radius) no-repeat,
+    radial-gradient(
+        circle at 100% 0,
+        transparent var(--home-timeblock-radius),
+        var(--home-timeblock-cut) calc(var(--home-timeblock-radius) + 0.5px)
+      )
+      bottom left / var(--home-timeblock-radius) var(--home-timeblock-radius) no-repeat,
+    radial-gradient(
+        circle at 0 0,
+        transparent var(--home-timeblock-radius),
+        var(--home-timeblock-cut) calc(var(--home-timeblock-radius) + 0.5px)
+      )
+      bottom right / var(--home-timeblock-radius) var(--home-timeblock-radius) no-repeat;
+}
+
 /* Pulse drop shadow — clipped to the schedule panel, not the black around the meter. */
 .home-stage--pulse .home-schedule-panel::before {
   content: '';
   position: absolute;
   left: calc(50% + 0.5rem);
-  top: calc(var(--home-pulse-core, 6.75rem) / -2 + 1.125rem);
+  top: calc(var(--home-pulse-core, 6.75rem) / -2 + var(--home-pulse-overlap, 0px));
   z-index: 8;
   width: var(--home-pulse-core, 6.75rem);
   height: var(--home-pulse-core, 6.75rem);

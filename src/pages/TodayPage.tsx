@@ -7,7 +7,7 @@ import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { HabitifyHabitsCard } from '@/components/today/HabitifyHabitsCard'
-import { WhoopCard } from '@/components/today/WhoopCard'
+import { WhoopPulseOrbits } from '@/components/today/WhoopPulseOrbits'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
 import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
 import { ExperimentHomeCard } from '@/components/today/ExperimentHomeCard'
@@ -47,7 +47,7 @@ import { normalizeDailyShutdownSteps } from '@/lib/dailyShutdownSteps'
 import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habitTypes'
 import { HABITIFY_CHANGED, HABITIFY_JOURNAL_CHANGED } from '@/lib/habitifyStore'
-import { isWhoopConnected, WHOOP_CHANGED, WHOOP_DAYS_CHANGED } from '@/lib/whoopStore'
+import { WHOOP_CHANGED, WHOOP_DAYS_CHANGED } from '@/lib/whoopStore'
 import { computeDayPulse, PULSE_HEADER_SCALE, pulseCorePx } from '@/lib/pulse'
 import { buildPulseContributors } from '@/lib/pulseBreakdown'
 import { getPulseFormulaForDate } from '@/lib/pulseConfig'
@@ -789,13 +789,16 @@ export function TodayPage() {
           >
             {settings.showHomePulse && (
               <div
-                className="pointer-events-auto"
+                className="pointer-events-auto relative overflow-visible"
                 style={{
-                  // Match `.home-schedule-panel::before` shadow: center sits 1.125rem into the schedule.
+                  width: pulseCorePx(PULSE_HEADER_SCALE),
+                  height: pulseCorePx(PULSE_HEADER_SCALE),
+                  // Match `.home-schedule-panel::before` shadow via --home-pulse-overlap.
                   transform:
-                    'translateY(calc(var(--home-pulse-core) / 2 + 1.125rem + 0.25rem + 4px))',
+                    'translateY(calc(var(--home-pulse-core) / 2 + var(--home-pulse-overlap, 0px) + 0.25rem + 4px))',
                 }}
               >
+                <WhoopPulseOrbits date={viewDate} />
                 <HomePulseCard
                   score={headerPulseScore}
                   contributors={pulseContributors}
@@ -973,7 +976,6 @@ export function TodayPage() {
               )}
             </div>
           ) : null}
-          {isWhoopConnected() && <WhoopCard viewDate={viewDate} className="w-full" />}
           <HabitifyHabitsCard
             viewDate={viewDate}
             className="w-full"

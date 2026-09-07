@@ -18,8 +18,8 @@ export default async function handler(req, res) {
     return
   }
 
-  const pathParts = req.query.path
-  const path = Array.isArray(pathParts) ? pathParts.join('/') : String(pathParts || '')
+  const rawPath = req.query.path
+  const path = Array.isArray(rawPath) ? rawPath[0] : String(rawPath || '')
   if (!path.startsWith('v2/')) {
     res.status(400).json({ error: { message: 'Invalid WHOOP path' } })
     return

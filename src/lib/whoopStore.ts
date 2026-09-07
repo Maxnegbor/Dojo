@@ -4,7 +4,6 @@ const CREDENTIALS_KEY = 'personal-os-whoop-credentials'
 const TOKENS_KEY = 'personal-os-whoop-tokens'
 const PROFILE_KEY = 'personal-os-whoop-profile'
 const DAYS_KEY = 'personal-os-whoop-days'
-const HOME_COLLAPSED_KEY = 'personal-os-whoop-home-collapsed'
 
 export const WHOOP_CHANGED = 'personal-os-whoop-changed'
 export const WHOOP_DAYS_CHANGED = 'personal-os-whoop-days-changed'
@@ -18,23 +17,230 @@ export const WHOOP_METRIC_RECOVERY = 'whoop_recovery'
 export const WHOOP_METRIC_SLEEP = 'whoop_sleep'
 export const WHOOP_METRIC_STRAIN = 'whoop_strain'
 
-export const WHOOP_PULSE_METRICS = [
-  WHOOP_METRIC_RECOVERY,
-  WHOOP_METRIC_SLEEP,
-  WHOOP_METRIC_STRAIN,
-] as const
+export type WhoopMetricGroupId = 'recovery' | 'sleep' | 'strain'
+export type WhoopMetricScoring = 'higher' | 'lower' | 'near'
 
-export type WhoopPulseMetricKey = (typeof WHOOP_PULSE_METRICS)[number]
+export const WHOOP_METRIC_GROUPS: { id: WhoopMetricGroupId; label: string }[] = [
+  { id: 'recovery', label: 'Recovery' },
+  { id: 'sleep', label: 'Sleep' },
+  { id: 'strain', label: 'Strain' },
+]
 
-export const WHOOP_SCOPES = [
-  'offline',
+export interface WhoopMetricDefinition {
+  key: `whoop_${string}`
+  label: string
+  group: WhoopMetricGroupId
+  unit: string
+  description: string
+  defaultTarget: number
+  scoring: WhoopMetricScoring
+  /** Minutes of slack that still counts as a full hit for `near` scoring. */
+  nearWindow?: number
+}
+
+export const WHOOP_METRICS: WhoopMetricDefinition[] = [
+  {
+    key: WHOOP_METRIC_RECOVERY,
+    label: 'Recovery score',
+    group: 'recovery',
+    unit: '%',
+    description: 'Recovery score vs your daily target (green is 67+)',
+    defaultTarget: 67,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_hrv',
+    label: 'HRV',
+    group: 'recovery',
+    unit: 'ms',
+    description: 'Heart rate variability (RMSSD)',
+    defaultTarget: 50,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_rhr',
+    label: 'Resting HR',
+    group: 'recovery',
+    unit: 'bpm',
+    description: 'Resting heart rate — lower is better',
+    defaultTarget: 55,
+    scoring: 'lower',
+  },
+  {
+    key: WHOOP_METRIC_SLEEP,
+    label: 'Sleep performance',
+    group: 'sleep',
+    unit: '%',
+    description: 'Sleep performance vs your daily target',
+    defaultTarget: 85,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_sleep_efficiency',
+    label: 'Sleep efficiency',
+    group: 'sleep',
+    unit: '%',
+    description: 'Percent of time in bed spent asleep',
+    defaultTarget: 90,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_sleep_consistency',
+    label: 'Sleep consistency',
+    group: 'sleep',
+    unit: '%',
+    description: 'How regular bedtime and wake time have been',
+    defaultTarget: 75,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_asleep',
+    label: 'Asleep',
+    group: 'sleep',
+    unit: 'min',
+    description: 'Time actually asleep',
+    defaultTarget: 450,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_in_bed',
+    label: 'Time in bed',
+    group: 'sleep',
+    unit: 'min',
+    description: 'Time from bedtime to wake',
+    defaultTarget: 480,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_bedtime',
+    label: 'Bedtime',
+    group: 'sleep',
+    unit: 'min',
+    description: 'Usual bedtime — closest to this time scores highest',
+    defaultTarget: 1380,
+    scoring: 'near',
+    nearWindow: 90,
+  },
+  {
+    key: 'whoop_wake',
+    label: 'Wake time',
+    group: 'sleep',
+    unit: 'min',
+    description: 'Usual wake time — closest to this time scores highest',
+    defaultTarget: 420,
+    scoring: 'near',
+    nearWindow: 90,
+  },
+  {
+    key: 'whoop_light',
+    label: 'Light sleep',
+    group: 'sleep',
+    unit: 'min',
+    description: 'Light sleep duration',
+    defaultTarget: 240,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_sws',
+    label: 'SWS',
+    group: 'sleep',
+    unit: 'min',
+    description: 'Slow-wave (deep) sleep',
+    defaultTarget: 90,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_rem',
+    label: 'REM',
+    group: 'sleep',
+    unit: 'min',
+    description: 'REM sleep duration',
+    defaultTarget: 90,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_awake',
+    label: 'Awake',
+    group: 'sleep',
+    unit: 'min',
+    description: 'Time awake in bed — lower is better',
+    defaultTarget: 30,
+    scoring: 'lower',
+  },
+  {
+    key: WHOOP_METRIC_STRAIN,
+    label: 'Day strain',
+    group: 'strain',
+    unit: 'strain',
+    description: 'Day strain vs your daily target',
+    defaultTarget: 12,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_kilojoule',
+    label: 'Energy',
+    group: 'strain',
+    unit: 'kJ',
+    description: 'Kilojoules expended',
+    defaultTarget: 8000,
+    scoring: 'higher',
+  },
+  {
+    key: 'whoop_workout_strain',
+    label: 'Workout strain',
+    group: 'strain',
+    unit: 'strain',
+    description: 'Total strain from workouts today',
+    defaultTarget: 8,
+    scoring: 'higher',
+  },
+]
+
+export const WHOOP_PULSE_METRICS = WHOOP_METRICS.map((metric) => metric.key)
+
+export type WhoopPulseMetricKey = (typeof WHOOP_METRICS)[number]['key']
+
+const WHOOP_METRIC_BY_KEY = new Map(WHOOP_METRICS.map((metric) => [metric.key, metric]))
+
+export function getWhoopMetric(key: string): WhoopMetricDefinition | undefined {
+  return WHOOP_METRIC_BY_KEY.get(key as WhoopPulseMetricKey)
+}
+
+export function isWhoopClockMetric(key: string): boolean {
+  return key === 'whoop_bedtime' || key === 'whoop_wake'
+}
+
+/** HH:mm for a native time input. */
+export function whoopClockMinutesToTimeValue(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes)) return ''
+  const wrap = ((Math.round(minutes) % 1440) + 1440) % 1440
+  const hours = Math.floor(wrap / 60)
+  const mins = wrap % 60
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+}
+
+/** Parse HH:mm from a time input. Midnight is stored as 1440 so Pulse targets stay > 0. */
+export function whoopClockTimeValueToMinutes(raw: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(raw.trim())
+  if (!match) return null
+  const hours = Number(match[1])
+  const mins = Number(match[2])
+  if (!Number.isFinite(hours) || !Number.isFinite(mins) || hours < 0 || hours > 23 || mins < 0 || mins > 59) {
+    return null
+  }
+  const minutes = hours * 60 + mins
+  return minutes === 0 ? 1440 : minutes
+}
+
+export const WHOOP_DATA_SCOPES = [
   'read:profile',
   'read:recovery',
   'read:cycles',
   'read:sleep',
   'read:workout',
-  'read:body_measurement',
-].join(' ')
+] as const
+
+export const WHOOP_SCOPES = ['offline', ...WHOOP_DATA_SCOPES, 'read:body_measurement'].join(' ')
 
 export interface WhoopCredentials {
   clientId: string
@@ -68,8 +274,6 @@ export interface WhoopDaySnapshot {
   recoveryScore: number | null
   restingHr: number | null
   hrvMs: number | null
-  spo2: number | null
-  skinTempC: number | null
   strain: number | null
   kilojoule: number | null
   sleepPerformance: number | null
@@ -77,6 +281,12 @@ export interface WhoopDaySnapshot {
   sleepConsistency: number | null
   sleepMinutes: number | null
   inBedMinutes: number | null
+  bedtimeMinutes: number | null
+  wakeMinutes: number | null
+  lightSleepMinutes: number | null
+  swsMinutes: number | null
+  remMinutes: number | null
+  awakeMinutes: number | null
   workouts: WhoopWorkoutSummary[]
   fetchedAt: number
 }
@@ -160,8 +370,6 @@ function normalizeDay(raw: unknown): WhoopDaySnapshot | null {
     recoveryScore: num(obj.recoveryScore),
     restingHr: num(obj.restingHr),
     hrvMs: num(obj.hrvMs),
-    spo2: num(obj.spo2),
-    skinTempC: num(obj.skinTempC),
     strain: num(obj.strain),
     kilojoule: num(obj.kilojoule),
     sleepPerformance: num(obj.sleepPerformance),
@@ -169,6 +377,12 @@ function normalizeDay(raw: unknown): WhoopDaySnapshot | null {
     sleepConsistency: num(obj.sleepConsistency),
     sleepMinutes: num(obj.sleepMinutes),
     inBedMinutes: num(obj.inBedMinutes),
+    bedtimeMinutes: num(obj.bedtimeMinutes),
+    wakeMinutes: num(obj.wakeMinutes),
+    lightSleepMinutes: num(obj.lightSleepMinutes),
+    swsMinutes: num(obj.swsMinutes),
+    remMinutes: num(obj.remMinutes),
+    awakeMinutes: num(obj.awakeMinutes),
     workouts: Array.isArray(obj.workouts)
       ? obj.workouts.map(normalizeWorkout).filter((w): w is WhoopWorkoutSummary => w != null)
       : [],
@@ -300,55 +514,128 @@ export function whoopDisplayName(profile = getWhoopProfile()): string | null {
 }
 
 export function isWhoopPulseMetric(key: string): key is WhoopPulseMetricKey {
-  return (
-    key === WHOOP_METRIC_RECOVERY || key === WHOOP_METRIC_SLEEP || key === WHOOP_METRIC_STRAIN
-  )
+  return WHOOP_METRIC_BY_KEY.has(key as WhoopPulseMetricKey)
+}
+
+function whoopValueFromDay(metricKey: string, day: WhoopDaySnapshot): number | null {
+  switch (metricKey) {
+    case WHOOP_METRIC_RECOVERY:
+      return day.recoveryScore
+    case 'whoop_hrv':
+      return day.hrvMs
+    case 'whoop_rhr':
+      return day.restingHr
+    case WHOOP_METRIC_SLEEP:
+      return day.sleepPerformance
+    case 'whoop_sleep_efficiency':
+      return day.sleepEfficiency
+    case 'whoop_sleep_consistency':
+      return day.sleepConsistency
+    case 'whoop_asleep':
+      return day.sleepMinutes
+    case 'whoop_in_bed':
+      return day.inBedMinutes
+    case 'whoop_bedtime':
+      return day.bedtimeMinutes
+    case 'whoop_wake':
+      return day.wakeMinutes
+    case 'whoop_light':
+      return day.lightSleepMinutes
+    case 'whoop_sws':
+      return day.swsMinutes
+    case 'whoop_rem':
+      return day.remMinutes
+    case 'whoop_awake':
+      return day.awakeMinutes
+    case WHOOP_METRIC_STRAIN:
+      return day.strain
+    case 'whoop_kilojoule':
+      return day.kilojoule
+    case 'whoop_workout_strain': {
+      const strains = day.workouts
+        .map((workout) => workout.strain)
+        .filter((value): value is number => value != null)
+      if (strains.length === 0) return null
+      return strains.reduce((sum, value) => sum + value, 0)
+    }
+    default:
+      return null
+  }
 }
 
 export function getWhoopPulseValue(metricKey: string, date: string): number | null {
   const day = getWhoopDay(date)
   if (!day) return null
-  if (metricKey === WHOOP_METRIC_RECOVERY) return day.recoveryScore
-  if (metricKey === WHOOP_METRIC_SLEEP) return day.sleepPerformance
-  if (metricKey === WHOOP_METRIC_STRAIN) return day.strain
-  return null
+  return whoopValueFromDay(metricKey, day)
+}
+
+function formatClockMinutes(minutes: number): string {
+  const wrapped = ((Math.round(minutes) % 1440) + 1440) % 1440
+  const hours = Math.floor(wrapped / 60)
+  const mins = wrapped % 60
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const hour12 = hours % 12 || 12
+  return `${hour12}:${String(mins).padStart(2, '0')} ${period}`
+}
+
+function formatDurationMinutes(minutes: number): string {
+  const hours = minutes / 60
+  if (hours >= 1 && minutes % 60 === 0) return `${hours}h`
+  if (hours >= 1) return `${hours.toFixed(1)}h`
+  return `${Math.round(minutes)}m`
+}
+
+function formatWhoopAmount(metric: WhoopMetricDefinition, value: number): string {
+  if (isWhoopClockMetric(metric.key)) {
+    return formatClockMinutes(value)
+  }
+  if (metric.unit === 'min') return formatDurationMinutes(value)
+  if (metric.unit === '%') return `${Math.round(value)}%`
+  if (metric.unit === 'ms') return `${Math.round(value)} ms`
+  if (metric.unit === 'bpm') return `${Math.round(value)} bpm`
+  if (metric.unit === 'kJ') return `${Math.round(value)} kJ`
+  if (metric.unit === 'strain') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1)
+  }
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
 }
 
 export function formatWhoopPulseDetail(metricKey: string, date: string): string {
+  const metric = getWhoopMetric(metricKey)
   const day = getWhoopDay(date)
+  if (!metric) return 'Not synced'
   if (!day) return 'Not synced'
-  if (metricKey === WHOOP_METRIC_RECOVERY) {
-    return day.recoveryScore == null ? 'Pending' : `${Math.round(day.recoveryScore)}% recovery`
-  }
-  if (metricKey === WHOOP_METRIC_SLEEP) {
-    if (day.sleepPerformance == null) return 'Pending'
-    const hours =
-      day.sleepMinutes != null ? `${(day.sleepMinutes / 60).toFixed(1)}h` : null
-    return hours
-      ? `${Math.round(day.sleepPerformance)}% · ${hours}`
-      : `${Math.round(day.sleepPerformance)}% sleep`
-  }
-  if (metricKey === WHOOP_METRIC_STRAIN) {
-    return day.strain == null ? 'Pending' : day.strain.toFixed(1)
-  }
-  return 'Not synced'
+  const value = whoopValueFromDay(metricKey, day)
+  if (value == null) return 'Pending'
+  return formatWhoopAmount(metric, value)
+}
+
+function circularMinuteDelta(a: number, b: number): number {
+  const wrap = (n: number) => ((n % 1440) + 1440) % 1440
+  const delta = Math.abs(wrap(a) - wrap(b))
+  return Math.min(delta, 1440 - delta)
 }
 
 export function getWhoopPulseRate(metricKey: string, date: string, target: number | null): number {
+  const metric = getWhoopMetric(metricKey)
   const value = getWhoopPulseValue(metricKey, date)
   if (value == null || target == null || target <= 0) return 0
-  return Math.min(100, (value / target) * 100)
-}
+  if (!metric) return Math.min(100, (value / target) * 100)
 
-export function isWhoopHomeCollapsed(): boolean {
-  try {
-    return storageGetItem(HOME_COLLAPSED_KEY) === '1'
-  } catch {
-    return false
+  if (metric.scoring === 'lower') {
+    if (value <= 0) return 0
+    return Math.min(100, (target / value) * 100)
   }
-}
 
-export function setWhoopHomeCollapsed(collapsed: boolean) {
-  if (collapsed) storageSetItem(HOME_COLLAPSED_KEY, '1')
-  else storageRemoveItem(HOME_COLLAPSED_KEY)
+  if (metric.scoring === 'near') {
+    const window = metric.nearWindow ?? 90
+    if (window <= 0) return 0
+    const delta = isWhoopClockMetric(metric.key)
+        ? circularMinuteDelta(value, target)
+        : Math.abs(value - target)
+    return Math.max(0, Math.min(100, (1 - delta / window) * 100))
+  }
+
+  return Math.min(100, (value / target) * 100)
 }

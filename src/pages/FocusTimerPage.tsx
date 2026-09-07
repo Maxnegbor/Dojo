@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2, RotateCcw, Settings2, SkipForward } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
 import { FocusHourlyChart } from '@/components/focus/FocusHourlyChart'
 import { FocusLabelPicker } from '@/components/focus/FocusLabelPicker'
 import { FocusScheduleAgenda } from '@/components/focus/FocusScheduleAgenda'
@@ -480,24 +479,16 @@ export function FocusTimerPage() {
     <>
       {focusScreensaverLayer}
       <div
-      className={cn(
-        'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-center gap-4 py-6 transition-[gap,padding,opacity] duration-[1400ms] ease-in-out',
-        screensaverActive && 'pointer-events-none opacity-0',
-        !screensaverActive &&
-          (showSchedule && showSettings
-            ? 'max-w-6xl'
-            : showSchedule
-              ? 'max-w-4xl'
-              : showSettings
-                ? 'max-w-3xl'
-                : 'max-w-lg'),
-      )}
-    >
+        className={cn(
+          'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-start gap-4 py-6 transition-[gap,padding,opacity] duration-[1400ms] ease-in-out',
+          screensaverActive && 'pointer-events-none opacity-0',
+        )}
+      >
       <button
         type="button"
         onClick={() => setFocusImmersive(!focusImmersive)}
         className={cn(
-          'absolute right-0 top-0 z-10 rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-400 transition-all duration-[1400ms] ease-in-out hover:bg-zinc-800 hover:text-zinc-200',
+          'absolute right-0 top-0 z-10 rounded-lg p-2 text-zinc-400 transition-all duration-[1400ms] ease-in-out hover:bg-zinc-800/60 hover:text-zinc-200',
           screensaverActive && 'pointer-events-none opacity-0',
         )}
         aria-pressed={focusImmersive}
@@ -516,17 +507,12 @@ export function FocusTimerPage() {
         <h1 className="text-2xl font-bold text-zinc-100">Focus</h1>
       </header>
 
-      <div
-        className={cn(
-          'flex items-start gap-4 transition-[gap] duration-[1400ms] ease-in-out',
-          showSchedule || showSettings
-            ? 'flex-col lg:flex-row lg:justify-center'
-            : 'justify-center',
-        )}
-      >
-        <div className="flex w-full max-w-[480px] flex-col gap-4 self-center lg:shrink-0">
-          <Card className="flex w-full max-w-[480px] flex-col items-center px-8 pt-8 pb-6">
-        <p
+      <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_28rem_minmax(0,1fr)]">
+        <div className="hidden lg:block" aria-hidden />
+
+        <div className="mx-auto flex w-full max-w-[28rem] flex-col items-center">
+          <div className="flex w-full flex-col items-center px-2 pt-2 pb-4 sm:px-4">
+            <p
           className={cn(
             'mb-1 h-4 text-xs font-medium uppercase tracking-widest transition-opacity duration-[1400ms] ease-in-out',
             phase === 'focus'
@@ -655,31 +641,32 @@ export function FocusTimerPage() {
             <Settings2 size={16} />
           </Button>
         </div>
-      </Card>
+          </div>
 
-          <Card
-            title="Last 12 hours"
+          <section
             className={cn(
-              'w-full transition-opacity duration-[1400ms] ease-in-out',
+              'w-full pt-2 transition-opacity duration-[1400ms] ease-in-out',
               screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
             )}
           >
+            <h3 className="mb-3 text-sm font-semibold text-zinc-200">Last 12 hours</h3>
             <FocusHourlyChart
               formatHour={formatHourLabel}
               liveSession={liveFocusSession}
               useDevDummy={userPrefs.devMode}
             />
-          </Card>
+          </section>
         </div>
 
+        <div className="flex min-w-0 flex-col gap-4 overflow-visible lg:flex-row lg:flex-nowrap lg:items-start lg:justify-start">
         {showSettings && (
-          <Card
-            title="Timer settings"
+          <section
             className={cn(
-              'w-full shrink-0 space-y-5 self-center transition-opacity duration-[1400ms] ease-in-out lg:w-72 lg:self-start',
+              'w-full shrink-0 space-y-5 lg:w-72',
               screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
             )}
           >
+            <h3 className="text-sm font-semibold text-zinc-200">Timer settings</h3>
             <MinuteSlider
               label="Focus duration"
               value={settings.focusMinutes}
@@ -758,7 +745,7 @@ export function FocusTimerPage() {
                 Reset to defaults
               </Button>
             </div>
-          </Card>
+          </section>
         )}
 
         {showSchedule && userId && (
@@ -768,6 +755,7 @@ export function FocusTimerPage() {
             className="mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-72 lg:shrink-0"
           />
         )}
+        </div>
       </div>
 
       {showFocusGoalModal && (

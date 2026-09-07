@@ -36,6 +36,14 @@ import {
 } from '@/lib/habitTypes'
 import { formatHabitCardSubtitle } from '@/lib/habitRamp'
 import { HABITIFY_CHANGED, isHabitifyConnected } from '@/lib/habitifyStore'
+import {
+  WHOOP_CATEGORY_ID,
+  WHOOP_CHANGED,
+  WHOOP_METRIC_GROUPS,
+  WHOOP_METRICS,
+  isWhoopClockMetric,
+  isWhoopConnected,
+} from '@/lib/whoopStore'
 import { clearFocusGoalInSettings } from '@/lib/focusGoalSync'
 import {
   METRIC_UNIT_OPTIONS,
@@ -366,17 +374,23 @@ export function MetricsEditor({
   const today = formatDate(new Date())
   const habits = useHabitTypes()
   const [habitifyConnected, setHabitifyConnected] = useState(() => isHabitifyConnected())
+  const [whoopConnected, setWhoopConnected] = useState(() => isWhoopConnected())
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutTypeDefinition[]>(() => getWorkoutTypes())
   const [goalCategories, setGoalCategories] = useState<GoalCategoryDefinition[]>(() =>
     getMetricLibraryCategories(),
   )
 
   useEffect(() => {
-    const sync = () => setHabitifyConnected(isHabitifyConnected())
+    const sync = () => {
+      setHabitifyConnected(isHabitifyConnected())
+      setWhoopConnected(isWhoopConnected())
+    }
     window.addEventListener(HABITIFY_CHANGED, sync)
+    window.addEventListener(WHOOP_CHANGED, sync)
     window.addEventListener('user-storage-ready', sync)
     return () => {
       window.removeEventListener(HABITIFY_CHANGED, sync)
+      window.removeEventListener(WHOOP_CHANGED, sync)
       window.removeEventListener('user-storage-ready', sync)
     }
   }, [])
@@ -1688,21 +1702,81 @@ export function MetricsEditor({
         goalCategories.length === 1
       )
     })
+    const extra: GoalCategoryDefinition[] = []
     if (
       habitifyConnected &&
       !base.some((category) => category.id === KIND_CATEGORY_FALLBACK.habit)
     ) {
-      return [
-        { id: KIND_CATEGORY_FALLBACK.habit, label: 'Habits' },
-        ...base,
-      ]
+      extra.push({ id: KIND_CATEGORY_FALLBACK.habit, label: 'Habits' })
     }
-    return base
-  }, [goalCategories, libraryItems, habitifyConnected])
+    if (whoopConnected && !base.some((category) => category.id === WHOOP_CATEGORY_ID)) {
+      extra.push({ id: WHOOP_CATEGORY_ID, label: 'WHOOP' })
+    }
+    return extra.length > 0 ? [...extra, ...base] : base
+  }, [goalCategories, libraryItems, habitifyConnected, whoopConnected])
 
-  const metricsEmpty = libraryItems.length === 0 && !habitifyConnected
+  const metricsEmpty = libraryItems.length === 0 && !habitifyConnected && !whoopConnected
+
+  const renderWhoopCategoryGrid = () => {
+    return (
+      <div className="space-y-3">
+        <p className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-3 py-2.5 text-xs leading-relaxed text-zinc-400">
+          Synced from WHOOP — include any of these in Pulse.
+        </p>
+        {WHOOP_METRIC_GROUPS.map((group) => {
+          const groupKey = `${WHOOP_CATEGORY_ID}:${group.id}`
+          const collapsed = collapsedCategoryIds.includes(groupKey)
+          const metrics = WHOOP_METRICS.filter((metric) => metric.group === group.id)
+          return (
+            <div
+              key={group.id}
+              className="overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/30"
+            >
+              <button
+                type="button"
+                onClick={() => toggleCategoryCollapsed(groupKey)}
+                aria-expanded={!collapsed}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <ChevronDown
+                    size={14}
+                    className={cn(
+                      'shrink-0 text-zinc-500 transition-transform',
+                      collapsed && '-rotate-90',
+                    )}
+                  />
+                  <span className="text-sm font-medium text-zinc-200">{group.label}</span>
+                </span>
+                <span className="text-[11px] text-zinc-500">{metrics.length} metrics</span>
+              </button>
+              {!collapsed ? (
+                <div className="grid items-start gap-3 border-t border-zinc-800/70 p-3 sm:grid-cols-2">
+                  {metrics.map((metric) => (
+                    <Card key={metric.key} className="bg-zinc-950/50">
+                      <h3 className="text-sm font-medium text-zinc-200">{metric.label}</h3>
+                      <p className="mt-0.5 text-[10px] text-zinc-500">
+                        Synced from WHOOP
+                        {metric.unit && !isWhoopClockMetric(metric.key) ? ` · ${metric.unit}` : ''}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+                        {metric.description}
+                      </p>
+                    </Card>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   const renderCategoryGrid = (categoryId: string) => {
+    if (categoryId === WHOOP_CATEGORY_ID && whoopConnected) {
+      return renderWhoopCategoryGrid()
+    }
     const items = libraryItems.filter((item) => item.categoryId === categoryId)
     const isHabitsCategory = categoryId === KIND_CATEGORY_FALLBACK.habit
     const showHabitifyNotice = habitifyConnected && isHabitsCategory
@@ -1880,7 +1954,8 @@ export function MetricsEditor({
                       />
                       <h3 className="text-sm font-semibold text-zinc-200">{category.label}</h3>
                     </button>
-                    {category.id !== UNGROUPED_CATEGORY_ID && (
+                    {category.id !== UNGROUPED_CATEGORY_ID &&
+                      category.id !== WHOOP_CATEGORY_ID && (
                       <>
                         <button
                           type="button"

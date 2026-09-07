@@ -111,7 +111,7 @@ function SidebarMainNav({
       {indicator && (
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1.5 right-1 rounded-lg bg-[var(--accent-950)] ring-1 ring-inset ring-[var(--accent-ring)] transition-[top,height] duration-300 ease-out"
+          className="pointer-events-none absolute left-1.5 right-1 rounded-lg bg-[var(--accent-950)] transition-[top,height] duration-300 ease-out"
           style={{ top: indicator.top, height: indicator.height }}
         />
       )}
@@ -145,7 +145,7 @@ function footerNavLinkClass(isActive: boolean) {
   return cn(
     'relative z-10 flex w-full items-center rounded-lg py-2.5 text-sm font-medium',
     isActive
-      ? 'bg-[var(--accent-950)] text-[var(--accent-300)] ring-1 ring-inset ring-[var(--accent-ring)]'
+      ? 'bg-[var(--accent-950)] text-[var(--accent-300)]'
       : cn('text-zinc-500 hover:text-zinc-200', SIDEBAR_NAV_HOVER_PILL),
   )
 }
@@ -186,7 +186,7 @@ function BottomNav({
               <span
                 className={cn(
                   'flex h-7 w-7 items-center justify-center rounded-lg',
-                  isActive && 'bg-[var(--accent-950)] ring-1 ring-inset ring-[var(--accent-ring)]',
+                  isActive && 'bg-[var(--accent-950)]',
                 )}
               >
                 <Icon size={16} />
@@ -373,10 +373,12 @@ export function AppLayout() {
         />
         <main
           className={cn(
-            'relative z-10 flex min-h-0 flex-1 flex-col overflow-x-hidden scrollbar-hidden sm:px-8 lg:px-10',
+            'relative z-10 flex min-h-0 flex-1 flex-col scrollbar-hidden sm:px-8 lg:px-10',
             pathname === '/'
               ? 'overflow-hidden px-6 pt-1 pb-1.5 sm:pt-2'
-              : 'overflow-y-auto px-6 py-6',
+              : pathname === '/focus'
+                ? 'overflow-x-auto overflow-y-auto px-6 py-6'
+                : 'overflow-x-hidden overflow-y-auto px-6 py-6',
             focusImmersive && 'px-4 sm:px-6 lg:px-8',
             screensaver.active && pathname === '/focus' && 'overflow-hidden px-4 py-4 sm:px-6 lg:px-8',
           )}
@@ -384,7 +386,7 @@ export function AppLayout() {
           <div
             className={cn(
               'mx-auto flex min-h-0 w-full flex-1 flex-col',
-              pathname === '/' ? 'max-w-[96rem]' : 'max-w-6xl',
+              pathname === '/' || pathname === '/focus' ? 'max-w-[96rem]' : 'max-w-6xl',
             )}
           >
             <MissedLogGate />

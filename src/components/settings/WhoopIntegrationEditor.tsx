@@ -155,7 +155,7 @@ export function WhoopIntegrationEditor({ onSaved }: WhoopIntegrationEditorProps)
   return (
     <SettingsSection
       title="WHOOP"
-      description="Pull recovery, sleep, and strain onto Home and into Pulse. Create an app in the WHOOP Developer Dashboard, then authorize Dojo."
+      description="Pull recovery, sleep, and strain onto Home and into Pulse. Create an app in the WHOOP Developer Dashboard, enable the scopes below, then authorize Dojo."
     >
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -201,6 +201,15 @@ export function WhoopIntegrationEditor({ onSaved }: WhoopIntegrationEditorProps)
           <p className="text-[11px] leading-relaxed text-zinc-600">
             Add this exact URL as a Redirect URI on your WHOOP app. Local and production hosts are
             different — add both if you use Dojo in more than one place.
+          </p>
+          <p className="text-[11px] leading-relaxed text-zinc-600">
+            On the same app, enable these scopes: <code className="text-zinc-400">offline</code>,{' '}
+            <code className="text-zinc-400">read:profile</code>,{' '}
+            <code className="text-zinc-400">read:recovery</code>,{' '}
+            <code className="text-zinc-400">read:cycles</code>,{' '}
+            <code className="text-zinc-400">read:sleep</code>,{' '}
+            <code className="text-zinc-400">read:workout</code>. Then reconnect — client ID and
+            secret alone are not enough.
           </p>
         </div>
 

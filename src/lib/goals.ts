@@ -6,7 +6,7 @@ import {
   sleepMetricDisplayUnit,
   sleepMetricIdFromLibraryKey,
 } from '@/lib/sleepMetrics'
-import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
+import { getWhoopMetric } from '@/lib/whoopStore'
 
 export type GoalLogWhen = 'home' | 'morning' | 'shutdown'
 export type GoalMorningDay = 'today' | 'yesterday'
@@ -211,9 +211,8 @@ export function metricLabel(metricKey: MetricKey): string {
     const id = metricKey.slice('habit_'.length)
     return getHabitTypes().find((t) => t.id === id)?.label ?? id
   }
-  if (metricKey === 'whoop_recovery') return 'WHOOP recovery'
-  if (metricKey === 'whoop_sleep') return 'WHOOP sleep'
-  if (metricKey === 'whoop_strain') return 'WHOOP strain'
+  const whoop = getWhoopMetric(metricKey)
+  if (whoop) return `WHOOP ${whoop.label}`
   const sleepId = sleepMetricIdFromLibraryKey(metricKey)
   if (sleepId) {
     return getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)?.label ?? sleepId
@@ -232,8 +231,8 @@ export function defaultUnitForMetric(metricKey: MetricKey): string {
     const id = metricKey.slice('habit_'.length)
     return getHabitTypes().find((t) => t.id === id)?.duration_unit?.trim() || 'days'
   }
-  if (metricKey === 'whoop_recovery' || metricKey === 'whoop_sleep') return '%'
-  if (metricKey === 'whoop_strain') return 'strain'
+  const whoop = getWhoopMetric(metricKey)
+  if (whoop) return whoop.unit
   const sleepId = sleepMetricIdFromLibraryKey(metricKey)
   if (sleepId) {
     const metric = getSleepMetricDefinition(getSleepMetricsConfig(), sleepId)

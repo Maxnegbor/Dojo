@@ -4,6 +4,7 @@ import {
   listPulseMetricOptions,
   pulseMetricOptionLabel,
   resolvePulseMetricTarget,
+  effectivePulseWeights,
   type PulseFormula,
   type PulseMetricOption,
 } from '@/lib/pulseConfig'
@@ -183,7 +184,7 @@ export function buildPulseContributors(input: {
 
   const options = listPulseMetricOptions(goals)
   const optionsByKey = new Map(options.map((option) => [option.key as string, option]))
-  const metricWeights = formula.metricWeights ?? {}
+  const { metricWeights, orGroupWeights } = effectivePulseWeights(formula, goals)
 
   type Draft = {
     id: string
@@ -200,7 +201,6 @@ export function buildPulseContributors(input: {
 
   for (const [key, weight] of Object.entries(metricWeights)) {
     if (weight <= 0) continue
-    if ((formula.orGroups ?? []).some((g) => g.metricKeys.includes(key as MetricKey))) continue
     const option = optionsByKey.get(key)
     const rate = computePulseMetricRate({
       metricKey: key as MetricKey,
@@ -233,7 +233,8 @@ export function buildPulseContributors(input: {
   }
 
   for (const group of formula.orGroups ?? []) {
-    if (group.weight <= 0 || group.metricKeys.length === 0) continue
+    const weight = orGroupWeights[group.id] ?? 0
+    if (weight <= 0 || group.metricKeys.length === 0) continue
     const memberDetails: string[] = []
     const memberRates: number[] = []
     for (const metricKey of group.metricKeys) {
@@ -270,7 +271,7 @@ export function buildPulseContributors(input: {
       detail: rate >= 100 ? 'Either/or met' : 'Hit either metric',
       subdetails: memberDetails,
       rate,
-      weight: group.weight,
+      weight,
       categoryId: category.id,
       categoryLabel: category.label,
       kind: 'or-group',

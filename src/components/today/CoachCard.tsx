@@ -56,16 +56,30 @@ function latestSlotWithAdvice(bySlot: Partial<Record<CoachSlot, CoachAdvice>>): 
   return null
 }
 
-export function CoachAdviceBody({ advice }: { advice: CoachAdvice }) {
+function clampSentences(text: string, max: number): string {
+  const parts = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+  if (!parts || parts.length <= max) return text
+  return parts.slice(0, max).join('').replace(/\s+/g, ' ').trim()
+}
+
+export function CoachAdviceBody({
+  advice,
+  compact = false,
+}: {
+  advice: CoachAdvice
+  compact?: boolean
+}) {
+  const body = compact ? clampSentences(advice.body, 2) : advice.body
+  const bullets = compact ? advice.bullets.slice(0, 2) : advice.bullets
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-zinc-100">{advice.headline}</p>
-      {advice.body ? (
-        <p className="text-[12px] leading-relaxed text-zinc-400">{advice.body}</p>
+      {body ? (
+        <p className="text-[12px] leading-relaxed text-zinc-400">{body}</p>
       ) : null}
-      {advice.bullets.length > 0 ? (
+      {bullets.length > 0 ? (
         <ul className="space-y-1.5">
-          {advice.bullets.map((bullet, index) => (
+          {bullets.map((bullet, index) => (
             <li
               key={`${bullet.title}-${index}`}
               className="rounded-lg border border-zinc-800/80 bg-zinc-950/50 px-2.5 py-2"
@@ -267,7 +281,7 @@ export function CoachCard({
         <section
           role="dialog"
           aria-labelledby="coach-panel-title"
-          className="flex max-h-[min(70vh,32rem)] w-[min(calc(100vw-2rem),22rem)] flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl shadow-black/50"
+          className="flex h-[min(78vh,38rem)] w-[min(calc(100vw-2rem),22rem)] flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl shadow-black/50"
         >
           <header className="flex items-start justify-between gap-3 border-b border-zinc-800/80 px-4 py-3">
             <div className="min-w-0">
@@ -331,7 +345,7 @@ export function CoachCard({
               <div className="space-y-3">
                 {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
                 {advice ? (
-                  <CoachAdviceBody advice={advice} />
+                  <CoachAdviceBody advice={advice} compact />
                 ) : generating ? (
                   <p className="text-[12px] text-zinc-500">Writing this check-in…</p>
                 ) : due ? (
@@ -354,7 +368,10 @@ export function CoachCard({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-500)] text-black shadow-lg shadow-black/40 ring-1 ring-black/10 transition-transform hover:bg-[var(--accent-400)] active:scale-95"
+        className={cn(
+          'relative flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-500)] text-black shadow-lg shadow-black/40 ring-1 ring-black/10 transition-transform hover:bg-[var(--accent-400)] active:scale-95',
+          unread && !open && 'today-btn-breathe-accent',
+        )}
         aria-label={open ? 'Close coach' : unread ? 'Open coach, unread check-in' : 'Open coach'}
         aria-expanded={open}
         aria-haspopup="dialog"

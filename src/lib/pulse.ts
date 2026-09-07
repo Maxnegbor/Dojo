@@ -12,6 +12,7 @@ import { getMetricValue } from '@/lib/metrics'
 import {
   getPulseFormulaForDate,
   resolvePulseMetricTarget,
+  effectivePulseWeights,
   type PulseConfig,
   type PulseFormula,
 } from '@/lib/pulseConfig'
@@ -203,7 +204,7 @@ export function computeDayPulse(
   if (!formula) return empty
 
   const sleepConfig = sleepMetricsConfig ?? getSleepMetricsConfig()
-  const metricWeights = formula.metricWeights ?? {}
+  const { metricWeights, orGroupWeights } = effectivePulseWeights(formula, goals)
   const metricRates: Record<string, number> = {}
   const parts: { weight: number; value: number }[] = []
   const habitRates: number[] = []
@@ -213,7 +214,6 @@ export function computeDayPulse(
 
   for (const [key, weight] of Object.entries(metricWeights)) {
     if (weight <= 0) continue
-    if ((formula.orGroups ?? []).some((g) => g.metricKeys.includes(key as MetricKey))) continue
     const rate = computePulseMetricRate({
       metricKey: key as MetricKey,
       date,
@@ -233,7 +233,8 @@ export function computeDayPulse(
   }
 
   for (const group of formula.orGroups ?? []) {
-    if (group.weight <= 0 || group.metricKeys.length === 0) continue
+    const weight = orGroupWeights[group.id] ?? 0
+    if (weight <= 0 || group.metricKeys.length === 0) continue
     const memberRates = group.metricKeys.map((metricKey) => {
       const rate = computePulseMetricRate({
         metricKey,
@@ -248,7 +249,7 @@ export function computeDayPulse(
       return rate
     })
     const rate = Math.max(0, ...memberRates)
-    parts.push({ weight: group.weight, value: rate })
+    parts.push({ weight, value: rate })
     if (group.metricKeys.some((k) => k.startsWith('workout_'))) exerciseRates.push(rate)
     if (group.metricKeys.some((k) => k.startsWith('habit_') || k.startsWith('habitify_'))) {
       habitRates.push(rate)

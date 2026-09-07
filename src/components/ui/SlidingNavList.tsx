@@ -9,7 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 
 const INDICATOR_CLASS =
-  'pointer-events-none absolute rounded-lg bg-[var(--accent-950)] ring-1 ring-inset ring-[var(--accent-ring)]'
+  'pointer-events-none absolute rounded-lg bg-[var(--accent-950)]'
 
 type IndicatorState = {
   top: number

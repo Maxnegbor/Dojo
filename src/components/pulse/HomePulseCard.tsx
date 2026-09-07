@@ -26,6 +26,25 @@ function formatScorePts(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1)
 }
 
+function ScorePts({ earned, max, size = 'sm' }: { earned: number; max: number; size?: 'xs' | 'sm' }) {
+  return (
+    <p
+      className={cn(
+        'shrink-0 tabular-nums',
+        size === 'xs' ? 'text-[10px]' : 'text-xs font-semibold',
+      )}
+    >
+      <span className={earned > 0 ? 'text-[var(--accent-300)]' : 'font-normal text-zinc-600'}>
+        +{formatScorePts(earned)}
+      </span>
+      <span className="font-normal text-zinc-600">
+        {' '}
+        / {formatScorePts(max)}
+      </span>
+    </p>
+  )
+}
+
 function PulseBreakdownPanel({
   contributors,
   score,
@@ -67,9 +86,7 @@ function PulseBreakdownPanel({
                 <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                   {category.label}
                 </p>
-                <p className="text-[10px] tabular-nums text-zinc-600">
-                  +{formatScorePts(category.scoreEarned)} / {formatScorePts(category.scoreMax)}
-                </p>
+                <ScorePts earned={category.scoreEarned} max={category.scoreMax} size="xs" />
               </div>
               <ul className="space-y-1">
                 {category.rows.map((row) => (
@@ -97,13 +114,7 @@ function PulseBreakdownPanel({
                           </p>
                         ))}
                       </div>
-                      <p className="shrink-0 text-xs font-semibold tabular-nums text-[var(--accent-300)]">
-                        +{formatScorePts(row.scoreEarned)}
-                        <span className="font-normal text-zinc-600">
-                          {' '}
-                          / {formatScorePts(row.scoreMax)}
-                        </span>
-                      </p>
+                      <ScorePts earned={row.scoreEarned} max={row.scoreMax} />
                     </div>
                   </li>
                 ))}

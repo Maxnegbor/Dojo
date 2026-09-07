@@ -30,9 +30,9 @@ import {
 } from '@/lib/habitifyStore'
 import {
   WHOOP_CATEGORY_ID,
-  WHOOP_METRIC_RECOVERY,
-  WHOOP_METRIC_SLEEP,
-  WHOOP_METRIC_STRAIN,
+  WHOOP_METRIC_GROUPS,
+  WHOOP_METRICS,
+  getWhoopMetric,
   isWhoopConnected,
   isWhoopPulseMetric,
 } from '@/lib/whoopStore'
@@ -79,13 +79,22 @@ export interface PulseFormula {
    */
   exerciseDailyMinutes: Record<string, number>
   /**
+   * How included metrics share Pulse.
+   * `equal` — every slot the same. `category` — each category the same, split inside.
+   * `points` — 10-point pool. Legacy `equalWeights` maps to `equal`.
+   */
+  weightMode?: PulseWeightMode
+  /**
    * When true, included slots (weight &gt; 0) each count equally —
    * no 10-point pool. Weights are typically 0 or 1.
+   * @deprecated Prefer weightMode. Kept for stored formulas.
    */
   equalWeights?: boolean
   /** @deprecated Migrated into metricWeights on read. */
   weights?: PulseWeights
 }
+
+export type PulseWeightMode = 'equal' | 'category' | 'points'
 
 export interface PulseFormulaVersion {
   effectiveFrom: string
@@ -103,6 +112,9 @@ export interface PulseMetricOption {
   categoryId: string
   categoryLabel: string
   description: string
+  /** Nested group inside a category (e.g. WHOOP recovery / sleep / strain). */
+  groupId?: string
+  groupLabel?: string
   /** How the metric is normally logged. */
   logPeriod: 'daily' | 'weekly'
   /** Needs an explicit Pulse daily target (weekly-logged quantity metrics). */
@@ -269,7 +281,8 @@ export function migrateLegacyPulseFormula(formula: PulseFormula): PulseFormula {
       metricKeys: g.metricKeys.filter((k) => !k.startsWith('')),
     })),
     exerciseDailyMinutes: { ...(formula.exerciseDailyMinutes ?? {}) },
-    equalWeights: formula.equalWeights === true,
+    equalWeights: getPulseWeightMode(formula) === 'equal',
+    weightMode: getPulseWeightMode(formula),
   }
 }
 
@@ -296,6 +309,7 @@ function normalizeFormula(raw: unknown): PulseFormula {
     orGroups: normalizeOrGroups(obj.orGroups),
     exerciseDailyMinutes,
     equalWeights: obj.equalWeights === true,
+    weightMode: parsePulseWeightMode(obj.weightMode, obj.equalWeights === true),
     weights: weightsRaw ? normalizeLegacyWeights(weightsRaw) : undefined,
   }
 
@@ -375,6 +389,185 @@ export function formulaIncludedCount(formula: PulseFormula): number {
     if (group.weight > 0) count += 1
   }
   return count
+}
+
+export function getPulseWeightMode(formula: PulseFormula): PulseWeightMode {
+  if (formula.weightMode === 'equal' || formula.weightMode === 'category' || formula.weightMode === 'points') {
+    return formula.weightMode
+  }
+  return formula.equalWeights === true ? 'equal' : 'points'
+}
+
+function parsePulseWeightMode(raw: unknown, equalWeights: boolean): PulseWeightMode | undefined {
+  if (raw === 'equal' || raw === 'category' || raw === 'points') return raw
+  return equalWeights ? 'equal' : undefined
+}
+
+function applyWeightModeFlags(formula: PulseFormula, mode: PulseWeightMode): PulseFormula {
+  formula.weightMode = mode
+  formula.equalWeights = mode === 'equal'
+  return formula
+}
+
+function optionCategory(
+  option: PulseMetricOption | undefined,
+): { id: string; label: string } {
+  return {
+    id: option?.categoryId || 'ungrouped',
+    label: option?.categoryLabel || 'Ungrouped',
+  }
+}
+
+function orGroupCategory(
+  group: PulseOrGroup,
+  optionByKey: Map<string, PulseMetricOption>,
+): { id: string; label: string } {
+  const cats = group.metricKeys
+    .map((key) => optionByKey.get(key))
+    .filter((option): option is PulseMetricOption => option != null)
+    .map((option) => optionCategory(option))
+  if (cats.length > 0 && cats.every((entry) => entry.id === cats[0]!.id)) return cats[0]!
+  return { id: 'grouped', label: 'Grouped' }
+}
+
+export type PulseWeightSlot =
+  | {
+      kind: 'metric'
+      key: MetricKey
+      categoryId: string
+      categoryLabel: string
+    }
+  | {
+      kind: 'group'
+      id: string
+      categoryId: string
+      categoryLabel: string
+      metricKeys: MetricKey[]
+    }
+
+/** Included standalone metrics and either/or groups, in Pulse category order. */
+export function listIncludedPulseSlots(formula: PulseFormula, goals: Goal[]): PulseWeightSlot[] {
+  const options = listPulseMetricOptions(goals)
+  const optionByKey = new Map(options.map((option) => [option.key as string, option]))
+  const grouped = metricsInOrGroups(formula)
+  const slots: PulseWeightSlot[] = []
+
+  for (const option of options) {
+    if (grouped.has(option.key)) continue
+    if ((formula.metricWeights[option.key] ?? 0) <= 0) continue
+    const category = optionCategory(option)
+    slots.push({
+      kind: 'metric',
+      key: option.key,
+      categoryId: category.id,
+      categoryLabel: category.label,
+    })
+  }
+
+  for (const group of formula.orGroups ?? []) {
+    if (group.weight <= 0) continue
+    const category = orGroupCategory(group, optionByKey)
+    slots.push({
+      kind: 'group',
+      id: group.id,
+      categoryId: category.id,
+      categoryLabel: category.label,
+      metricKeys: [...group.metricKeys],
+    })
+  }
+
+  return slots
+}
+
+/**
+ * Weights used to score Pulse. Category mode gives each category the same share,
+ * split equally among its included slots.
+ */
+export function effectivePulseWeights(
+  formula: PulseFormula,
+  goals: Goal[],
+): { metricWeights: Record<string, number>; orGroupWeights: Record<string, number> } {
+  const mode = getPulseWeightMode(formula)
+  const slots = listIncludedPulseSlots(formula, goals)
+  const metricWeights: Record<string, number> = {}
+  const orGroupWeights: Record<string, number> = {}
+
+  const assign = (slot: PulseWeightSlot, weight: number) => {
+    if (slot.kind === 'metric') metricWeights[slot.key] = weight
+    else orGroupWeights[slot.id] = weight
+  }
+
+  if (mode === 'equal') {
+    for (const slot of slots) assign(slot, 1)
+    return { metricWeights, orGroupWeights }
+  }
+
+  if (mode === 'category') {
+    const counts = new Map<string, number>()
+    for (const slot of slots) {
+      counts.set(slot.categoryId, (counts.get(slot.categoryId) ?? 0) + 1)
+    }
+    for (const slot of slots) {
+      const n = counts.get(slot.categoryId) ?? 1
+      assign(slot, n > 0 ? 1 / n : 0)
+    }
+    return { metricWeights, orGroupWeights }
+  }
+
+  for (const slot of slots) {
+    if (slot.kind === 'metric') assign(slot, formula.metricWeights[slot.key] ?? 0)
+    else {
+      const group = (formula.orGroups ?? []).find((entry) => entry.id === slot.id)
+      assign(slot, group?.weight ?? 0)
+    }
+  }
+  return { metricWeights, orGroupWeights }
+}
+
+export function isPulseMetricIncluded(formula: PulseFormula, key: string): boolean {
+  if ((formula.metricWeights[key] ?? 0) > 0) return true
+  return (formula.orGroups ?? []).some((group) => group.weight > 0 && group.metricKeys.includes(key as MetricKey))
+}
+
+export function setPulseMetricIncluded(
+  formula: PulseFormula,
+  key: MetricKey,
+  included: boolean,
+): PulseFormula {
+  const next = copyPulseFormula(formula)
+  const mode = getPulseWeightMode(next)
+
+  if (!included) {
+    delete next.metricWeights[key]
+    next.orGroups = next.orGroups
+      .map((group) => {
+        if (!group.metricKeys.includes(key)) return group
+        const metricKeys = group.metricKeys.filter((entry) => entry !== key)
+        if (metricKeys.length >= 2) return { ...group, metricKeys }
+        if (group.weight > 0) {
+          for (const leftover of metricKeys) {
+            next.metricWeights[leftover] = mode === 'points' ? group.weight : 1
+          }
+        }
+        return { ...group, metricKeys: [] }
+      })
+      .filter((group) => group.metricKeys.length >= 2)
+    return applyWeightModeFlags(next, mode)
+  }
+
+  if (isPulseMetricIncluded(next, key)) return next
+  next.metricWeights[key] = 1
+  return applyWeightModeFlags(next, mode)
+}
+
+export function setPulseCategoryIncluded(
+  formula: PulseFormula,
+  keys: MetricKey[],
+  included: boolean,
+): PulseFormula {
+  let next = formula
+  for (const key of keys) next = setPulseMetricIncluded(next, key, included)
+  return next
 }
 
 export function metricsInOrGroups(formula: PulseFormula): Set<string> {
@@ -534,9 +727,8 @@ export function defaultPulseDailyTarget(
   if (metricKey.startsWith('workout_')) return 30
   if (metricKey === 'focus') return 60
   if (metricKey.startsWith('habit_') || metricKey.startsWith('habitify_')) return 1
-  if (metricKey === WHOOP_METRIC_RECOVERY) return 67
-  if (metricKey === WHOOP_METRIC_SLEEP) return 85
-  if (metricKey === WHOOP_METRIC_STRAIN) return 12
+  const whoop = getWhoopMetric(metricKey)
+  if (whoop) return whoop.defaultTarget
   return null
 }
 
@@ -577,21 +769,25 @@ export function listPulseMetricOptions(hybridGoals: Goal[]): PulseMetricOption[]
     categoryId: string | null | undefined,
     description: string,
     logPeriod: 'daily' | 'weekly',
+    group?: { id: string; label: string },
   ) => {
     if (seen.has(key)) return
     seen.add(key)
     const resolved = resolveLibraryCategoryId(categoryId)
     const needsDailyTarget = metricNeedsPulseDailyTarget(key, hybridGoals)
+    const weeklyLogged = needsDailyTarget && !isWhoopPulseMetric(key)
     options.push({
       key,
       label,
       unit,
       categoryId: resolved,
       categoryLabel: libraryCategoryLabel(resolved),
-      description: needsDailyTarget
+      description: weeklyLogged
         ? 'Weekly target — set a daily Pulse target next'
         : description,
-      logPeriod: needsDailyTarget ? 'weekly' : logPeriod,
+      groupId: group?.id,
+      groupLabel: group?.label,
+      logPeriod: weeklyLogged ? 'weekly' : logPeriod,
       needsDailyTarget,
     })
   }
@@ -632,30 +828,19 @@ export function listPulseMetricOptions(hybridGoals: Goal[]): PulseMetricOption[]
   }
 
   if (isWhoopConnected()) {
-    push(
-      WHOOP_METRIC_RECOVERY,
-      'WHOOP recovery',
-      '%',
-      WHOOP_CATEGORY_ID,
-      'Recovery score vs your daily target (green is 67+)',
-      'daily',
-    )
-    push(
-      WHOOP_METRIC_SLEEP,
-      'WHOOP sleep',
-      '%',
-      WHOOP_CATEGORY_ID,
-      'Sleep performance vs your daily target',
-      'daily',
-    )
-    push(
-      WHOOP_METRIC_STRAIN,
-      'WHOOP strain',
-      'strain',
-      WHOOP_CATEGORY_ID,
-      'Day strain vs your daily target',
-      'daily',
-    )
+    const groupLabel = (id: (typeof WHOOP_METRIC_GROUPS)[number]['id']) =>
+      WHOOP_METRIC_GROUPS.find((group) => group.id === id)?.label ?? id
+    for (const metric of WHOOP_METRICS) {
+      push(
+        metric.key,
+        metric.label,
+        metric.unit,
+        WHOOP_CATEGORY_ID,
+        metric.description,
+        'daily',
+        { id: metric.group, label: groupLabel(metric.group) },
+      )
+    }
   }
 
   const sleepConfig = getSleepMetricsConfig()
@@ -737,10 +922,18 @@ export function listPulseMetricOptions(hybridGoals: Goal[]): PulseMetricOption[]
     )
   }
 
-  return options.sort(
-    (a, b) =>
-      a.categoryLabel.localeCompare(b.categoryLabel) || a.label.localeCompare(b.label),
-  )
+  return options.sort((a, b) => {
+    const byCategory = a.categoryLabel.localeCompare(b.categoryLabel)
+    if (byCategory !== 0) return byCategory
+    if (a.categoryId === WHOOP_CATEGORY_ID && b.categoryId === WHOOP_CATEGORY_ID) {
+      const indexOf = (key: string) => {
+        const index = WHOOP_METRICS.findIndex((metric) => metric.key === key)
+        return index < 0 ? 999 : index
+      }
+      return indexOf(a.key) - indexOf(b.key)
+    }
+    return a.label.localeCompare(b.label)
+  })
 }
 
 /** @deprecated Use listPulseMetricOptions. */
@@ -783,7 +976,7 @@ export function equalizePulseFormula(formula: PulseFormula, goals: Goal[]): Puls
   const includedGroups = (formula.orGroups ?? []).filter((group) => group.weight > 0)
 
   const next = copyPulseFormula(formula)
-  next.equalWeights = true
+  applyWeightModeFlags(next, 'equal')
   next.metricWeights = {}
   next.orGroups = (formula.orGroups ?? []).map((group) => ({ ...group, weight: 0 }))
 
@@ -835,7 +1028,7 @@ export function assignPointsPulseFormula(formula: PulseFormula, goals: Goal[]): 
   const next = copyPulseFormula(formula)
   next.metricWeights = {}
   next.orGroups = (formula.orGroups ?? []).map((group) => ({ ...group, weight: 0 }))
-  next.equalWeights = false
+  applyWeightModeFlags(next, 'points')
   if (slots.length === 0) return next
 
   const base = Math.floor(PULSE_POINTS_TOTAL / slots.length)
@@ -851,6 +1044,67 @@ export function assignPointsPulseFormula(formula: PulseFormula, goals: Goal[]): 
     }
   }
   return ensureDailyTargets(next, goals)
+}
+
+export function equalizePulseFormulaByCategory(formula: PulseFormula, goals: Goal[]): PulseFormula {
+  const next = equalizePulseFormula(formula, goals)
+  return applyWeightModeFlags(next, 'category')
+}
+
+/** Split a category’s current points equally among its included slots (custom points mode). */
+export function equalizeCategoryPoints(
+  formula: PulseFormula,
+  categoryId: string,
+  goals: Goal[],
+): PulseFormula {
+  const next = copyPulseFormula(formula)
+  applyWeightModeFlags(next, 'points')
+  const slots = listIncludedPulseSlots(next, goals).filter((slot) => slot.categoryId === categoryId)
+  if (slots.length === 0) return next
+
+  let total = 0
+  for (const slot of slots) {
+    if (slot.kind === 'metric') total += next.metricWeights[slot.key] ?? 0
+    else {
+      const group = next.orGroups.find((entry) => entry.id === slot.id)
+      total += group?.weight ?? 0
+    }
+  }
+  if (total <= 0) {
+    const remaining = PULSE_POINTS_TOTAL - formulaWeightsSum(next)
+    if (remaining <= 0) return next
+    total = remaining
+  }
+
+  const base = Math.floor(total / slots.length)
+  let extra = total % slots.length
+  for (const slot of slots) {
+    const points = base + (extra > 0 ? 1 : 0)
+    if (extra > 0) extra -= 1
+    if (slot.kind === 'metric') {
+      if (points > 0) next.metricWeights[slot.key] = points
+      else delete next.metricWeights[slot.key]
+    } else {
+      next.orGroups = next.orGroups.map((group) =>
+        group.id === slot.id ? { ...group, weight: points } : group,
+      )
+    }
+  }
+  return ensureDailyTargets(next, goals)
+}
+
+export function setPulseWeightMode(
+  formula: PulseFormula,
+  mode: PulseWeightMode,
+  goals: Goal[],
+): PulseFormula {
+  if (mode === 'equal') return equalizePulseFormula(formula, goals)
+  if (mode === 'category') return equalizePulseFormulaByCategory(formula, goals)
+  if (getPulseWeightMode(formula) === 'points') {
+    const next = copyPulseFormula(formula)
+    return applyWeightModeFlags(next, 'points')
+  }
+  return assignPointsPulseFormula(formula, goals)
 }
 
 /** Seed / keep Pulse daily targets for every included metric. */
@@ -911,7 +1165,8 @@ export function prunePulseFormulaMetrics(formula: PulseFormula, goals: Goal[]): 
       dailyTargets,
       orGroups,
       exerciseDailyMinutes,
-      equalWeights: formula.equalWeights === true,
+      equalWeights: getPulseWeightMode(formula) === 'equal',
+      weightMode: getPulseWeightMode(formula),
     },
     goals,
   )
@@ -938,15 +1193,14 @@ export function createPulseOrGroup(
     weight += next.metricWeights[key] ?? 0
     delete next.metricWeights[key]
   }
-  if (weight <= 0) weight = next.equalWeights ? 1 : 0
+  if (weight <= 0) weight = getPulseWeightMode(next) === 'points' ? 0 : 1
 
   next.orGroups.push({
     id: crypto.randomUUID(),
     metricKeys: unique,
     weight,
   })
-  next.equalWeights = formula.equalWeights === true
-  return ensureDailyTargets(next, goals)
+  return applyWeightModeFlags(ensureDailyTargets(next, goals), getPulseWeightMode(formula))
 }
 
 export function dissolvePulseOrGroup(
@@ -959,7 +1213,7 @@ export function dissolvePulseOrGroup(
   if (!group) return formula
   next.orGroups = next.orGroups.filter((g) => g.id !== groupId)
   if (group.weight > 0) {
-    if (next.equalWeights) {
+    if (getPulseWeightMode(next) !== 'points') {
       for (const key of group.metricKeys) next.metricWeights[key] = 1
     } else {
       Object.assign(
@@ -981,7 +1235,7 @@ export function setPulseOrGroupWeight(
   next.orGroups = next.orGroups.map((group) =>
     group.id === groupId ? { ...group, weight: clampWeight(weight) } : group,
   )
-  if (!options?.keepEqualMode) next.equalWeights = false
+  if (!options?.keepEqualMode) applyWeightModeFlags(next, 'points')
   return next
 }
 
@@ -1108,12 +1362,12 @@ export function isValidPulseFormula(
 ): { valid: boolean; reason?: string } {
   const pruned = prunePulseFormulaMetrics(formula, goals)
 
-  if (pruned.equalWeights) {
-    if (formulaIncludedCount(pruned) <= 0) {
-      return { valid: false, reason: 'Include at least one metric.' }
+  if (getPulseWeightMode(pruned) === 'points') {
+    if (formulaWeightsSum(pruned) !== PULSE_POINTS_TOTAL) {
+      return { valid: false, reason: `Assign all ${PULSE_POINTS_TOTAL} points before saving.` }
     }
-  } else if (formulaWeightsSum(pruned) !== PULSE_POINTS_TOTAL) {
-    return { valid: false, reason: `Assign all ${PULSE_POINTS_TOTAL} points before saving.` }
+  } else if (formulaIncludedCount(pruned) <= 0) {
+    return { valid: false, reason: 'Include at least one metric.' }
   }
 
   const optionsByKey = new Map(listPulseMetricOptions(goals).map((o) => [o.key as string, o]))
@@ -1144,7 +1398,8 @@ export function copyPulseFormula(formula: PulseFormula): PulseFormula {
       metricKeys: [...group.metricKeys],
     })),
     exerciseDailyMinutes: { ...formula.exerciseDailyMinutes },
-    equalWeights: formula.equalWeights === true,
+    equalWeights: getPulseWeightMode(formula) === 'equal',
+    weightMode: getPulseWeightMode(formula),
   }
 }
 
@@ -1167,11 +1422,12 @@ export function createDefaultPulseFormula(goals: Goal[]): PulseFormula {
 
   return ensureDailyTargets(
     {
-      metricWeights: splitPointsAcross(slots.slice(0, 8), PULSE_POINTS_TOTAL),
+      metricWeights: Object.fromEntries(slots.slice(0, 8).map((key) => [key, 1])),
       dailyTargets: {},
       orGroups: [],
       exerciseDailyMinutes: {},
-      equalWeights: false,
+      equalWeights: true,
+      weightMode: 'equal',
     },
     goals,
   )
@@ -1193,9 +1449,8 @@ export function pulseMetricOptionLabel(
     const habit = getHabitifyHabitCatalog().find((entry) => entry.id === id)
     if (habit) return habit.name
   }
-  if (key === WHOOP_METRIC_RECOVERY) return 'WHOOP recovery'
-  if (key === WHOOP_METRIC_SLEEP) return 'WHOOP sleep'
-  if (key === WHOOP_METRIC_STRAIN) return 'WHOOP strain'
+  const whoop = getWhoopMetric(key)
+  if (whoop) return whoop.label
   if (key.startsWith('workout_')) {
     const type = getWorkoutTypes().find((t) => workoutMetricKey(t.id) === key)
     if (type) return type.label

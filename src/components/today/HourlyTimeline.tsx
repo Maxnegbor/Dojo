@@ -899,7 +899,7 @@ export function HourlyTimeline({
 
       <div
         ref={scrollRef}
-        className="scrollbar-hidden overflow-y-auto overscroll-contain rounded-b-xl"
+        className="home-schedule-scroll scrollbar-hidden overscroll-contain"
         style={{ height: scrollAreaHeight, flexShrink: 0 }}
       >
         <div
@@ -946,7 +946,7 @@ export function HourlyTimeline({
           <div
             ref={containerRef}
             className={cn(
-              'home-timeblock-space relative min-w-0 flex-1 select-none overflow-hidden',
+              'home-timeblock-space relative min-w-0 flex-1 select-none',
               onDropPlannedWorkout && planDropPreview && 'ring-1 ring-inset ring-[var(--accent-500)]/40',
             )}
             style={{
@@ -995,6 +995,14 @@ export function HourlyTimeline({
               onDropPlannedWorkout(planId, startMin)
             }}
           >
+            <div
+              aria-hidden
+              className="home-timeblock-viewport-clip"
+              style={{
+                height: scrollAreaHeight,
+                marginBottom: -scrollAreaHeight,
+              }}
+            />
             <div
               ref={scrollAnchorRef}
               aria-hidden
@@ -1177,7 +1185,7 @@ export function HourlyTimeline({
                   <div
                     data-sticky-block-title=""
                     className={cn(
-                      'relative z-[20] flex shrink-0 items-start gap-1 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]',
+                      'relative z-[20] flex shrink-0 items-start gap-1 will-change-transform data-[stuck=true]:rounded-t-lg',
                       isShortInline && 'items-center',
                       screensaver && !isShortInline && (isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1'),
                       !screensaver && isShortInline && '-mx-1.5 w-[calc(100%+0.75rem)] px-1.5',

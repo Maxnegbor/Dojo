@@ -156,8 +156,8 @@ export function FocusScheduleAgenda({
   return (
     <aside
       className={cn(
-        'flex w-full flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-950/40 transition-all duration-[1400ms] ease-in-out',
-        screensaver && 'h-full min-h-0 border-zinc-800/50 bg-zinc-950/60',
+        'flex w-full flex-col overflow-hidden transition-all duration-[1400ms] ease-in-out',
+        screensaver && 'h-full min-h-0 rounded-2xl border border-zinc-800/50 bg-zinc-950/60',
         className,
       )}
     >
@@ -238,7 +238,7 @@ export function FocusScheduleAgenda({
                     <div
                       data-sticky-block-title=""
                       className={cn(
-                        'relative z-[12] min-w-0 w-full shrink-0 will-change-transform data-[stuck=true]:shadow-[0_12px_18px_-10px_rgba(0,0,0,0.65)]',
+                        'relative z-[12] min-w-0 w-full shrink-0 will-change-transform data-[stuck=true]:rounded-t-lg',
                         screensaver ? 'px-3 py-2' : isShort ? 'pt-0.5' : 'pt-1',
                       )}
                       style={{ backgroundColor: fill }}
