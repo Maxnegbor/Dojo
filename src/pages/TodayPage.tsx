@@ -886,8 +886,8 @@ export function TodayPage() {
             weekWorkouts={weekWorkouts}
             workouts={workouts}
             disabled={!userId || loading}
-            onAddWorkout={async (category, minutes) => {
-              await addWorkout(category, minutes)
+            onAddWorkout={async (category, minutes, extras) => {
+              await addWorkout(category, minutes, extras?.notes ?? '', extras?.date)
               const weekDates = getWeekDates(parseISO(`${viewDate}T12:00:00`), settings.weekStartsOn)
               const weekStart = weekDates[0]!
               const weekEnd = weekDates[weekDates.length - 1]!

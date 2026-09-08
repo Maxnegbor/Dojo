@@ -111,6 +111,14 @@ function isCoachKind(raw: unknown): raw is CoachKind {
   return raw === 'morning' || raw === 'midday' || raw === 'evening' || raw === 'insights'
 }
 
+export function clampCoachSentences(text: string, max = 2): string {
+  const trimmed = text.trim()
+  if (!trimmed) return ''
+  const parts = trimmed.match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+  if (!parts || parts.length <= max) return trimmed
+  return parts.slice(0, max).join('').replace(/\s+/g, ' ').trim()
+}
+
 export function normalizeCoachAdvice(
   raw: unknown,
   kind: CoachKind,
@@ -127,7 +135,7 @@ export function normalizeCoachAdvice(
       : ''
   const bulletsRaw = (raw as { bullets?: unknown }).bullets
   const bullets = Array.isArray(bulletsRaw)
-    ? bulletsRaw.map(normalizeBullet).filter((row): row is CoachBullet => row != null).slice(0, 6)
+    ? bulletsRaw.map(normalizeBullet).filter((row): row is CoachBullet => row != null).slice(0, 3)
     : []
   if (!headline && !body && bullets.length === 0) return null
   const generatedAt =
@@ -140,7 +148,7 @@ export function normalizeCoachAdvice(
     date,
     generatedAt,
     headline: headline || KIND_HEADLINES[kind],
-    body,
+    body: clampCoachSentences(body, 2),
     bullets,
   }
 }
@@ -219,7 +227,11 @@ export function saveCoachSchedule(schedule: CoachSchedule): CoachSchedule {
 export function getCoachAdvice(date: string, kind: CoachKind): CoachAdvice | null {
   const stored = readStore().byDate[date]?.[kind]
   if (!stored || !isCoachKind(stored.kind)) return null
-  return stored
+  return {
+    ...stored,
+    body: clampCoachSentences(stored.body, 2),
+    bullets: (stored.bullets ?? []).slice(0, 3),
+  }
 }
 
 export function getCoachSlotAdvice(date: string): Partial<Record<CoachSlot, CoachAdvice>> {
@@ -228,7 +240,13 @@ export function getCoachSlotAdvice(date: string): Partial<Record<CoachSlot, Coac
   const out: Partial<Record<CoachSlot, CoachAdvice>> = {}
   for (const slot of COACH_SLOTS) {
     const advice = entry[slot]
-    if (advice) out[slot] = advice
+    if (advice) {
+      out[slot] = {
+        ...advice,
+        body: clampCoachSentences(advice.body, 2),
+        bullets: (advice.bullets ?? []).slice(0, 3),
+      }
+    }
   }
   return out
 }

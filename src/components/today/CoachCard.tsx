@@ -8,6 +8,7 @@ import {
   COACH_CHANGED,
   COACH_SLOT_LABELS,
   COACH_SLOTS,
+  clampCoachSentences,
   getCoachSchedule,
   getCoachSlotAdvice,
   getDueCoachSlots,
@@ -56,21 +57,14 @@ function latestSlotWithAdvice(bySlot: Partial<Record<CoachSlot, CoachAdvice>>): 
   return null
 }
 
-function clampSentences(text: string, max: number): string {
-  const parts = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)
-  if (!parts || parts.length <= max) return text
-  return parts.slice(0, max).join('').replace(/\s+/g, ' ').trim()
-}
-
 export function CoachAdviceBody({
   advice,
-  compact = false,
 }: {
   advice: CoachAdvice
   compact?: boolean
 }) {
-  const body = compact ? clampSentences(advice.body, 2) : advice.body
-  const bullets = compact ? advice.bullets.slice(0, 2) : advice.bullets
+  const body = clampCoachSentences(advice.body, 2)
+  const bullets = (advice.bullets ?? []).slice(0, 3)
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-zinc-100">{advice.headline}</p>

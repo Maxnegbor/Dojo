@@ -30,9 +30,6 @@ interface ExerciseWeekEditModalProps {
 
 type SaveStep = 'edit' | 'choose'
 
-const LONG_PRESS_MS = 220
-const MOVE_CANCEL_PX = 10
-
 function weekdayLetter(dateStr: string): string {
   return parseISO(`${dateStr}T12:00:00`).toLocaleDateString(undefined, { weekday: 'narrow' })
 }
@@ -208,91 +205,65 @@ export function ExerciseWeekEditModal({
     event: React.PointerEvent<HTMLElement>,
   ) => {
     if (event.button !== 0) return
+    event.preventDefault()
     const target = event.currentTarget
-    const originX = event.clientX
-    const originY = event.clientY
     const pointerId = event.pointerId
     const rect = target.getBoundingClientRect()
-    let started = false
-    let cancelled = false
-    let holdTimer: ReturnType<typeof setTimeout> | null = window.setTimeout(() => {
-      holdTimer = null
-      begin(originX, originY)
-    }, LONG_PRESS_MS)
 
-    const cleanupWindow = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', finish)
-      window.removeEventListener('pointercancel', finish)
+    try {
+      target.setPointerCapture(pointerId)
+    } catch {
+      /* ignore */
     }
 
-    const begin = (x: number, y: number) => {
-      if (started || cancelled) return
-      started = true
-      if (holdTimer != null) {
-        window.clearTimeout(holdTimer)
-        holdTimer = null
-      }
-      try {
-        target.setPointerCapture(pointerId)
-      } catch {
-        /* ignore */
-      }
-      const next: DragState = {
-        slot,
-        x,
-        y,
-        width: rect.width,
-        overDay: slot.weekday,
-      }
-      dragRef.current = next
-      setDrag(next)
-      setAddingDay(null)
+    const next: DragState = {
+      slot,
+      x: event.clientX,
+      y: event.clientY,
+      width: rect.width,
+      overDay: slot.weekday,
     }
+    dragRef.current = next
+    setDrag(next)
+    setAddingDay(null)
 
     const onMove = (ev: PointerEvent) => {
-      if (cancelled) return
-      const dx = ev.clientX - originX
-      const dy = ev.clientY - originY
-      if (!started) {
-        if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
-          cancelled = true
-          if (holdTimer != null) window.clearTimeout(holdTimer)
-          cleanupWindow()
-        }
-        return
-      }
       const overDay = dayAtPoint(ev.clientX, ev.clientY)
-      const next: DragState = {
+      const following: DragState = {
         slot,
         x: ev.clientX,
         y: ev.clientY,
         width: rect.width,
         overDay,
       }
-      dragRef.current = next
-      setDrag(next)
+      dragRef.current = following
+      setDrag(following)
       ev.preventDefault()
     }
 
     const finish = (ev: PointerEvent) => {
-      if (holdTimer != null) window.clearTimeout(holdTimer)
-      cleanupWindow()
-      if (started) {
-        try {
-          target.releasePointerCapture(pointerId)
-        } catch {
-          /* already released */
-        }
-        const overDay = dayAtPoint(ev.clientX, ev.clientY)
-        if (overDay != null && overDay !== slot.weekday) {
-          moveSlotToDay(slot.id, overDay)
-        }
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', finish)
+      target.removeEventListener('pointercancel', finish)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      try {
+        target.releasePointerCapture(pointerId)
+      } catch {
+        /* already released */
+      }
+      const overDay = dayAtPoint(ev.clientX, ev.clientY)
+      if (overDay != null && overDay !== slot.weekday) {
+        moveSlotToDay(slot.id, overDay)
       }
       dragRef.current = null
       setDrag(null)
     }
 
+    target.addEventListener('pointermove', onMove, { passive: false })
+    target.addEventListener('pointerup', finish)
+    target.addEventListener('pointercancel', finish)
     window.addEventListener('pointermove', onMove, { passive: false })
     window.addEventListener('pointerup', finish)
     window.addEventListener('pointercancel', finish)
@@ -324,13 +295,13 @@ export function ExerciseWeekEditModal({
           <div>
             <h2
               id="exercise-week-edit-title"
-              className="text-base font-semibold text-zinc-100"
+              className="text-lg font-semibold text-zinc-100"
             >
               {step === 'edit' ? 'Edit week plan' : 'Save week plan'}
             </h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
+            <p className="mt-0.5 text-sm text-zinc-500">
               {step === 'edit'
-                ? 'Hold a workout to drag it to another day. Add with + under a day.'
+                ? 'Drag a workout onto another day. Add with + under a day.'
                 : 'Apply only to this week, or make it your permanent weekly schedule.'}
             </p>
           </div>
@@ -370,7 +341,7 @@ export function ExerciseWeekEditModal({
                       <div className="mb-1.5 flex flex-col items-center gap-0.5">
                         <span
                           className={cn(
-                            'text-[8px] font-semibold uppercase leading-none',
+                            'text-[11px] font-semibold uppercase leading-none sm:text-xs',
                             adding || dropTarget
                               ? 'text-[var(--accent-300)]'
                               : today
@@ -382,7 +353,7 @@ export function ExerciseWeekEditModal({
                         </span>
                         <span
                           className={cn(
-                            'text-[11px] font-semibold tabular-nums leading-none',
+                            'text-sm font-semibold tabular-nums leading-none sm:text-base',
                             adding ? 'text-zinc-50' : 'text-zinc-300',
                             today && !adding && 'text-[var(--accent-200)]',
                           )}
@@ -393,7 +364,7 @@ export function ExerciseWeekEditModal({
 
                       <ul className="flex min-h-[4.5rem] flex-col gap-1">
                         {daySlots.length === 0 ? (
-                          <li className="px-0.5 py-1 text-center text-[9px] leading-tight text-zinc-600">
+                          <li className="px-0.5 py-1 text-center text-[11px] leading-tight text-zinc-600">
                             Rest
                           </li>
                         ) : (
@@ -418,19 +389,19 @@ export function ExerciseWeekEditModal({
                                 key={slot.id}
                                 onPointerDown={(event) => startSlotDrag(slot, event)}
                                 className={cn(
-                                  'touch-manipulation select-none rounded-md border border-zinc-800/80 bg-zinc-900/80 px-1 py-1 [-webkit-touch-callout:none]',
-                                  isDragging && 'opacity-30',
+                                  'cursor-grab touch-none select-none rounded-md border border-zinc-800/80 bg-zinc-900/80 px-1.5 py-1.5 [-webkit-touch-callout:none] sm:px-2',
+                                  isDragging ? 'cursor-grabbing opacity-30' : 'hover:border-zinc-700',
                                 )}
                                 onContextMenu={(event) => event.preventDefault()}
                               >
                                 <div className="flex items-start gap-0.5">
                                   <span
-                                    className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full"
+                                    className="mt-1 h-2 w-2 shrink-0 rounded-full"
                                     style={{
                                       backgroundColor: type?.color || 'var(--accent-500)',
                                     }}
                                   />
-                                  <p className="min-w-0 flex-1 break-words text-[9px] font-medium leading-tight text-zinc-100 sm:text-[10px]">
+                                  <p className="min-w-0 flex-1 break-words text-xs font-medium leading-snug text-zinc-100 sm:text-sm">
                                     {title}
                                   </p>
                                   <button
@@ -440,11 +411,11 @@ export function ExerciseWeekEditModal({
                                     className="rounded p-0.5 text-zinc-600 hover:bg-zinc-800 hover:text-red-400"
                                     aria-label={`Remove ${title}`}
                                   >
-                                    <Trash2 size={10} />
+                                    <Trash2 size={14} />
                                   </button>
                                 </div>
                                 {meta ? (
-                                  <p className="mt-0.5 pl-2 text-[8px] tabular-nums leading-tight text-zinc-500">
+                                  <p className="mt-0.5 pl-3 text-[11px] tabular-nums leading-tight text-zinc-400 sm:text-xs">
                                     {meta}
                                   </p>
                                 ) : null}
@@ -461,14 +432,14 @@ export function ExerciseWeekEditModal({
                           clearDraft()
                         }}
                         className={cn(
-                          'mt-1 inline-flex items-center justify-center gap-0.5 rounded-md py-0.5 text-[9px] font-semibold',
+                          'mt-1 inline-flex items-center justify-center gap-0.5 rounded-md py-1 text-xs font-semibold',
                           adding
                             ? 'bg-zinc-800 text-zinc-200'
                             : 'text-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-200',
                         )}
                         aria-label={`Add workout on ${weekdayLabel(day)}`}
                       >
-                        {adding ? <X size={10} /> : <Plus size={10} />}
+                        {adding ? <X size={14} /> : <Plus size={14} />}
                       </button>
                     </div>
                   )
@@ -477,11 +448,11 @@ export function ExerciseWeekEditModal({
 
               {addingDay != null && (
                 <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3">
-                  <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
                     Add to {weekdayLabel(addingDay)}
                   </p>
                   {workoutTypes.length === 0 ? (
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-sm text-zinc-500">
                       Add workout types in Metrics first.
                     </p>
                   ) : (
@@ -496,7 +467,7 @@ export function ExerciseWeekEditModal({
                               setSelectedSubtype(null)
                             }}
                             className={cn(
-                              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
+                              'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium',
                               selectedCategoryId === type.id
                                 ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
                                 : 'border-zinc-700/80 bg-zinc-900 text-zinc-200',
@@ -519,7 +490,7 @@ export function ExerciseWeekEditModal({
                               type="button"
                               onClick={() => setSelectedSubtype(subtype)}
                               className={cn(
-                                'rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
+                                'rounded-md border px-2 py-1 text-xs font-medium',
                                 selectedSubtype === subtype
                                   ? 'border-[var(--accent-500)]/60 bg-[var(--accent-950)] text-[var(--accent-200)]'
                                   : 'border-zinc-700/80 bg-zinc-900 text-zinc-200',
@@ -534,7 +505,7 @@ export function ExerciseWeekEditModal({
                       {selectedCategoryId && (!needsSubtype || selectedSubtype) && (
                         <div className="grid grid-cols-2 gap-1.5">
                           <label className="min-w-0">
-                            <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                            <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                               Time
                             </span>
                             <input
@@ -542,12 +513,12 @@ export function ExerciseWeekEditModal({
                               step={1800}
                               value={draftTime}
                               onChange={(e) => setDraftTime(e.target.value)}
-                              className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                              className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
                             />
                           </label>
                           {timed ? (
                             <label className="min-w-0">
-                              <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                              <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                                 Min
                               </span>
                               <input
@@ -556,12 +527,12 @@ export function ExerciseWeekEditModal({
                                 step={5}
                                 value={draftDuration}
                                 onChange={(e) => setDraftDuration(e.target.value)}
-                                className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                                className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
                               />
                             </label>
                           ) : (
                             <label className="min-w-0">
-                              <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                              <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                                 {selectedType?.unit || 'Amount'}
                               </span>
                               <input
@@ -570,7 +541,7 @@ export function ExerciseWeekEditModal({
                                 step="any"
                                 value={draftAmount}
                                 onChange={(e) => setDraftAmount(e.target.value)}
-                                className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                                className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
                               />
                             </label>
                           )}
@@ -655,18 +626,18 @@ export function ExerciseWeekEditModal({
       {drag
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-[200] -translate-x-1/2 -translate-y-1/2 rounded-md border border-[var(--accent-500)]/50 bg-zinc-900 px-2 py-1.5 shadow-xl shadow-black/50"
+              className="pointer-events-none fixed z-[200] -translate-x-1/2 -translate-y-1/2 rounded-md border border-[var(--accent-500)]/50 bg-zinc-900 px-2.5 py-2 shadow-xl shadow-black/50"
               style={{
                 left: drag.x,
                 top: drag.y,
-                width: Math.max(drag.width, 72),
+                width: Math.max(drag.width, 96),
               }}
             >
-              <p className="truncate text-[11px] font-medium text-zinc-100">
+              <p className="truncate text-sm font-medium text-zinc-100">
                 {drag.slot.subtype?.trim() ||
                   formatWorkoutPlanLabel(drag.slot.category, drag.slot.subtype)}
               </p>
-              <p className="text-[9px] text-zinc-500">Drop on a day</p>
+              <p className="text-xs text-zinc-400">Drop on a day</p>
             </div>,
             document.body,
           )

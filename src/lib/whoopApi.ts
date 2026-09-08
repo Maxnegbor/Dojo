@@ -2,6 +2,8 @@ import { addDays, parseISO } from 'date-fns'
 import { formatDate } from '@/lib/utils'
 import {
   cacheWhoopDay,
+  cacheWhoopDayWorkouts,
+  emptyWhoopDay,
   getWhoopCredentials,
   getWhoopTokens,
   saveWhoopProfile,
@@ -104,7 +106,17 @@ interface WhoopWorkoutRaw {
   end?: string | null
   timezone_offset?: string
   sport_name?: string
-  score?: { strain?: number } | null
+  score?: {
+    strain?: number
+    zone_durations?: {
+      zone_zero_milli?: number
+      zone_one_milli?: number
+      zone_two_milli?: number
+      zone_three_milli?: number
+      zone_four_milli?: number
+      zone_five_milli?: number
+    } | null
+  } | null
 }
 
 let refreshInFlight: Promise<WhoopTokens> | null = null
@@ -407,26 +419,47 @@ function sleepMinutesFrom(sleep: WhoopSleepRaw): number | null {
 }
 
 function emptyDay(date: string): WhoopDaySnapshot {
+  return emptyWhoopDay(date)
+}
+
+function zoneMilli(value: number | null | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+}
+
+function durationMinutesFromRange(start: string, end: string | null | undefined): number | null {
+  if (!end) return null
+  const ms = new Date(end).getTime() - new Date(start).getTime()
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  return Math.max(1, Math.round(ms / 60_000))
+}
+
+function mapWhoopWorkout(workout: WhoopWorkoutRaw): { localDate: string; summary: WhoopWorkoutSummary } | null {
+  if (!workout.id || !workout.start) return null
+  const localDate =
+    localDateFromWhoop(workout.start, workout.timezone_offset) ??
+    localDateFromWhoop(workout.start)
+  if (!localDate) return null
+  const zones = workout.score?.zone_durations
+  const zoneZero = zoneMilli(zones?.zone_zero_milli)
+  const zoneOne = zoneMilli(zones?.zone_one_milli)
+  const zoneTwo = zoneMilli(zones?.zone_two_milli)
+  const zoneThree = zoneMilli(zones?.zone_three_milli)
+  const zoneFour = zoneMilli(zones?.zone_four_milli)
+  const zoneFive = zoneMilli(zones?.zone_five_milli)
+  const zoneTotalMilli = zoneZero + zoneOne + zoneTwo + zoneThree + zoneFour + zoneFive
   return {
-    date,
-    recoveryScore: null,
-    restingHr: null,
-    hrvMs: null,
-    strain: null,
-    kilojoule: null,
-    sleepPerformance: null,
-    sleepEfficiency: null,
-    sleepConsistency: null,
-    sleepMinutes: null,
-    inBedMinutes: null,
-    bedtimeMinutes: null,
-    wakeMinutes: null,
-    lightSleepMinutes: null,
-    swsMinutes: null,
-    remMinutes: null,
-    awakeMinutes: null,
-    workouts: [],
-    fetchedAt: Date.now(),
+    localDate,
+    summary: {
+      id: workout.id,
+      sportName: workout.sport_name?.trim() || 'Workout',
+      strain: workout.score?.strain ?? null,
+      start: workout.start,
+      end: workout.end ?? null,
+      durationMinutes: durationMinutesFromRange(workout.start, workout.end) ??
+        (zoneTotalMilli > 0 ? Math.max(1, Math.round(zoneTotalMilli / 60_000)) : null),
+      zoneTwoMilli: zones ? zoneTwo : null,
+      zoneTotalMilli: zones ? zoneTotalMilli : null,
+    },
   }
 }
 
@@ -502,21 +535,9 @@ export async function syncWhoopDay(date: string): Promise<WhoopDaySnapshot> {
   const cycleForDay = pickCycleForDate(cycles, date)
 
   day.workouts = workouts
-    .map((workout): WhoopWorkoutSummary | null => {
-      if (!workout.id || !workout.start) return null
-      const local =
-        localDateFromWhoop(workout.start, workout.timezone_offset) ??
-        localDateFromWhoop(workout.start)
-      if (local !== date) return null
-      return {
-        id: workout.id,
-        sportName: workout.sport_name?.trim() || 'Workout',
-        strain: workout.score?.strain ?? null,
-        start: workout.start,
-        end: workout.end ?? null,
-      }
-    })
-    .filter((row): row is WhoopWorkoutSummary => row != null)
+    .map((workout) => mapWhoopWorkout(workout))
+    .filter((row): row is NonNullable<typeof row> => row != null && row.localDate === date)
+    .map((row) => row.summary)
 
   if (cycleForDay?.score?.strain != null) {
     day.strain = cycleForDay.score.strain
@@ -532,4 +553,32 @@ export async function syncWhoopDay(date: string): Promise<WhoopDaySnapshot> {
 
   cacheWhoopDay(day)
   return day
+}
+
+let workoutsRangeInFlight: { key: string; promise: Promise<void> } | null = null
+
+export async function syncWhoopWorkoutsForDates(dates: string[]): Promise<void> {
+  const unique = [...new Set(dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort()
+  if (unique.length === 0) return
+  const key = unique.join(',')
+  if (workoutsRangeInFlight?.key === key) return workoutsRangeInFlight.promise
+
+  const promise = (async () => {
+    const start = addDays(parseISO(`${unique[0]}T00:00:00`), -1).toISOString()
+    const end = addDays(parseISO(`${unique[unique.length - 1]}T00:00:00`), 2).toISOString()
+    const workouts = await fetchCollection<WhoopWorkoutRaw>('v2/activity/workout', start, end)
+    const byDate: Record<string, WhoopWorkoutSummary[]> = {}
+    for (const date of unique) byDate[date] = []
+    for (const workout of workouts) {
+      const mapped = mapWhoopWorkout(workout)
+      if (!mapped || !byDate[mapped.localDate]) continue
+      byDate[mapped.localDate]!.push(mapped.summary)
+    }
+    cacheWhoopDayWorkouts(byDate)
+  })().finally(() => {
+    if (workoutsRangeInFlight?.key === key) workoutsRangeInFlight = null
+  })
+
+  workoutsRangeInFlight = { key, promise }
+  return promise
 }

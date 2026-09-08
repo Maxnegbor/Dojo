@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { parseISO } from 'date-fns'
-import { Pencil } from 'lucide-react'
+import { Check, Pencil, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { WorkoutWeekEditModal } from '@/components/today/WorkoutWeekEditModal'
 import { useSettings } from '@/context/SettingsContext'
@@ -9,6 +9,19 @@ import { goalTargetPeriod } from '@/lib/goalPeriod'
 import { getWeeklyWorkoutTotal } from '@/lib/metrics'
 import { OUTCOME_GOALS_CHANGED } from '@/lib/outcomeGoals'
 import { resolveWeeklyQuantityTarget } from '@/lib/pulseConfig'
+import { syncWhoopWorkoutsForDates } from '@/lib/whoopApi'
+import {
+  isWhoopConnected,
+  WHOOP_CHANGED,
+  WHOOP_DAYS_CHANGED,
+} from '@/lib/whoopStore'
+import {
+  listWhoopWorkoutSuggestions,
+  markWhoopWorkoutHandled,
+  WHOOP_WORKOUT_IMPORT_CHANGED,
+  whoopWorkoutNote,
+  type WhoopWorkoutSuggestion,
+} from '@/lib/whoopWorkoutDetect'
 import {
   DEFAULT_WORKOUT_UNIT,
   getWorkoutTypes,
@@ -25,7 +38,11 @@ interface WorkoutLogCardProps {
   weekWorkouts: Workout[]
   workouts: Workout[]
   disabled?: boolean
-  onAddWorkout: (category: WorkoutCategory, minutes: number) => Promise<void>
+  onAddWorkout: (
+    category: WorkoutCategory,
+    minutes: number,
+    extras?: { date?: string; notes?: string },
+  ) => Promise<void>
   onWeekEdited?: () => void | Promise<void>
 }
 
@@ -51,6 +68,9 @@ export function WorkoutLogCard({
   const [savingCategory, setSavingCategory] = useState<string | null>(null)
   const [outcomeRevision, setOutcomeRevision] = useState(0)
   const [editOpen, setEditOpen] = useState(false)
+  const [whoopConnected, setWhoopConnected] = useState(() => isWhoopConnected())
+  const [whoopRevision, setWhoopRevision] = useState(0)
+  const [pendingWhoopId, setPendingWhoopId] = useState<string | null>(null)
 
   useEffect(() => {
     const syncTypes = () => setWorkoutTypes(getWorkoutTypes())
@@ -67,11 +87,43 @@ export function WorkoutLogCard({
     }
   }, [])
 
+  useEffect(() => {
+    const syncWhoop = () => {
+      setWhoopConnected(isWhoopConnected())
+      setWhoopRevision((n) => n + 1)
+    }
+    window.addEventListener(WHOOP_CHANGED, syncWhoop)
+    window.addEventListener(WHOOP_DAYS_CHANGED, syncWhoop)
+    window.addEventListener(WHOOP_WORKOUT_IMPORT_CHANGED, syncWhoop)
+    window.addEventListener('user-storage-ready', syncWhoop)
+    return () => {
+      window.removeEventListener(WHOOP_CHANGED, syncWhoop)
+      window.removeEventListener(WHOOP_DAYS_CHANGED, syncWhoop)
+      window.removeEventListener(WHOOP_WORKOUT_IMPORT_CHANGED, syncWhoop)
+      window.removeEventListener('user-storage-ready', syncWhoop)
+    }
+  }, [])
+
   // Recurring weekly volume uses Settings → weekStartsOn (default Monday → Sunday).
   const weekDates = useMemo(
     () => getWeekDates(parseISO(`${date}T12:00:00`), settings.weekStartsOn),
     [date, settings.weekStartsOn],
   )
+
+  useEffect(() => {
+    if (!whoopConnected) return
+    let cancelled = false
+    void syncWhoopWorkoutsForDates(weekDates)
+      .then(() => {
+        if (!cancelled) setWhoopRevision((n) => n + 1)
+      })
+      .catch(() => {
+        /* keep cached workouts */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [whoopConnected, weekDates])
 
   /** Union week-scoped + day workouts so progress updates right after logging. */
   const workoutsForWeek = useMemo(() => {
@@ -83,6 +135,21 @@ export function WorkoutLogCard({
     }
     return [...byId.values()]
   }, [weekWorkouts, workouts, weekDates])
+
+  const whoopSuggestions = useMemo(
+    () => (whoopConnected ? listWhoopWorkoutSuggestions(weekDates, workoutsForWeek) : []),
+    [whoopConnected, weekDates, workoutsForWeek, whoopRevision, workoutTypes],
+  )
+
+  const suggestionsByType = useMemo(() => {
+    const map = new Map<string, WhoopWorkoutSuggestion[]>()
+    for (const suggestion of whoopSuggestions) {
+      const list = map.get(suggestion.category) ?? []
+      list.push(suggestion)
+      map.set(suggestion.category, list)
+    }
+    return map
+  }, [whoopSuggestions])
 
   const weeklyGoalByType = useMemo(() => {
     const map = new Map<string, { logged: number; target: number; unit: string }>()
@@ -130,6 +197,25 @@ export function WorkoutLogCard({
     } finally {
       setSavingCategory(null)
     }
+  }
+
+  const acceptWhoopSuggestion = async (suggestion: WhoopWorkoutSuggestion) => {
+    if (disabled || pendingWhoopId) return
+    setPendingWhoopId(suggestion.whoopId)
+    try {
+      await onAddWorkout(suggestion.category, suggestion.minutes, {
+        date: suggestion.date,
+        notes: whoopWorkoutNote(suggestion.whoopId),
+      })
+      markWhoopWorkoutHandled(suggestion.whoopId, 'accepted')
+    } finally {
+      setPendingWhoopId(null)
+    }
+  }
+
+  const dismissWhoopSuggestion = (suggestion: WhoopWorkoutSuggestion) => {
+    if (disabled || pendingWhoopId) return
+    markWhoopWorkoutHandled(suggestion.whoopId, 'dismissed')
   }
 
   return (
@@ -225,6 +311,39 @@ export function WorkoutLogCard({
                     </div>
                   </div>
                 </div>
+                {(suggestionsByType.get(type.id) ?? []).map((suggestion) => (
+                  <div
+                    key={suggestion.whoopId}
+                    className="mt-1.5 flex items-center gap-1.5 text-[10px] leading-tight text-zinc-500"
+                  >
+                    <span className="min-w-0 truncate">WHOOP · {suggestion.sportName}</span>
+                    <span className="shrink-0 tabular-nums text-zinc-300">
+                      {formatDuration(suggestion.minutes)}
+                    </span>
+                    <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        disabled={disabled || pendingWhoopId != null}
+                        onClick={() => void acceptWhoopSuggestion(suggestion)}
+                        className="rounded p-0.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-emerald-400 disabled:opacity-40"
+                        aria-label={`Add ${suggestion.sportName} ${formatDuration(suggestion.minutes)} to ${type.label}`}
+                        title="Add to this week"
+                      >
+                        <Check size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={disabled || pendingWhoopId != null}
+                        onClick={() => dismissWhoopSuggestion(suggestion)}
+                        className="rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
+                        aria-label={`Dismiss ${suggestion.sportName} detection`}
+                        title="Dismiss"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  </div>
+                ))}
               </li>
             )
           })}

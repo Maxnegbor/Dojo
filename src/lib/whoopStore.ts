@@ -267,6 +267,9 @@ export interface WhoopWorkoutSummary {
   strain: number | null
   start: string
   end: string | null
+  durationMinutes: number | null
+  zoneTwoMilli: number | null
+  zoneTotalMilli: number | null
 }
 
 export interface WhoopDaySnapshot {
@@ -342,6 +345,13 @@ function normalizeProfile(raw: unknown): WhoopProfile | null {
   }
 }
 
+function durationMinutesFromRange(start: string, end: string | null): number | null {
+  if (!end) return null
+  const ms = new Date(end).getTime() - new Date(start).getTime()
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  return Math.max(1, Math.round(ms / 60_000))
+}
+
 function normalizeWorkout(raw: unknown): WhoopWorkoutSummary | null {
   if (!raw || typeof raw !== 'object') return null
   const obj = raw as Record<string, unknown>
@@ -349,12 +359,52 @@ function normalizeWorkout(raw: unknown): WhoopWorkoutSummary | null {
   const sportName = typeof obj.sportName === 'string' ? obj.sportName.trim() : ''
   const start = typeof obj.start === 'string' ? obj.start : ''
   if (!id || !start) return null
+  const end = typeof obj.end === 'string' ? obj.end : null
+  const storedDuration =
+    typeof obj.durationMinutes === 'number' && Number.isFinite(obj.durationMinutes)
+      ? Math.max(1, Math.round(obj.durationMinutes))
+      : null
+  const zoneTwoMilli =
+    typeof obj.zoneTwoMilli === 'number' && Number.isFinite(obj.zoneTwoMilli)
+      ? Math.max(0, obj.zoneTwoMilli)
+      : null
+  const zoneTotalMilli =
+    typeof obj.zoneTotalMilli === 'number' && Number.isFinite(obj.zoneTotalMilli)
+      ? Math.max(0, obj.zoneTotalMilli)
+      : null
   return {
     id,
     sportName: sportName || 'Workout',
     strain: typeof obj.strain === 'number' && Number.isFinite(obj.strain) ? obj.strain : null,
     start,
-    end: typeof obj.end === 'string' ? obj.end : null,
+    end,
+    durationMinutes: storedDuration ?? durationMinutesFromRange(start, end),
+    zoneTwoMilli,
+    zoneTotalMilli,
+  }
+}
+
+export function emptyWhoopDay(date: string): WhoopDaySnapshot {
+  return {
+    date,
+    recoveryScore: null,
+    restingHr: null,
+    hrvMs: null,
+    strain: null,
+    kilojoule: null,
+    sleepPerformance: null,
+    sleepEfficiency: null,
+    sleepConsistency: null,
+    sleepMinutes: null,
+    inBedMinutes: null,
+    bedtimeMinutes: null,
+    wakeMinutes: null,
+    lightSleepMinutes: null,
+    swsMinutes: null,
+    remMinutes: null,
+    awakeMinutes: null,
+    workouts: [],
+    fetchedAt: Date.now(),
   }
 }
 
@@ -487,6 +537,19 @@ export function cacheWhoopDay(day: WhoopDaySnapshot): void {
   if (!normalized) return
   const cache = pruneDayCache(readDayCache())
   cache[normalized.date] = normalized
+  storageSetItem(DAYS_KEY, JSON.stringify(cache))
+  notifyDaysChanged()
+}
+
+export function cacheWhoopDayWorkouts(byDate: Record<string, WhoopWorkoutSummary[]>): void {
+  const cache = pruneDayCache(readDayCache())
+  for (const [date, workouts] of Object.entries(byDate)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+    const existing = cache[date]
+    cache[date] = existing
+      ? { ...existing, workouts: workouts.map(normalizeWorkout).filter((w): w is WhoopWorkoutSummary => w != null) }
+      : { ...emptyWhoopDay(date), workouts: workouts.map(normalizeWorkout).filter((w): w is WhoopWorkoutSummary => w != null) }
+  }
   storageSetItem(DAYS_KEY, JSON.stringify(cache))
   notifyDaysChanged()
 }

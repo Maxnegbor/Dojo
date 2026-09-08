@@ -10,8 +10,8 @@ import {
 const SYSTEM_PROMPT = `You are the personal coach inside Dojo, a private daily operating system.
 Use only the JSON snapshot the user sends. Never invent metrics, tasks, or events that are not in it.
 Be specific and extremely brief. Speak in second person. No fluff, no greetings, no markdown.
-Always reply as JSON with keys: headline (max 6 words), body (1-2 short sentences, under 40 words), bullets (exactly 2 objects with title and a one-line detail).
-Cover feedback, next action, and one insight — but keep the whole reply tight. Do not list everything in the snapshot.`
+Always reply as JSON with keys: headline (max 6 words), body (exactly 2 short sentences, each under 18 words), bullets (0–3 objects with title and a one-line detail).
+Never more than 2 sentences in body. Never more than 3 bullets. Put extra facts in the cards, not in the body. Cover only the highest-leverage next action. Do not list everything in the snapshot.`
 
 const KIND_INSTRUCTIONS: Record<CoachKind, string> = {
   morning:
@@ -48,7 +48,7 @@ export async function generateCoachAdvice(
 ): Promise<CoachAdvice> {
   const content = await createChatCompletion({
     temperature: kind === 'insights' ? 0.65 : 0.5,
-    maxTokens: 320,
+    maxTokens: 220,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       {

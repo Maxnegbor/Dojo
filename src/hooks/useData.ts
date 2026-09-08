@@ -84,32 +84,40 @@ export function useDailyLog(date: string) {
   )
 
   const addWorkout = useCallback(
-    async (category: Workout['category'], duration: number, notes = '') => {
+    async (
+      category: Workout['category'],
+      duration: number,
+      notes = '',
+      loggedDate?: string,
+    ) => {
       if (!userId) return undefined
+      const workoutDate =
+        loggedDate && /^\d{4}-\d{2}-\d{2}$/.test(loggedDate) ? loggedDate : date
+      const dailyLogId = workoutDate === date ? (log?.id ?? null) : null
 
       if (isSupabaseConfigured) {
         const { addWorkout: add } = await import('@/lib/supabase')
         const w = await add({
           user_id: userId,
-          daily_log_id: log?.id ?? null,
-          date,
+          daily_log_id: dailyLogId,
+          date: workoutDate,
           category,
           duration_minutes: duration,
           notes,
         })
-        setWorkouts((prev) => [...prev, w])
+        if (workoutDate === date) setWorkouts((prev) => [...prev, w])
         return w
       }
 
       const w = localStore.addWorkout({
         user_id: userId,
-        daily_log_id: log?.id ?? null,
-        date,
+        daily_log_id: dailyLogId,
+        date: workoutDate,
         category,
         duration_minutes: duration,
         notes,
       })
-      setWorkouts((prev) => [...prev, w])
+      if (workoutDate === date) setWorkouts((prev) => [...prev, w])
       return w
     },
     [userId, log, date],
