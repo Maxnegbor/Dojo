@@ -7,6 +7,7 @@ import {
   sleepMetricIdFromLibraryKey,
 } from '@/lib/sleepMetrics'
 import { getWhoopMetric } from '@/lib/whoopStore'
+import { getWorkoutTypes, workoutMetricKey } from '@/lib/workoutTypes'
 
 export type GoalLogWhen = 'home' | 'morning' | 'shutdown'
 export type GoalMorningDay = 'today' | 'yesterday'
