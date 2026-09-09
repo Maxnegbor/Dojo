@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, ChevronDown, GitMerge, Minus, Plus, Unlink, X } from 'lucide-react'
+import { Activity, ChevronDown, GitMerge, RotateCcw, Unlink, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl'
@@ -23,6 +23,7 @@ import {
   listIncludedPulseSlots,
   listPulseMetricOptions,
   prunePulseFormulaMetrics,
+  resetPulsePoints,
   resolvePulseMetricTarget,
   resolveWeeklyQuantityTarget,
   setPulseCategoryIncluded,
@@ -134,38 +135,53 @@ function slotEffectiveWeight(
   return slot.kind === 'metric' ? metricWeights[slot.key] ?? 0 : orGroupWeights[slot.id] ?? 0
 }
 
-function WeightStepper({
+function clampPoolWeight(current: number, next: number, assigned: number): number {
+  const remaining = PULSE_POINTS_TOTAL - assigned
+  const max = current + Math.max(0, remaining)
+  return Math.max(0, Math.min(PULSE_POINTS_TOTAL, Math.round(next), max))
+}
+
+function WeightSlider({
   value,
-  disableMinus,
-  disablePlus,
+  remaining,
   onChange,
+  label,
 }: {
   value: number
-  disableMinus?: boolean
-  disablePlus?: boolean
+  remaining: number
   onChange: (next: number) => void
+  label: string
 }) {
+  const fill = (value / PULSE_POINTS_TOTAL) * 100
   return (
-    <div className="flex items-center gap-1.5">
-      <button
-        type="button"
-        disabled={disableMinus || value <= 0}
-        onClick={() => onChange(value - 1)}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/80 text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-40"
-        aria-label="Decrease points"
-      >
-        <Minus size={14} />
-      </button>
-      <span className="w-6 text-center text-sm font-semibold tabular-nums text-zinc-100">{value}</span>
-      <button
-        type="button"
-        disabled={disablePlus}
-        onClick={() => onChange(value + 1)}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/80 text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-40"
-        aria-label="Increase points"
-      >
-        <Plus size={14} />
-      </button>
+    <div className="flex min-w-0 flex-1 items-center gap-3">
+      <input
+        type="range"
+        min={0}
+        max={PULSE_POINTS_TOTAL}
+        step={1}
+        value={value}
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={PULSE_POINTS_TOTAL}
+        aria-valuenow={value}
+        onChange={(e) => onChange(Math.max(0, Math.min(value + remaining, Math.round(Number(e.target.value)))))}
+        className={cn(
+          'h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700/80',
+          '[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4',
+          '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full',
+          '[&::-webkit-slider-thumb]:bg-[var(--accent-500)] [&::-webkit-slider-thumb]:shadow-[0_0_8px_var(--accent-glow)]',
+          '[&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110',
+          '[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full',
+          '[&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[var(--accent-500)]',
+        )}
+        style={{
+          background: `linear-gradient(to right, var(--accent-500) ${fill}%, rgb(63 63 70 / 0.85) ${fill}%)`,
+        }}
+      />
+      <span className="w-10 shrink-0 text-right text-sm font-semibold tabular-nums text-zinc-100">
+        {value}
+      </span>
     </div>
   )
 }
@@ -325,15 +341,26 @@ export function PulseConfigureModal({
 
   const setMetricWeight = (key: MetricKey, nextValue: number) => {
     setDraft((prev) => {
-      if (nextValue < 0) return prev
-      if (nextValue > (prev.metricWeights[key] ?? 0) && formulaWeightsSum(prev) >= PULSE_POINTS_TOTAL) {
-        return prev
-      }
-      const metricWeights = { ...prev.metricWeights }
-      if (nextValue <= 0) delete metricWeights[key]
-      else metricWeights[key] = nextValue
+      const current = prev.metricWeights[key] ?? 0
+      const next = clampPoolWeight(current, nextValue, formulaWeightsSum(prev))
+      const metricWeights = { ...prev.metricWeights, [key]: next }
       return { ...prev, equalWeights: false, weightMode: 'points', metricWeights }
     })
+  }
+
+  const setGroupWeight = (groupId: string, nextValue: number) => {
+    setDraft((prev) => {
+      const current = prev.orGroups.find((group) => group.id === groupId)?.weight ?? 0
+      return setPulseOrGroupWeight(
+        prev,
+        groupId,
+        clampPoolWeight(current, nextValue, formulaWeightsSum(prev)),
+      )
+    })
+  }
+
+  const handleResetPoints = () => {
+    setDraft((prev) => resetPulsePoints(prev, goals))
   }
 
   const setDailyTarget = (key: MetricKey, raw: string) => {
@@ -462,7 +489,7 @@ export function PulseConfigureModal({
           ? 'Every included metric gets the same share of Pulse.'
           : weightMode === 'category'
             ? 'Each category gets the same share of Pulse, split equally inside it.'
-            : `Distribute ${PULSE_POINTS_TOTAL} points. Each point is 10% of your daily score.`
+            : `Distribute ${PULSE_POINTS_TOTAL} points. Each point is 1% of your daily score.`
 
   const stepIndex = step === 'select' ? 1 : step === 'daily-targets' ? 2 : 3
   const optionByKey = useMemo(
@@ -660,13 +687,22 @@ export function PulseConfigureModal({
               />
 
               {weightMode === 'points' ? (
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3 text-center text-sm font-medium text-zinc-300">
-                  {assigned} / {PULSE_POINTS_TOTAL} points assigned
-                  {remaining > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
+                  <div className="text-sm font-medium text-zinc-300">
+                    {assigned} / {PULSE_POINTS_TOTAL} points assigned
                     <span className="block text-xs font-normal text-zinc-500">
-                      {remaining} remaining
+                      {remaining > 0 ? `${remaining} remaining` : 'All points assigned'}
                     </span>
-                  )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={assigned <= 0}
+                    onClick={handleResetPoints}
+                  >
+                    <RotateCcw size={13} />
+                    Reset points
+                  </Button>
                 </div>
               ) : (
                 <div className="rounded-xl border border-[var(--accent-500)]/40 bg-[var(--accent-950)]/40 px-4 py-3 text-center text-sm font-medium text-[var(--accent-300)]">
@@ -704,87 +740,6 @@ export function PulseConfigureModal({
                 )}
               </div>
 
-              {(draft.orGroups ?? []).some((group) => group.weight > 0) && (
-                <section className="space-y-2">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                    Either / or groups
-                  </p>
-                  {draft.orGroups
-                    .filter((group) => group.weight > 0)
-                    .map((group) => {
-                    const slot = includedSlots.find(
-                      (entry) => entry.kind === 'group' && entry.id === group.id,
-                    )
-                    const share = slot
-                      ? pulseShareLabel(
-                          slotEffectiveWeight(slot, effective.metricWeights, effective.orGroupWeights),
-                          effectiveTotal,
-                        )
-                      : '0%'
-                    return (
-                      <div
-                        key={group.id}
-                        className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-4 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-zinc-200">
-                              {formatPulseOrGroupLabel(group, metricOptions, goals)}
-                            </p>
-                            <p className="mt-0.5 text-[11px] text-zinc-500">
-                              Hit any one metric for full points
-                            </p>
-                            <ul className="mt-1.5 space-y-0.5">
-                              {group.metricKeys.map((key) => {
-                                const option = metricOptions.find((entry) => entry.key === key)
-                                return (
-                                  <li key={key} className="text-[11px] text-zinc-400">
-                                    · {option?.label ?? key}
-                                  </li>
-                                )
-                              })}
-                            </ul>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            {weightMode === 'points' ? (
-                              <WeightStepper
-                                value={group.weight}
-                                disablePlus={remaining <= 0 && group.weight === 0}
-                                onChange={(next) =>
-                                  setDraft((prev) => {
-                                    if (
-                                      next > group.weight &&
-                                      formulaWeightsSum(prev) >= PULSE_POINTS_TOTAL
-                                    ) {
-                                      return prev
-                                    }
-                                    return setPulseOrGroupWeight(prev, group.id, next)
-                                  })
-                                }
-                              />
-                            ) : (
-                              <span className="text-sm font-semibold tabular-nums text-zinc-100">
-                                {share}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDraft((prev) => dissolvePulseOrGroup(prev, group.id, goals))
-                              }
-                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                            >
-                              <Unlink size={11} />
-                              Ungroup
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </section>
-              )}
-
               <div className="space-y-5">
                 {weighSlotsByCategory.map((category) => {
                   const categoryWeight = category.slots.reduce(
@@ -793,7 +748,6 @@ export function PulseConfigureModal({
                       slotEffectiveWeight(slot, effective.metricWeights, effective.orGroupWeights),
                     0,
                   )
-                  const metricSlots = category.slots.filter((slot) => slot.kind === 'metric')
                   return (
                     <section key={category.id}>
                       <div className="mb-2 flex items-center justify-between gap-2">
@@ -816,15 +770,79 @@ export function PulseConfigureModal({
                         ) : null}
                       </div>
                       <div className="space-y-2">
-                        {metricSlots.map((slot) => {
-                          if (slot.kind !== 'metric') return null
-                          const option = optionByKey.get(slot.key)
-                          const value = draft.metricWeights[slot.key] ?? 0
-                          const selected = isGrouping && selectedForGroup.includes(slot.key)
+                        {category.slots.map((slot) => {
                           const share = pulseShareLabel(
                             slotEffectiveWeight(slot, effective.metricWeights, effective.orGroupWeights),
                             effectiveTotal,
                           )
+                          if (slot.kind === 'group') {
+                            const group = draft.orGroups.find((entry) => entry.id === slot.id)
+                            if (!group) return null
+                            return (
+                              <div
+                                key={slot.id}
+                                className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-4 py-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-zinc-200">
+                                      {formatPulseOrGroupLabel(group, metricOptions, goals)}
+                                      <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-zinc-500">
+                                        either/or
+                                      </span>
+                                    </p>
+                                    <p className="mt-0.5 text-[11px] text-zinc-500">
+                                      Hit any one metric for full points
+                                    </p>
+                                    <ul className="mt-1.5 space-y-0.5">
+                                      {group.metricKeys.map((key) => {
+                                        const option = optionByKey.get(key)
+                                        return (
+                                          <li key={key} className="text-[11px] text-zinc-400">
+                                            · {option?.groupLabel
+                                              ? `${option.groupLabel} · ${option.label}`
+                                              : option?.label ?? key}
+                                          </li>
+                                        )
+                                      })}
+                                    </ul>
+                                  </div>
+                                  {weightMode !== 'points' ? (
+                                    <span className="text-sm font-semibold tabular-nums text-zinc-100">
+                                      {share}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {weightMode === 'points' ? (
+                                  <div className="mt-3">
+                                    <WeightSlider
+                                      value={group.weight}
+                                      remaining={remaining}
+                                      label={`Points for ${formatPulseOrGroupLabel(group, metricOptions, goals)}`}
+                                      onChange={(next) => setGroupWeight(group.id, next)}
+                                    />
+                                  </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setDraft((prev) => dissolvePulseOrGroup(prev, group.id, goals))
+                                  }
+                                  className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                                >
+                                  <Unlink size={11} />
+                                  Ungroup
+                                </button>
+                              </div>
+                            )
+                          }
+
+                          const option = optionByKey.get(slot.key)
+                          const value = draft.metricWeights[slot.key] ?? 0
+                          const selected = isGrouping && selectedForGroup.includes(slot.key)
+                          const metricLabel = option?.groupLabel
+                            ? `${option.groupLabel} · ${option.label}`
+                            : option?.label ?? slot.key
                           return (
                             <div
                               key={slot.key}
@@ -839,7 +857,7 @@ export function PulseConfigureModal({
                                     type="button"
                                     onClick={() => toggleSelectForGroup(slot.key)}
                                     aria-pressed={selected}
-                                    aria-label={`Select ${option?.label ?? slot.key} for either/or group`}
+                                    aria-label={`Select ${metricLabel} for either/or group`}
                                     className="flex min-w-0 items-start gap-2.5 text-left"
                                   >
                                     <input
@@ -850,35 +868,29 @@ export function PulseConfigureModal({
                                       className="pointer-events-none mt-1 h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 text-[var(--accent-500)]"
                                       aria-hidden
                                     />
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium text-zinc-200">
-                                        {option?.groupLabel
-                                          ? `${option.groupLabel} · ${option.label}`
-                                          : option?.label ?? slot.key}
-                                      </p>
-                                    </div>
+                                    <p className="text-sm font-medium text-zinc-200">{metricLabel}</p>
                                   </button>
                                 ) : (
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium text-zinc-200">
-                                      {option?.groupLabel
-                                        ? `${option.groupLabel} · ${option.label}`
-                                        : option?.label ?? slot.key}
-                                    </p>
-                                  </div>
+                                  <p className="min-w-0 text-sm font-medium text-zinc-200">
+                                    {metricLabel}
+                                  </p>
                                 )}
-                                {weightMode === 'points' ? (
-                                  <WeightStepper
-                                    value={value}
-                                    disablePlus={remaining <= 0}
-                                    onChange={(next) => setMetricWeight(slot.key, next)}
-                                  />
-                                ) : (
+                                {weightMode !== 'points' ? (
                                   <span className="text-sm font-semibold tabular-nums text-zinc-100">
                                     {share}
                                   </span>
-                                )}
+                                ) : null}
                               </div>
+                              {weightMode === 'points' ? (
+                                <div className="mt-3">
+                                  <WeightSlider
+                                    value={value}
+                                    remaining={remaining}
+                                    label={`Points for ${metricLabel}`}
+                                    onChange={(next) => setMetricWeight(slot.key, next)}
+                                  />
+                                </div>
+                              ) : null}
                             </div>
                           )
                         })}

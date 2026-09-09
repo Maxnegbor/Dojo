@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isToday, parseISO } from 'date-fns'
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { TimeInput } from '@/components/ui/TimeInput'
 import { ExerciseWeekEditModal } from '@/components/today/ExerciseWeekEditModal'
 import { useSettings } from '@/context/SettingsContext'
 import {
@@ -363,11 +364,7 @@ export function ExercisePlanCard({
                   </span>
                   <span className="flex h-1.5 items-center justify-center gap-0.5">
                     {dayItems.length === 0 ? (
-                      today && !selected ? (
-                        <span className="h-1 w-1 rounded-full bg-[var(--accent-500)]" />
-                      ) : (
-                        <span className="h-1 w-1" />
-                      )
+                      <span className="h-1 w-1" />
                     ) : (
                       dayItems.slice(0, 3).map((item) => {
                         const type = typeById.get(item.category)
@@ -472,12 +469,12 @@ export function ExercisePlanCard({
                       <span className="mb-0.5 block text-[9px] font-medium uppercase tracking-wide text-zinc-500">
                         Time
                       </span>
-                      <input
-                        type="time"
-                        step={1800}
+                      <TimeInput
+                        compact
                         value={draftTime}
-                        onChange={(e) => setDraftTime(e.target.value)}
-                        className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-1.5 py-1 text-[11px] tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                        onChange={setDraftTime}
+                        step={1800}
+                        className="w-full"
                       />
                     </label>
                   ) : null}

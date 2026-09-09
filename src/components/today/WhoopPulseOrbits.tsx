@@ -260,12 +260,12 @@ export function WhoopPulseOrbits({ date }: { date: string }) {
         details={[
           { label: 'Asleep', value: formatHours(day?.sleepMinutes ?? null) },
           { label: 'In bed', value: formatHours(day?.inBedMinutes ?? null) },
-          { label: 'Bedtime', value: formatClock(day?.bedtimeMinutes ?? null) },
-          { label: 'Wake', value: formatClock(day?.wakeMinutes ?? null) },
           {
             label: 'Efficiency',
             value: day?.sleepEfficiency != null ? `${Math.round(day.sleepEfficiency)}%` : '—',
           },
+          { label: 'Bedtime', value: formatClock(day?.bedtimeMinutes ?? null) },
+          { label: 'Wake', value: formatClock(day?.wakeMinutes ?? null) },
         ]}
         style={{
           left: '50%',

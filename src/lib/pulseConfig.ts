@@ -81,12 +81,12 @@ export interface PulseFormula {
   /**
    * How included metrics share Pulse.
    * `equal` — every slot the same. `category` — each category the same, split inside.
-   * `points` — 10-point pool. Legacy `equalWeights` maps to `equal`.
+   * `points` — 100-point pool. Legacy `equalWeights` maps to `equal`.
    */
   weightMode?: PulseWeightMode
   /**
-   * When true, included slots (weight &gt; 0) each count equally —
-   * no 10-point pool. Weights are typically 0 or 1.
+   * When true, included slots each count equally —
+   * no 100-point pool. Weights are typically 0 or 1.
    * @deprecated Prefer weightMode. Kept for stored formulas.
    */
   equalWeights?: boolean
@@ -121,7 +121,7 @@ export interface PulseMetricOption {
   needsDailyTarget: boolean
 }
 
-export const PULSE_POINTS_TOTAL = 10
+export const PULSE_POINTS_TOTAL = 100
 
 export const DEFAULT_PULSE_WEIGHTS: PulseWeights = {
   habits: 4,
@@ -151,9 +151,29 @@ function normalizeMetricWeights(raw: unknown): Record<string, number> {
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!key || typeof key !== 'string') continue
     const n = typeof value === 'number' ? value : Number(value)
-    if (Number.isFinite(n) && n > 0) out[key] = clampWeight(n)
+    if (Number.isFinite(n) && n >= 0) out[key] = clampWeight(n)
   }
   return out
+}
+
+function hasTrackedMetric(formula: PulseFormula, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(formula.metricWeights ?? {}, key)
+}
+
+function trackedStandaloneKeys(formula: PulseFormula): string[] {
+  const grouped = metricsInOrGroups(formula)
+  return Object.keys(formula.metricWeights ?? {}).filter((key) => !grouped.has(key))
+}
+
+function includedOrGroups(formula: PulseFormula): PulseOrGroup[] {
+  return (formula.orGroups ?? []).filter((group) => group.metricKeys.length >= 2)
+}
+
+function allIncludedMetricKeys(formula: PulseFormula): string[] {
+  return [
+    ...trackedStandaloneKeys(formula),
+    ...includedOrGroups(formula).flatMap((group) => group.metricKeys),
+  ]
 }
 
 function libraryCategoryLabel(categoryId: string): string {
@@ -202,9 +222,6 @@ function normalizeOrGroups(raw: unknown): PulseOrGroup[] {
         : typeof obj.weight === 'string'
           ? clampWeight(Number(obj.weight))
           : 0
-    if (weight <= 0 && obj.weight !== 1) {
-      // keep groups with weight 0 only if equal-mode style weight is set later; drop empty
-    }
     groups.push({
       id: typeof obj.id === 'string' && obj.id ? obj.id : crypto.randomUUID(),
       metricKeys: [...new Set(metricKeys)],
@@ -313,7 +330,22 @@ function normalizeFormula(raw: unknown): PulseFormula {
     weights: weightsRaw ? normalizeLegacyWeights(weightsRaw) : undefined,
   }
 
-  return migrateLegacyPulseFormula(base)
+  return migrateTenPointScale(migrateLegacyPulseFormula(base))
+}
+
+/** Legacy custom formulas used a 10-point pool. Scale to 100 without changing shares. */
+function migrateTenPointScale(formula: PulseFormula): PulseFormula {
+  if (getPulseWeightMode(formula) !== 'points') return formula
+  if (formulaWeightsSum(formula) !== 10) return formula
+  const next = copyPulseFormula(formula)
+  for (const key of Object.keys(next.metricWeights)) {
+    next.metricWeights[key] = clampWeight((next.metricWeights[key] ?? 0) * 10)
+  }
+  next.orGroups = next.orGroups.map((group) => ({
+    ...group,
+    weight: clampWeight(group.weight * 10),
+  }))
+  return next
 }
 
 export function normalizePulseConfig(raw: unknown): PulseConfig {
@@ -381,14 +413,7 @@ export function formulaWeightsSum(formula: PulseFormula): number {
 }
 
 export function formulaIncludedCount(formula: PulseFormula): number {
-  let count = 0
-  for (const value of Object.values(formula.metricWeights ?? {})) {
-    if (value > 0) count += 1
-  }
-  for (const group of formula.orGroups ?? []) {
-    if (group.weight > 0) count += 1
-  }
-  return count
+  return trackedStandaloneKeys(formula).length + includedOrGroups(formula).length
 }
 
 export function getPulseWeightMode(formula: PulseFormula): PulseWeightMode {
@@ -454,7 +479,7 @@ export function listIncludedPulseSlots(formula: PulseFormula, goals: Goal[]): Pu
 
   for (const option of options) {
     if (grouped.has(option.key)) continue
-    if ((formula.metricWeights[option.key] ?? 0) <= 0) continue
+    if (!hasTrackedMetric(formula, option.key)) continue
     const category = optionCategory(option)
     slots.push({
       kind: 'metric',
@@ -464,8 +489,7 @@ export function listIncludedPulseSlots(formula: PulseFormula, goals: Goal[]): Pu
     })
   }
 
-  for (const group of formula.orGroups ?? []) {
-    if (group.weight <= 0) continue
+  for (const group of includedOrGroups(formula)) {
     const category = orGroupCategory(group, optionByKey)
     slots.push({
       kind: 'group',
@@ -525,8 +549,8 @@ export function effectivePulseWeights(
 }
 
 export function isPulseMetricIncluded(formula: PulseFormula, key: string): boolean {
-  if ((formula.metricWeights[key] ?? 0) > 0) return true
-  return (formula.orGroups ?? []).some((group) => group.weight > 0 && group.metricKeys.includes(key as MetricKey))
+  if (hasTrackedMetric(formula, key)) return true
+  return (formula.orGroups ?? []).some((group) => group.metricKeys.includes(key as MetricKey))
 }
 
 export function setPulseMetricIncluded(
@@ -544,10 +568,8 @@ export function setPulseMetricIncluded(
         if (!group.metricKeys.includes(key)) return group
         const metricKeys = group.metricKeys.filter((entry) => entry !== key)
         if (metricKeys.length >= 2) return { ...group, metricKeys }
-        if (group.weight > 0) {
-          for (const leftover of metricKeys) {
-            next.metricWeights[leftover] = mode === 'points' ? group.weight : 1
-          }
+        for (const leftover of metricKeys) {
+          next.metricWeights[leftover] = mode === 'points' ? group.weight : 1
         }
         return { ...group, metricKeys: [] }
       })
@@ -556,7 +578,7 @@ export function setPulseMetricIncluded(
   }
 
   if (isPulseMetricIncluded(next, key)) return next
-  next.metricWeights[key] = 1
+  next.metricWeights[key] = mode === 'points' ? 0 : 1
   return applyWeightModeFlags(next, mode)
 }
 
@@ -738,10 +760,7 @@ export function getIncludedMetricsNeedingDailyTarget(
   goals: Goal[],
 ): PulseMetricOption[] {
   const optionsByKey = new Map(listPulseMetricOptions(goals).map((o) => [o.key as string, o]))
-  const used = new Set<string>([
-    ...Object.keys(formula.metricWeights ?? {}).filter((k) => (formula.metricWeights[k] ?? 0) > 0),
-    ...(formula.orGroups ?? []).filter((g) => g.weight > 0).flatMap((g) => g.metricKeys),
-  ])
+  const used = new Set<string>(allIncludedMetricKeys(formula))
   const out: PulseMetricOption[] = []
   for (const key of used) {
     const option = optionsByKey.get(key)
@@ -970,10 +989,8 @@ export function getPulseAssignableSlots(goals: Goal[]): MetricKey[] {
 export function equalizePulseFormula(formula: PulseFormula, goals: Goal[]): PulseFormula {
   const options = listPulseMetricOptions(goals)
   const grouped = metricsInOrGroups(formula)
-  const includedMetrics = options
-    .map((option) => option.key)
-    .filter((key) => !grouped.has(key) && (formula.metricWeights[key] ?? 0) > 0)
-  const includedGroups = (formula.orGroups ?? []).filter((group) => group.weight > 0)
+  const includedMetrics = trackedStandaloneKeys(formula)
+  const includedGroups = includedOrGroups(formula)
 
   const next = copyPulseFormula(formula)
   applyWeightModeFlags(next, 'equal')
@@ -997,53 +1014,21 @@ export function equalizePulseFormula(formula: PulseFormula, goals: Goal[]): Puls
   return ensureDailyTargets(next, goals)
 }
 
-export function assignPointsPulseFormula(formula: PulseFormula, goals: Goal[]): PulseFormula {
-  const options = listPulseMetricOptions(goals)
-  const grouped = metricsInOrGroups(formula)
-  type Slot =
-    | { kind: 'metric'; key: MetricKey }
-    | { kind: 'group'; id: string }
-
-  const included: Slot[] = []
-  for (const option of options) {
-    if (grouped.has(option.key)) continue
-    if ((formula.metricWeights[option.key] ?? 0) > 0) {
-      included.push({ kind: 'metric', key: option.key })
-    }
-  }
-  for (const group of formula.orGroups ?? []) {
-    if (group.weight > 0) included.push({ kind: 'group', id: group.id })
-  }
-
-  const slots: Slot[] =
-    included.length > 0
-      ? included
-      : [
-          ...options
-            .filter((option) => !grouped.has(option.key))
-            .map((option) => ({ kind: 'metric' as const, key: option.key })),
-          ...(formula.orGroups ?? []).map((group) => ({ kind: 'group' as const, id: group.id })),
-        ]
-
+export function resetPulsePoints(formula: PulseFormula, goals: Goal[]): PulseFormula {
   const next = copyPulseFormula(formula)
-  next.metricWeights = {}
-  next.orGroups = (formula.orGroups ?? []).map((group) => ({ ...group, weight: 0 }))
   applyWeightModeFlags(next, 'points')
-  if (slots.length === 0) return next
-
-  const base = Math.floor(PULSE_POINTS_TOTAL / slots.length)
-  let extra = PULSE_POINTS_TOTAL % slots.length
-  for (const slot of slots) {
-    const points = base + (extra > 0 ? 1 : 0)
-    if (extra > 0) extra -= 1
-    if (slot.kind === 'metric') next.metricWeights[slot.key] = points
-    else {
-      next.orGroups = next.orGroups.map((group) =>
-        group.id === slot.id ? { ...group, weight: points } : group,
-      )
-    }
+  const grouped = metricsInOrGroups(next)
+  for (const key of Object.keys(next.metricWeights)) {
+    if (grouped.has(key)) delete next.metricWeights[key]
+    else next.metricWeights[key] = 0
   }
+  next.orGroups = (formula.orGroups ?? []).map((group) => ({ ...group, weight: 0 }))
   return ensureDailyTargets(next, goals)
+}
+
+/** Custom mode starts at 0 — same as resetPulsePoints. */
+export function assignPointsPulseFormula(formula: PulseFormula, goals: Goal[]): PulseFormula {
+  return resetPulsePoints(formula, goals)
 }
 
 export function equalizePulseFormulaByCategory(formula: PulseFormula, goals: Goal[]): PulseFormula {
@@ -1104,17 +1089,12 @@ export function setPulseWeightMode(
     const next = copyPulseFormula(formula)
     return applyWeightModeFlags(next, 'points')
   }
-  return assignPointsPulseFormula(formula, goals)
+  return resetPulsePoints(formula, goals)
 }
 
 /** Seed / keep Pulse daily targets for every included metric. */
 export function ensureDailyTargets(formula: PulseFormula, goals: Goal[]): PulseFormula {
-  const usedKeys = new Set<string>([
-    ...Object.keys(formula.metricWeights ?? {}).filter((k) => (formula.metricWeights[k] ?? 0) > 0),
-    ...(formula.orGroups ?? [])
-      .filter((g) => g.weight > 0)
-      .flatMap((g) => g.metricKeys),
-  ])
+  const usedKeys = new Set<string>(allIncludedMetricKeys(formula))
   const dailyTargets = { ...(formula.dailyTargets ?? {}) }
   const withoutTargets: PulseFormula = { ...formula, dailyTargets: {} }
   for (const key of usedKeys) {
@@ -1134,7 +1114,7 @@ export function prunePulseFormulaMetrics(formula: PulseFormula, goals: Goal[]): 
     eligible.has(key) || (keepUnknownHabitify && key.startsWith('habitify_'))
   const metricWeights: Record<string, number> = {}
   for (const [key, value] of Object.entries(formula.metricWeights ?? {})) {
-    if (isEligible(key) && value > 0) metricWeights[key] = value
+    if (isEligible(key)) metricWeights[key] = clampWeight(value)
   }
 
   const orGroups = (formula.orGroups ?? [])
@@ -1212,14 +1192,12 @@ export function dissolvePulseOrGroup(
   const group = next.orGroups.find((g) => g.id === groupId)
   if (!group) return formula
   next.orGroups = next.orGroups.filter((g) => g.id !== groupId)
-  if (group.weight > 0) {
-    if (getPulseWeightMode(next) !== 'points') {
-      for (const key of group.metricKeys) next.metricWeights[key] = 1
-    } else {
-      Object.assign(
-        next.metricWeights,
-        splitPointsAcross(group.metricKeys, group.weight),
-      )
+  if (getPulseWeightMode(next) !== 'points') {
+    for (const key of group.metricKeys) next.metricWeights[key] = 1
+  } else {
+    const split = splitPointsAcross(group.metricKeys, group.weight)
+    for (const key of group.metricKeys) {
+      next.metricWeights[key] = split[key] ?? 0
     }
   }
   return ensureDailyTargets(next, goals)
@@ -1371,10 +1349,7 @@ export function isValidPulseFormula(
   }
 
   const optionsByKey = new Map(listPulseMetricOptions(goals).map((o) => [o.key as string, o]))
-  const usedKeys = new Set<string>([
-    ...Object.keys(pruned.metricWeights).filter((k) => (pruned.metricWeights[k] ?? 0) > 0),
-    ...pruned.orGroups.filter((g) => g.weight > 0).flatMap((g) => g.metricKeys),
-  ])
+  const usedKeys = new Set<string>(allIncludedMetricKeys(pruned))
   for (const key of usedKeys) {
     const option = optionsByKey.get(key)
     const target = resolvePulseMetricTarget(key as MetricKey, goals, pruned)

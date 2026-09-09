@@ -96,7 +96,12 @@ function PulseBreakdownPanel({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-medium text-zinc-100">
+                        <p
+                          className={cn(
+                            'truncate text-xs font-medium',
+                            row.scoreEarned <= 0 ? 'text-red-300' : 'text-zinc-100',
+                          )}
+                        >
                           {row.label}
                           {row.kind === 'or-group' && (
                             <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-zinc-500">

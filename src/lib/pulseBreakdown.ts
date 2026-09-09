@@ -234,7 +234,7 @@ export function buildPulseContributors(input: {
 
   for (const group of formula.orGroups ?? []) {
     const weight = orGroupWeights[group.id] ?? 0
-    if (weight <= 0 || group.metricKeys.length === 0) continue
+    if (group.metricKeys.length === 0) continue
     const memberDetails: string[] = []
     const memberRates: number[] = []
     for (const metricKey of group.metricKeys) {

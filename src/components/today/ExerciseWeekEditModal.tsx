@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isToday, parseISO } from 'date-fns'
 import { CalendarRange, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { TimeInput } from '@/components/ui/TimeInput'
 import { useSettings } from '@/context/SettingsContext'
 import {
   applyExerciseSlotsToWeekOnly,
@@ -52,6 +53,16 @@ interface DragState {
   y: number
   width: number
   overDay: WeekdayIndex | null
+  overIndex: number
+}
+
+function DropGap() {
+  return (
+    <li
+      aria-hidden
+      className="h-1 shrink-0 rounded-full bg-[var(--accent-500)] shadow-[0_0_8px_var(--accent-glow)]"
+    />
+  )
 }
 
 export function ExerciseWeekEditModal({
@@ -107,12 +118,6 @@ export function ExerciseWeekEditModal({
       list.push(slot)
       map.set(slot.weekday, list)
     }
-    for (const [day, list] of map) {
-      map.set(
-        day,
-        [...list].sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')),
-      )
-    }
     return map
   }, [slots, weekdays])
 
@@ -134,10 +139,39 @@ export function ExerciseWeekEditModal({
     return null
   }
 
-  const moveSlotToDay = (slotId: string, day: WeekdayIndex) => {
-    setSlots((prev) =>
-      prev.map((slot) => (slot.id === slotId ? { ...slot, weekday: day } : slot)),
+  const insertIndexAtPoint = (day: WeekdayIndex, y: number, excludeId: string): number => {
+    const dayEl = dayEls.current.get(day)
+    if (!dayEl) return 0
+    const cards = [...dayEl.querySelectorAll<HTMLElement>('[data-week-slot]')].filter(
+      (el) => el.dataset.weekSlot !== excludeId,
     )
+    for (let i = 0; i < cards.length; i++) {
+      const rect = cards[i].getBoundingClientRect()
+      if (y < rect.top + rect.height / 2) return i
+    }
+    return cards.length
+  }
+
+  const moveSlotToDay = (slotId: string, day: WeekdayIndex, insertIndex: number) => {
+    setSlots((prev) => {
+      const moving = prev.find((slot) => slot.id === slotId)
+      if (!moving) return prev
+      const rest = prev.filter((slot) => slot.id !== slotId)
+      const dest = rest.filter((slot) => slot.weekday === day)
+      const others = rest.filter((slot) => slot.weekday !== day)
+      const index = Math.max(0, Math.min(insertIndex, dest.length))
+      const currentIndex =
+        moving.weekday === day
+          ? prev.filter((slot) => slot.weekday === day).findIndex((slot) => slot.id === slotId)
+          : -1
+      if (moving.weekday === day && index === currentIndex) return prev
+      return [
+        ...others,
+        ...dest.slice(0, index),
+        { ...moving, weekday: day },
+        ...dest.slice(index),
+      ]
+    })
   }
 
   const addSlot = (day: WeekdayIndex) => {
@@ -222,6 +256,7 @@ export function ExerciseWeekEditModal({
       y: event.clientY,
       width: rect.width,
       overDay: slot.weekday,
+      overIndex: insertIndexAtPoint(slot.weekday, event.clientY, slot.id),
     }
     dragRef.current = next
     setDrag(next)
@@ -229,12 +264,15 @@ export function ExerciseWeekEditModal({
 
     const onMove = (ev: PointerEvent) => {
       const overDay = dayAtPoint(ev.clientX, ev.clientY)
+      const overIndex =
+        overDay == null ? 0 : insertIndexAtPoint(overDay, ev.clientY, slot.id)
       const following: DragState = {
         slot,
         x: ev.clientX,
         y: ev.clientY,
         width: rect.width,
         overDay,
+        overIndex,
       }
       dragRef.current = following
       setDrag(following)
@@ -254,8 +292,12 @@ export function ExerciseWeekEditModal({
         /* already released */
       }
       const overDay = dayAtPoint(ev.clientX, ev.clientY)
-      if (overDay != null && overDay !== slot.weekday) {
-        moveSlotToDay(slot.id, overDay)
+      if (overDay != null) {
+        moveSlotToDay(
+          slot.id,
+          overDay,
+          insertIndexAtPoint(overDay, ev.clientY, slot.id),
+        )
       }
       dragRef.current = null
       setDrag(null)
@@ -325,6 +367,10 @@ export function ExerciseWeekEditModal({
                   const today = isToday(parseISO(`${date}T12:00:00`))
                   const adding = addingDay === day
                   const dropTarget = drag?.overDay === day
+                  const visibleSlots = dropTarget
+                    ? daySlots.filter((slot) => slot.id !== draggingId)
+                    : daySlots
+                  const gapAt = dropTarget ? drag.overIndex : null
                   return (
                     <div
                       key={day}
@@ -363,65 +409,73 @@ export function ExerciseWeekEditModal({
                       </div>
 
                       <ul className="flex min-h-[4.5rem] flex-col gap-1">
-                        {daySlots.length === 0 ? (
+                        {visibleSlots.length === 0 && gapAt == null ? (
                           <li className="px-0.5 py-1 text-center text-[11px] leading-tight text-zinc-600">
                             Rest
                           </li>
                         ) : (
-                          daySlots.map((slot) => {
-                            const type = typeById.get(slot.category)
-                            const title =
-                              slot.subtype?.trim() ||
-                              formatWorkoutPlanLabel(slot.category, slot.subtype)
-                            const meta = [
-                              slot.start_time
-                                ? formatPlanTime(slot.start_time, use24h)
-                                : null,
-                              slot.duration_minutes
-                                ? formatDuration(slot.duration_minutes)
-                                : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')
-                            const isDragging = draggingId === slot.id
-                            return (
-                              <li
-                                key={slot.id}
-                                onPointerDown={(event) => startSlotDrag(slot, event)}
-                                className={cn(
-                                  'cursor-grab touch-none select-none rounded-md border border-zinc-800/80 bg-zinc-900/80 px-1.5 py-1.5 [-webkit-touch-callout:none] sm:px-2',
-                                  isDragging ? 'cursor-grabbing opacity-30' : 'hover:border-zinc-700',
-                                )}
-                                onContextMenu={(event) => event.preventDefault()}
-                              >
-                                <div className="flex items-start gap-0.5">
-                                  <span
-                                    className="mt-1 h-2 w-2 shrink-0 rounded-full"
-                                    style={{
-                                      backgroundColor: type?.color || 'var(--accent-500)',
-                                    }}
-                                  />
-                                  <p className="min-w-0 flex-1 break-words text-xs font-medium leading-snug text-zinc-100 sm:text-sm">
-                                    {title}
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onPointerDown={(event) => event.stopPropagation()}
-                                    onClick={() => removeSlot(slot.id)}
-                                    className="rounded p-0.5 text-zinc-600 hover:bg-zinc-800 hover:text-red-400"
-                                    aria-label={`Remove ${title}`}
+                          <>
+                            {gapAt === 0 ? <DropGap /> : null}
+                            {visibleSlots.map((slot, slotIndex) => {
+                              const type = typeById.get(slot.category)
+                              const title =
+                                slot.subtype?.trim() ||
+                                formatWorkoutPlanLabel(slot.category, slot.subtype)
+                              const meta = [
+                                slot.start_time
+                                  ? formatPlanTime(slot.start_time, use24h)
+                                  : null,
+                                slot.duration_minutes
+                                  ? formatDuration(slot.duration_minutes)
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')
+                              const isDragging = draggingId === slot.id
+                              return (
+                                <Fragment key={slot.id}>
+                                  <li
+                                    data-week-slot={slot.id}
+                                    onPointerDown={(event) => startSlotDrag(slot, event)}
+                                    className={cn(
+                                      'cursor-grab touch-none select-none rounded-md border border-zinc-800/80 bg-zinc-900/80 px-1.5 py-1.5 [-webkit-touch-callout:none] sm:px-2',
+                                      isDragging
+                                        ? 'cursor-grabbing opacity-30'
+                                        : 'hover:border-zinc-700',
+                                    )}
+                                    onContextMenu={(event) => event.preventDefault()}
                                   >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                                {meta ? (
-                                  <p className="mt-0.5 pl-3 text-[11px] tabular-nums leading-tight text-zinc-400 sm:text-xs">
-                                    {meta}
-                                  </p>
-                                ) : null}
-                              </li>
-                            )
-                          })
+                                    <div className="flex items-start gap-0.5">
+                                      <span
+                                        className="mt-1 h-2 w-2 shrink-0 rounded-full"
+                                        style={{
+                                          backgroundColor: type?.color || 'var(--accent-500)',
+                                        }}
+                                      />
+                                      <p className="min-w-0 flex-1 break-words text-xs font-medium leading-snug text-zinc-100 sm:text-sm">
+                                        {title}
+                                      </p>
+                                      <button
+                                        type="button"
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                        onClick={() => removeSlot(slot.id)}
+                                        className="rounded p-0.5 text-zinc-600 hover:bg-zinc-800 hover:text-red-400"
+                                        aria-label={`Remove ${title}`}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                    {meta ? (
+                                      <p className="mt-0.5 pl-3 text-[11px] tabular-nums leading-tight text-zinc-400 sm:text-xs">
+                                        {meta}
+                                      </p>
+                                    ) : null}
+                                  </li>
+                                  {gapAt === slotIndex + 1 ? <DropGap /> : null}
+                                </Fragment>
+                              )
+                            })}
+                          </>
                         )}
                       </ul>
 
@@ -508,12 +562,11 @@ export function ExerciseWeekEditModal({
                             <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                               Time
                             </span>
-                            <input
-                              type="time"
-                              step={1800}
+                            <TimeInput
                               value={draftTime}
-                              onChange={(e) => setDraftTime(e.target.value)}
-                              className="w-full rounded-md border border-zinc-700/80 bg-zinc-900 px-2 py-1.5 text-sm tabular-nums text-zinc-100 outline-none focus:border-[var(--accent-500)]"
+                              onChange={setDraftTime}
+                              step={1800}
+                              className="w-full"
                             />
                           </label>
                           {timed ? (

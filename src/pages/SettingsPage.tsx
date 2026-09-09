@@ -411,7 +411,7 @@ export function SettingsPage() {
       <Card>
         <SettingsSection
           title="Workout subcategories"
-          description="Customize sessions under a type — e.g. Strength → Push, Pull, Legs"
+          description="Add workout types and session flavors — e.g. Strength → Push, Pull, Legs"
           collapsible
           defaultOpen
         >

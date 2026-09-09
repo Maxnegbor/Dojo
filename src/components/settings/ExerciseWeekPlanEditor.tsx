@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { TimeInput } from '@/components/ui/TimeInput'
 import { ToggleRow } from '@/components/settings/SettingsControls'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth } from '@/hooks/useData'
@@ -390,15 +391,13 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
                                   </select>
                                 )}
                                 {includeTime && (
-                                  <input
-                                    type="time"
+                                  <TimeInput
+                                    compact
                                     value={slot.start_time ?? '07:00'}
-                                    onChange={(e) =>
-                                      updateSlot(slot.id, {
-                                        start_time: e.target.value || null,
-                                      })
+                                    onChange={(next) =>
+                                      updateSlot(slot.id, { start_time: next })
                                     }
-                                    className="rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-1 text-[11px] text-zinc-200"
+                                    className="bg-zinc-950"
                                   />
                                 )}
                                 <div className="flex items-center gap-1">
@@ -508,11 +507,9 @@ export function ExerciseWeekPlanEditor({ onSaved }: ExerciseWeekPlanEditorProps)
                         {includeTime && (
                           <label className="space-y-1">
                             <span className="block text-[10px] text-zinc-500">Time</span>
-                            <input
-                              type="time"
+                            <TimeInput
                               value={draftTime}
-                              onChange={(e) => setDraftTime(e.target.value)}
-                              className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100"
+                              onChange={setDraftTime}
                             />
                           </label>
                         )}
