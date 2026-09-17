@@ -24,6 +24,9 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/dojo" element={<DojoChallengesPage />} />
+          <Route path="/dojo/*" element={<DojoChallengesPage />} />
+          <Route path="/challenges" element={<DojoChallengesPage />} />
+          <Route path="/challenges/*" element={<DojoChallengesPage />} />
           <Route element={<RequireAuth />}>
             <Route path="whoop/callback" element={<WhoopCallbackPage />} />
             <Route element={<AppShell />}>

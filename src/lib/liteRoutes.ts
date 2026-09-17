@@ -4,6 +4,8 @@ export function isLiteAppRoute(pathname: string): boolean {
     pathname === '/contracts' ||
     pathname.startsWith('/contracts/') ||
     pathname === '/dojo' ||
-    pathname.startsWith('/dojo/')
+    pathname.startsWith('/dojo/') ||
+    pathname === '/challenges' ||
+    pathname.startsWith('/challenges/')
   )
 }

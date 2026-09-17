@@ -21,6 +21,22 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null
 
+/** Anon-only client so public pages never send a Dojo login JWT. */
+let publicSupabase: SupabaseClient | null | undefined
+
+export function getPublicSupabase(): SupabaseClient | null {
+  if (!isSupabaseConfigured) return null
+  if (publicSupabase !== undefined) return publicSupabase
+  publicSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  })
+  return publicSupabase
+}
+
 /** Expose sleep metrics stored in custom_metrics (`sm:`) as sleep_metrics for the app. */
 function hydrateDailyLog(log: DailyLog): DailyLog {
   const merged = resolveSleepMetrics(log)

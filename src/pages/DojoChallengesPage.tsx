@@ -1,5 +1,4 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Pencil, Plus, Swords, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -112,7 +111,9 @@ export function DojoChallengesPage() {
             <Swords size={22} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Dojo</h1>
-          <p className="mt-1 text-sm text-zinc-500">Join the challenge. Fill in your name.</p>
+          <p className="mt-1 text-sm text-zinc-500">
+            No account needed. Fill in your name and join.
+          </p>
         </header>
 
         {error && (
@@ -227,11 +228,6 @@ export function DojoChallengesPage() {
               Lock
             </button>
           )}
-          <div className="mt-3">
-            <Link to="/login" className="text-[11px] text-zinc-700 hover:text-zinc-500">
-              Sign in to Dojo
-            </Link>
-          </div>
         </div>
       </div>
 

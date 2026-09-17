@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useAuth } from '@/context/AuthContext'
@@ -119,7 +119,13 @@ export function LoginPage() {
         </p>
       </Card>
 
-      <p className="mt-6 max-w-sm text-center text-[11px] leading-relaxed text-zinc-600">
+      <p className="mt-6 text-center text-sm">
+        <Link to="/dojo" className="text-[var(--accent-400)] hover:underline">
+          Join a challenge — no account needed
+        </Link>
+      </p>
+
+      <p className="mt-4 max-w-sm text-center text-[11px] leading-relaxed text-zinc-600">
         {isSupabaseConfigured
           ? 'Connected to Supabase — your data syncs to the cloud.'
           : 'Local mode — accounts and data stay in this browser only.'}

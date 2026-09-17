@@ -1,4 +1,4 @@
-import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { getPublicSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import { formatUnknownError, generateId } from '@/lib/utils'
 import type { DojoChallenge, DojoChallengeMember, DojoChallengeStatus } from '@/types'
 
@@ -163,12 +163,13 @@ function sortChallenges(challenges: DojoChallenge[]): DojoChallenge[] {
 }
 
 export async function fetchDojoChallenges(): Promise<DojoChallenge[]> {
-  if (!isSupabaseConfigured || !supabase) {
+  const client = getPublicSupabase()
+  if (!isSupabaseConfigured || !client) {
     tableReady = false
     return sortChallenges(readLocal())
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('dojo_challenges')
     .select('*, members:dojo_challenge_members(*)')
     .order('created_at', { ascending: false })
@@ -194,7 +195,8 @@ export async function joinDojoChallenge(challengeId: string, name: string): Prom
   if (!trimmed) throw new Error('Enter your name')
   if (trimmed.length > 40) throw new Error('Keep your name under 40 characters')
 
-  if (!isSupabaseConfigured || !supabase || tableReady === false) {
+  const client = getPublicSupabase()
+  if (!isSupabaseConfigured || !client || tableReady === false) {
     const challenges = readLocal()
     const challenge = challenges.find((row) => row.id === challengeId)
     if (!challenge) throw new Error('Challenge not found')
@@ -218,7 +220,7 @@ export async function joinDojoChallenge(challengeId: string, name: string): Prom
     return
   }
 
-  const { error } = await supabase.from('dojo_challenge_members').insert({
+  const { error } = await client.from('dojo_challenge_members').insert({
     challenge_id: challengeId,
     name: trimmed,
   })
@@ -234,11 +236,12 @@ export async function verifyDojoHostKey(key: string): Promise<boolean> {
   const trimmed = key.trim()
   if (!trimmed) return false
 
-  if (!isSupabaseConfigured || !supabase || tableReady === false) {
+  const client = getPublicSupabase()
+  if (!isSupabaseConfigured || !client || tableReady === false) {
     throw new Error('Host controls need the shared Dojo database.')
   }
 
-  const { data, error } = await supabase.rpc('dojo_verify_admin_key', { p_key: trimmed })
+  const { data, error } = await client.rpc('dojo_verify_admin_key', { p_key: trimmed })
   if (error) throw new Error(formatUnknownError(error, 'Could not check host key'))
   const ok = data === true
   if (ok) storeHostKey(trimmed)
@@ -250,11 +253,12 @@ export async function upsertDojoChallenge(draft: DojoChallengeDraft): Promise<vo
   const title = draft.title.trim()
   if (!title) throw new Error('Title is required')
 
-  if (!isSupabaseConfigured || !supabase || tableReady === false) {
+  const client = getPublicSupabase()
+  if (!isSupabaseConfigured || !client || tableReady === false) {
     throw new Error('Host controls need the shared Dojo database.')
   }
 
-  const { error } = await supabase.rpc('dojo_admin_upsert_challenge', {
+  const { error } = await client.rpc('dojo_admin_upsert_challenge', {
     p_key: key,
     p_id: draft.id ?? null,
     p_title: title,
@@ -269,10 +273,11 @@ export async function upsertDojoChallenge(draft: DojoChallengeDraft): Promise<vo
 
 export async function deleteDojoChallenge(id: string): Promise<void> {
   const key = requireHostKey()
-  if (!isSupabaseConfigured || !supabase || tableReady === false) {
+  const client = getPublicSupabase()
+  if (!isSupabaseConfigured || !client || tableReady === false) {
     throw new Error('Host controls need the shared Dojo database.')
   }
-  const { error } = await supabase.rpc('dojo_admin_delete_challenge', {
+  const { error } = await client.rpc('dojo_admin_delete_challenge', {
     p_key: key,
     p_id: id,
   })
@@ -282,10 +287,11 @@ export async function deleteDojoChallenge(id: string): Promise<void> {
 
 export async function removeDojoChallengeMember(memberId: string): Promise<void> {
   const key = requireHostKey()
-  if (!isSupabaseConfigured || !supabase || tableReady === false) {
+  const client = getPublicSupabase()
+  if (!isSupabaseConfigured || !client || tableReady === false) {
     throw new Error('Host controls need the shared Dojo database.')
   }
-  const { error } = await supabase.rpc('dojo_admin_remove_member', {
+  const { error } = await client.rpc('dojo_admin_remove_member', {
     p_key: key,
     p_member_id: memberId,
   })
@@ -295,11 +301,12 @@ export async function removeDojoChallengeMember(memberId: string): Promise<void>
 
 export function subscribeDojoChallenges(onChange: () => void): () => void {
   window.addEventListener(DOJO_CHALLENGES_CHANGED, onChange)
-  if (!isSupabaseConfigured || !supabase) {
+  const client = getPublicSupabase()
+  if (!isSupabaseConfigured || !client) {
     return () => window.removeEventListener(DOJO_CHALLENGES_CHANGED, onChange)
   }
 
-  const channel = supabase
+  const channel = client
     .channel('dojo-challenges')
     .on(
       'postgres_changes',
@@ -320,7 +327,7 @@ export function subscribeDojoChallenges(onChange: () => void): () => void {
   return () => {
     window.removeEventListener(DOJO_CHALLENGES_CHANGED, onChange)
     window.clearInterval(poll)
-    void supabase.removeChannel(channel)
+    void client.removeChannel(channel)
   }
 }
 
