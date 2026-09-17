@@ -1,8 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, Swords, Trash2, X } from 'lucide-react'
+import { Pencil, Swords, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { ModalOverlay } from '@/components/ui/ModalOverlay'
 import {
   clearStoredHostKey,
   deleteDojoChallenge,
@@ -55,7 +54,6 @@ export function DojoChallengesPage() {
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState(() => getSavedDojoName())
   const [joiningId, setJoiningId] = useState<string | null>(null)
-  const [hostOpen, setHostOpen] = useState(false)
   const [hostUnlocked, setHostUnlocked] = useState(() => Boolean(getStoredHostKey()))
   const [editingChallenge, setEditingChallenge] = useState<DojoChallenge | null>(null)
   const [shared, setShared] = useState(true)
@@ -131,40 +129,24 @@ export function DojoChallengesPage() {
 
         {loading ? (
           <p className="py-12 text-center text-sm text-zinc-500">Loading challenges…</p>
-        ) : openChallenges.length === 0 && closedChallenges.length === 0 ? (
-          <Card className="py-12 text-center">
-            <p className="text-sm text-zinc-400">No challenge yet</p>
-            <p className="mt-1 text-xs text-zinc-600">Check back soon, or host one if that’s you.</p>
-            {hostUnlocked && (
-              <Button
-                size="sm"
-                className="mt-4"
-                onClick={() => {
-                  setEditingChallenge(null)
-                  setHostOpen(true)
-                }}
-              >
-                <Plus size={14} />
-                New challenge
-              </Button>
-            )}
-          </Card>
         ) : (
           <div className="space-y-4">
-            {hostUnlocked && (
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setEditingChallenge(null)
-                    setHostOpen(true)
-                  }}
-                >
-                  <Plus size={14} />
-                  New challenge
-                </Button>
-              </div>
-            )}
+            <AdminPanel
+              unlocked={hostUnlocked}
+              challenges={challenges}
+              initial={editingChallenge}
+              onUnlocked={() => setHostUnlocked(true)}
+              onLock={() => {
+                clearStoredHostKey()
+                setHostUnlocked(false)
+                setEditingChallenge(null)
+              }}
+              onSaved={async () => {
+                setEditingChallenge(null)
+                await reload()
+              }}
+            />
+
             {openChallenges.map((challenge) => (
               <ChallengeCard
                 key={challenge.id}
@@ -175,10 +157,7 @@ export function DojoChallengesPage() {
                 hostUnlocked={hostUnlocked}
                 onJoin={() => void handleJoin(challenge.id)}
                 onChanged={() => void reload()}
-                onStartEdit={() => {
-                  setEditingChallenge(challenge)
-                  setHostOpen(true)
-                }}
+                onStartEdit={() => setEditingChallenge(challenge)}
               />
             ))}
             {closedChallenges.length > 0 && (
@@ -194,59 +173,14 @@ export function DojoChallengesPage() {
                     hostUnlocked={hostUnlocked}
                     onJoin={() => undefined}
                     onChanged={() => void reload()}
-                    onStartEdit={() => {
-                      setEditingChallenge(challenge)
-                      setHostOpen(true)
-                    }}
+                    onStartEdit={() => setEditingChallenge(challenge)}
                   />
                 ))}
               </section>
             )}
           </div>
         )}
-
-        <div className="mt-auto pt-10 text-center">
-          <button
-            type="button"
-            onClick={() => {
-              setEditingChallenge(null)
-              setHostOpen(true)
-            }}
-            className="text-[11px] text-zinc-700 transition-colors hover:text-zinc-400"
-          >
-            {hostUnlocked ? 'Host controls' : 'Host'}
-          </button>
-          {hostUnlocked && (
-            <button
-              type="button"
-              onClick={() => {
-                clearStoredHostKey()
-                setHostUnlocked(false)
-              }}
-              className="ml-3 text-[11px] text-zinc-700 transition-colors hover:text-zinc-400"
-            >
-              Lock
-            </button>
-          )}
-        </div>
       </div>
-
-      {hostOpen && (
-        <HostModal
-          unlocked={hostUnlocked}
-          challenges={challenges}
-          initial={editingChallenge}
-          onUnlocked={() => setHostUnlocked(true)}
-          onClose={() => {
-            setHostOpen(false)
-            setEditingChallenge(null)
-          }}
-          onSaved={async () => {
-            setEditingChallenge(null)
-            await reload()
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -387,19 +321,19 @@ function ChallengeCard({
   )
 }
 
-function HostModal({
+function AdminPanel({
   unlocked,
   challenges,
   initial,
   onUnlocked,
-  onClose,
+  onLock,
   onSaved,
 }: {
   unlocked: boolean
   challenges: DojoChallenge[]
   initial: DojoChallenge | null
   onUnlocked: () => void
-  onClose: () => void
+  onLock: () => void
   onSaved: () => Promise<void>
 }) {
   const [keyInput, setKeyInput] = useState('')
@@ -421,13 +355,13 @@ function HostModal({
     try {
       const ok = await verifyDojoHostKey(keyInput)
       if (!ok) {
-        setError('Wrong host key')
+        setError('Wrong admin password')
         return
       }
       onUnlocked()
       setKeyInput('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not verify key')
+      setError(err instanceof Error ? err.message : 'Could not verify password')
     } finally {
       setChecking(false)
     }
@@ -464,158 +398,144 @@ function HostModal({
   }
 
   return (
-    <ModalOverlay onBackdropClick={onClose} align="center">
-      <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-zinc-100">
-              {unlocked ? (draft.id ? 'Edit challenge' : 'Host challenge') : 'Host'}
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              {unlocked
-                ? 'Only the host can create or edit. Everyone else just joins.'
-                : 'Enter the host key to set up challenges.'}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-100">
+            {unlocked ? (draft.id ? 'Edit challenge' : 'Admin — set the challenge') : 'Admin login'}
+          </h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            {unlocked
+              ? 'You decide what people join. Everyone else just fills in a name.'
+              : 'Unlock to create or change the challenge.'}
+          </p>
         </div>
-
-        {!unlocked ? (
-          <form className="mt-4 space-y-3" onSubmit={(event) => void handleUnlock(event)}>
-            <input
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              className={FIELD}
-              placeholder="Host key"
-              aria-label="Host key"
-            />
-            {error && <p className="text-xs text-red-400">{error}</p>}
-            <Button type="submit" disabled={checking || !keyInput.trim()} className="w-full">
-              {checking ? 'Checking…' : 'Unlock'}
-            </Button>
-          </form>
-        ) : (
-          <form className="mt-4 space-y-3" onSubmit={(event) => void handleSave(event)}>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-zinc-400">Title</span>
-              <input
-                value={draft.title}
-                onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
-                className={FIELD}
-                placeholder="No phone after 10pm"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-zinc-400">The challenge</span>
-              <textarea
-                value={draft.description}
-                onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
-                className={cn(FIELD, 'min-h-[6rem] resize-y')}
-                placeholder="What people are signing up for"
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block space-y-1">
-                <span className="text-xs font-medium text-zinc-400">Starts</span>
-                <input
-                  type="date"
-                  value={draft.starts_on ?? ''}
-                  onChange={(e) =>
-                    setDraft((prev) => ({ ...prev, starts_on: e.target.value || null }))
-                  }
-                  className={FIELD}
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-xs font-medium text-zinc-400">Ends</span>
-                <input
-                  type="date"
-                  value={draft.ends_on ?? ''}
-                  onChange={(e) =>
-                    setDraft((prev) => ({ ...prev, ends_on: e.target.value || null }))
-                  }
-                  className={FIELD}
-                />
-              </label>
-            </div>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-zinc-400">Status</span>
-              <select
-                value={draft.status}
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, status: e.target.value as DojoChallengeStatus }))
-                }
-                className={FIELD}
-              >
-                <option value="open">Open — people can join</option>
-                <option value="closed">Closed</option>
-              </select>
-            </label>
-            {error && <p className="text-xs text-red-400">{error}</p>}
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={saving || !draft.title.trim()}>
-                {saving ? 'Saving…' : draft.id ? 'Save' : 'Create'}
-              </Button>
-              {draft.id && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setDraft(emptyDraft())}
-                >
-                  New instead
-                </Button>
-              )}
-              {draft.id && (
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={() => void handleDelete(draft.id!)}
-                >
-                  <Trash2 size={14} />
-                  Delete
-                </Button>
-              )}
-            </div>
-
-            {challenges.length > 0 && (
-              <div className="border-t border-zinc-800 pt-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                  All challenges
-                </p>
-                <ul className="mt-2 space-y-1">
-                  {challenges.map((challenge) => (
-                    <li key={challenge.id}>
-                      <button
-                        type="button"
-                        onClick={() => setDraft(draftFromChallenge(challenge))}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-900',
-                          draft.id === challenge.id && 'bg-zinc-900 text-[var(--accent-300)]',
-                        )}
-                      >
-                        <span className="truncate">{challenge.title}</span>
-                        <span className="ml-2 shrink-0 text-[11px] text-zinc-500">
-                          {challenge.members.length} in
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </form>
+        {unlocked && (
+          <Button type="button" variant="ghost" size="sm" onClick={onLock}>
+            Lock
+          </Button>
         )}
       </div>
-    </ModalOverlay>
+
+      {!unlocked ? (
+        <form className="mt-4 space-y-3" onSubmit={(event) => void handleUnlock(event)}>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            className={FIELD}
+            placeholder="Admin password"
+            aria-label="Admin password"
+          />
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <Button type="submit" disabled={checking || !keyInput.trim()} className="w-full">
+            {checking ? 'Checking…' : 'Log in'}
+          </Button>
+        </form>
+      ) : (
+        <form className="mt-4 space-y-3" onSubmit={(event) => void handleSave(event)}>
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-zinc-400">Title</span>
+            <input
+              value={draft.title}
+              onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+              className={FIELD}
+              placeholder="What the challenge is called"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-zinc-400">The challenge</span>
+            <textarea
+              value={draft.description}
+              onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
+              className={cn(FIELD, 'min-h-[6rem] resize-y')}
+              placeholder="What people are signing up for"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-zinc-400">Starts</span>
+              <input
+                type="date"
+                value={draft.starts_on ?? ''}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, starts_on: e.target.value || null }))
+                }
+                className={FIELD}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-zinc-400">Ends</span>
+              <input
+                type="date"
+                value={draft.ends_on ?? ''}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, ends_on: e.target.value || null }))
+                }
+                className={FIELD}
+              />
+            </label>
+          </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-zinc-400">Status</span>
+            <select
+              value={draft.status}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, status: e.target.value as DojoChallengeStatus }))
+              }
+              className={FIELD}
+            >
+              <option value="open">Open — people can join</option>
+              <option value="closed">Closed</option>
+            </select>
+          </label>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={saving || !draft.title.trim()}>
+              {saving ? 'Saving…' : draft.id ? 'Save' : 'Create'}
+            </Button>
+            {draft.id && (
+              <Button type="button" variant="ghost" onClick={() => setDraft(emptyDraft())}>
+                New instead
+              </Button>
+            )}
+            {draft.id && (
+              <Button type="button" variant="danger" onClick={() => void handleDelete(draft.id!)}>
+                <Trash2 size={14} />
+                Delete
+              </Button>
+            )}
+          </div>
+
+          {challenges.length > 0 && (
+            <div className="border-t border-zinc-800 pt-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                All challenges
+              </p>
+              <ul className="mt-2 space-y-1">
+                {challenges.map((challenge) => (
+                  <li key={challenge.id}>
+                    <button
+                      type="button"
+                      onClick={() => setDraft(draftFromChallenge(challenge))}
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-900',
+                        draft.id === challenge.id && 'bg-zinc-900 text-[var(--accent-300)]',
+                      )}
+                    >
+                      <span className="truncate">{challenge.title}</span>
+                      <span className="ml-2 shrink-0 text-[11px] text-zinc-500">
+                        {challenge.members.length} in
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </form>
+      )}
+    </Card>
   )
 }
