@@ -464,6 +464,75 @@ export async function deleteSupabaseAccount(): Promise<void> {
   if (error) throw error
 }
 
+export async function fetchSharedAppData(
+  key: string,
+): Promise<{ value: unknown; updated_at: string | null } | null> {
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('shared_app_data')
+    .select('value, updated_at')
+    .eq('key', key)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+  return {
+    value: data.value,
+    updated_at: typeof data.updated_at === 'string' ? data.updated_at : null,
+  }
+}
+
+export async function upsertSharedAppData(key: string, value: unknown): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured')
+
+  const { error } = await supabase.from('shared_app_data').upsert(
+    {
+      key,
+      value,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' },
+  )
+
+  if (error) throw error
+}
+
+export function subscribeSharedAppData(
+  key: string,
+  onChange: () => void,
+): () => void {
+  if (!supabase) return () => undefined
+
+  const channel = supabase
+    .channel(`shared_app_data:${key}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'shared_app_data', filter: `key=eq.${key}` },
+      () => onChange(),
+    )
+    .subscribe()
+
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const record = error as Record<string, unknown>
+  const message = typeof record.message === 'string' ? record.message : ''
+  return (
+    record.code === '42P01' ||
+    record.code === 'PGRST205' ||
+    message.toLowerCase().includes('shared_app_data')
+  )
+}
+
+export function isSharedAppDataUnavailable(error: unknown): boolean {
+  return isMissingRelationError(error)
+}
+
 /** Deletes all rows owned by the user across core tables and user_storage. */
 export async function clearAllUserData(userId: string): Promise<void> {
   if (!supabase) throw new Error('Supabase not configured')

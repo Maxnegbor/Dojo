@@ -19,6 +19,7 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import type { DailyLog, Goal } from '@/types'
 import { normalizeHabits } from '@/types'
+import { isLiteAppRoute } from '@/lib/liteRoutes'
 
 interface MissedLogGateProps {
   children?: React.ReactNode
@@ -131,6 +132,7 @@ export function MissedLogGate(_props: MissedLogGateProps) {
 
   const pending =
     pathname !== '/settings' &&
+    !isLiteAppRoute(pathname) &&
     goalsReady &&
     scanReady &&
     !!userId &&
@@ -218,7 +220,7 @@ export function useMissedLogPending(): boolean {
   const [pending, setPending] = useState(false)
 
   const refresh = useCallback(async () => {
-    if (!userId || pathname === '/settings') {
+    if (!userId || pathname === '/settings' || isLiteAppRoute(pathname)) {
       setPending(false)
       return
     }

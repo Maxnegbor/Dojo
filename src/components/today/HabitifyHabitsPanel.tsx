@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, ExternalLink, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { HabitStreakBadge } from '@/components/today/HabitStreakBadge'
@@ -7,6 +7,7 @@ import {
   fetchHabitifyHabits,
   fetchHabitifyJournal,
   HabitifyApiError,
+  journalEntriesFromCache,
   undoHabitifyHabit,
   type HabitifyJournalEntry,
 } from '@/lib/habitifyApi'
@@ -40,26 +41,35 @@ export function HabitifyHabitsPanel({
   collapsed = false,
 }: HabitifyHabitsPanelProps) {
   const [connected, setConnected] = useState(() => isHabitifyConnected())
-  const [entries, setEntries] = useState<HabitifyJournalEntry[]>([])
+  const [entries, setEntries] = useState<HabitifyJournalEntry[]>(() =>
+    journalEntriesFromCache(viewDate),
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set())
+  const loadGen = useRef(0)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    const gen = ++loadGen.current
     if (!getHabitifyApiKey()) {
       setConnected(false)
       setEntries([])
+      setError(null)
+      setLoading(false)
       return
     }
     setConnected(true)
+    const cached = journalEntriesFromCache(viewDate)
+    if (cached.length > 0) setEntries(cached)
     setLoading(true)
     setError(null)
     try {
-      const catalogPromise = fetchHabitifyHabits().catch(() => undefined)
-      const next = await fetchHabitifyJournal(viewDate)
-      await catalogPromise
+      void fetchHabitifyHabits({ force: opts?.force }).catch(() => undefined)
+      const next = await fetchHabitifyJournal(viewDate, { force: opts?.force })
+      if (gen !== loadGen.current) return
       setEntries(next)
     } catch (err) {
+      if (gen !== loadGen.current) return
       const message =
         err instanceof HabitifyApiError && (err.status === 401 || err.status === 403)
           ? 'Habitify key is invalid. Update it in Settings → Integrations.'
@@ -67,9 +77,9 @@ export function HabitifyHabitsPanel({
             ? err.message
             : 'Could not load Habitify habits'
       setError(message)
-      setEntries([])
+      if (cached.length > 0) setEntries(cached)
     } finally {
-      setLoading(false)
+      if (gen === loadGen.current) setLoading(false)
     }
   }, [viewDate])
 
@@ -191,7 +201,7 @@ export function HabitifyHabitsPanel({
     <div className="integration-toolbar flex shrink-0 items-center gap-0.5">
       <button
         type="button"
-        onClick={() => void load()}
+        onClick={() => void load({ force: true })}
         disabled={loading}
         aria-label="Refresh Habitify"
         className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40"
@@ -261,13 +271,28 @@ export function HabitifyHabitsPanel({
   return (
     <div className={cn('flex h-fit flex-col', className)}>
       {header}
-      {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
+      {error && (
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <p className={cn('text-xs', entries.length > 0 ? 'text-amber-400' : 'text-red-400')}>
+            {error}
+            {entries.length > 0 ? ' Showing last saved habits.' : ''}
+          </p>
+          <button
+            type="button"
+            onClick={() => void load({ force: true })}
+            disabled={loading}
+            className="shrink-0 text-[11px] font-medium text-[var(--accent-300)] hover:underline disabled:opacity-40"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {loading && entries.length === 0 ? (
         <div className="flex items-center gap-2 py-3 text-xs text-zinc-500">
           <Loader2 size={14} className="animate-spin" />
           Loading habits…
         </div>
-      ) : entries.length === 0 ? (
+      ) : entries.length === 0 && error ? null : entries.length === 0 ? (
         <p className="text-xs text-zinc-500">No Habitify habits scheduled for this day.</p>
       ) : (
         <>

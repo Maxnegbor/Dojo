@@ -4,7 +4,9 @@ import type { MetricKey } from '@/types'
 const STORAGE_KEY = 'personal-os-habitify'
 const HOME_COLLAPSED_KEY = 'personal-os-habitify-home-collapsed'
 const CATALOG_KEY = 'personal-os-habitify-habits'
+const CATALOG_FETCHED_AT_KEY = 'personal-os-habitify-habits-fetched-at'
 const JOURNAL_KEY = 'personal-os-habitify-journal'
+export const HABITIFY_CATALOG_TTL_MS = 15 * 60 * 1000
 export const HABITIFY_CHANGED = 'personal-os-habitify-changed'
 export const HABITIFY_JOURNAL_CHANGED = 'personal-os-habitify-journal-changed'
 export const HABITIFY_METRIC_PREFIX = 'habitify_'
@@ -70,6 +72,7 @@ export function saveHabitifyConfig(config: HabitifyConfig): HabitifyConfig {
 export function clearHabitifyConfig() {
   storageRemoveItem(STORAGE_KEY)
   storageRemoveItem(CATALOG_KEY)
+  storageRemoveItem(CATALOG_FETCHED_AT_KEY)
   storageRemoveItem(JOURNAL_KEY)
   window.dispatchEvent(new Event(HABITIFY_CHANGED))
   window.dispatchEvent(new Event(HABITIFY_JOURNAL_CHANGED))
@@ -146,6 +149,25 @@ export function saveHabitifyHabitCatalog(habits: HabitifyHabitSummary[]): Habiti
   const next = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name))
   storageSetItem(CATALOG_KEY, JSON.stringify(next))
   return next
+}
+
+export function getHabitifyCatalogFetchedAt(): number {
+  try {
+    const raw = storageGetItem(CATALOG_FETCHED_AT_KEY)
+    const n = raw ? Number(raw) : 0
+    return Number.isFinite(n) ? n : 0
+  } catch {
+    return 0
+  }
+}
+
+export function markHabitifyCatalogFetched(at = Date.now()) {
+  storageSetItem(CATALOG_FETCHED_AT_KEY, String(at))
+}
+
+export function isHabitifyCatalogFresh(ttlMs = HABITIFY_CATALOG_TTL_MS): boolean {
+  if (getHabitifyHabitCatalog().length === 0) return false
+  return Date.now() - getHabitifyCatalogFetchedAt() < ttlMs
 }
 
 function refreshKnownCatalogHabits(habits: HabitifyHabitSummary[]) {

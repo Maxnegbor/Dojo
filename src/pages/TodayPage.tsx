@@ -980,7 +980,7 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
-          <ExperimentHomeCard date={viewDate} />
+          {settings.showExperimentsPage && <ExperimentHomeCard date={viewDate} />}
         </aside>
         </div>
         )}

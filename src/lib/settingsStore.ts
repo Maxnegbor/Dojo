@@ -55,6 +55,8 @@ export function getAppSettings(): AppSettings {
         showHomePulse: parsed.showHomePulse !== false,
         hideCompletedHabitsInToggle: parsed.hideCompletedHabitsInToggle !== false,
         showFocusPage: parsed.showFocusPage !== false,
+        showExperimentsPage: parsed.showExperimentsPage === true,
+        showContractsPage: parsed.showContractsPage !== false,
         showFocusSchedule: parsed.showFocusSchedule === true,
         showPulsePage: parsed.showPulsePage !== false,
         weeklyShutdownChecklist: normalizeWeeklyShutdownChecklist(parsed.weeklyShutdownChecklist),

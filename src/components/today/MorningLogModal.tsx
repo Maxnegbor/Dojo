@@ -195,7 +195,8 @@ export function MorningLogModal({
   const hasChecklist = checklistGroups.length > 0
   const showTodoist = isTodoistConnected()
   const hasLogFields = loggableMetrics.length > 0 || enabledMorningMetrics.length > 0
-  const needsExperiments = experimentsNeedingDailyLogStep('morning', date).length > 0
+  const needsExperiments =
+    settings.showExperimentsPage && experimentsNeedingDailyLogStep('morning', date).length > 0
 
   const flowSteps = useMemo((): MorningLogStep[] => {
     const steps: MorningLogStep[] = []

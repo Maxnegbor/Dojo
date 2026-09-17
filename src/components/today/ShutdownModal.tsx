@@ -166,7 +166,8 @@ export function ShutdownModal({
   const typedReminderText = getTypedReminderText(settings, 'shutdown')
 
   const visibleSteps = useMemo((): ShutdownFlowStep[] => {
-    const needsExperiments = experimentsNeedingDailyLogStep('shutdown', viewDate).length > 0
+    const needsExperiments =
+      settings.showExperimentsPage && experimentsNeedingDailyLogStep('shutdown', viewDate).length > 0
     const next: ShutdownFlowStep[] = configuredSteps.filter((id) => {
       if (id === 'habits') return false
       if (id === 'checklist') return checklistGroups.length > 0
@@ -190,7 +191,7 @@ export function ShutdownModal({
     const base = next.length > 0 ? next : (['wrap-up'] as ShutdownFlowStep[])
     if (requireTypedReminder) return [...base, 'typed-reminder']
     return base
-  }, [checklistGroups.length, configuredSteps, requireTypedReminder, viewDate])
+  }, [checklistGroups.length, configuredSteps, requireTypedReminder, settings.showExperimentsPage, viewDate])
 
   const [step, setStep] = useState<ShutdownFlowStep>(() => visibleSteps[0] ?? 'wrap-up')
   const [checklistChecked, setChecklistChecked] = useState<Set<string>>(() => new Set())

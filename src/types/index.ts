@@ -256,6 +256,87 @@ export interface Experiment {
   updated_at: string
 }
 
+export interface HabitContractPerson {
+  id: string
+  name: string
+  color: string
+  created_at: string
+}
+
+export type HabitContractProofStatus = 'pending' | 'accepted' | 'disputed'
+
+export interface HabitContractProofAnalysis {
+  met_goal: boolean | null
+  extracted: string
+  penalty_due: number
+  /** How the written rule was applied to this proof. */
+  penalty_calculation: string
+  explanation: string
+  confidence: number
+}
+
+export interface HabitContractProof {
+  id: string
+  contract_id: string
+  person_id: string
+  date: string
+  image_data_urls: string[]
+  notes: string
+  analysis: HabitContractProofAnalysis | null
+  status: HabitContractProofStatus
+  created_by: string | null
+  created_at: string
+}
+
+export interface HabitContract {
+  id: string
+  person_ids: string[]
+  name: string
+  goal: string
+  /** Written penalty rule, e.g. "€1 per 10 minutes over 2 hours". */
+  penalty: string
+  /** How to apply that rule, e.g. "once per day; if a week is submitted at once, charge each day and sum". */
+  how_to_calculate: string
+  start_date: string
+  end_date: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface HabitContractsState {
+  people: HabitContractPerson[]
+  contracts: HabitContract[]
+  proofs: HabitContractProof[]
+  updated_at: string
+}
+
+export interface HabitContractSettlement {
+  from_person_id: string
+  to_person_id: string
+  amount: number
+}
+
+export type DojoChallengeStatus = 'open' | 'closed'
+
+export interface DojoChallengeMember {
+  id: string
+  challenge_id: string
+  name: string
+  joined_at: string
+}
+
+export interface DojoChallenge {
+  id: string
+  title: string
+  description: string
+  status: DojoChallengeStatus
+  starts_on: string | null
+  ends_on: string | null
+  created_at: string
+  updated_at: string
+  members: DojoChallengeMember[]
+}
+
 export interface Reminder {
   id: string
   user_id: string
@@ -344,6 +425,10 @@ export interface AppSettings {
   hideCompletedHabitsInToggle: boolean
   /** Show Focus in the sidebar and allow /focus. */
   showFocusPage: boolean
+  /** Show Experiments in the sidebar and allow /experiments. Off by default. */
+  showExperimentsPage: boolean
+  /** Show Contracts in the sidebar and allow /contracts. */
+  showContractsPage: boolean
   /** Show a clean read-only agenda of today’s schedule beside the Focus timer. */
   showFocusSchedule: boolean
   /** @deprecated Pulse page removed from nav; kept for stored settings compatibility. */
@@ -469,6 +554,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showHomePulse: true,
   hideCompletedHabitsInToggle: true,
   showFocusPage: true,
+  showExperimentsPage: false,
+  showContractsPage: true,
   showFocusSchedule: false,
   showPulsePage: true,
   weeklyShutdownChecklist: [],

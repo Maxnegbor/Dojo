@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useSettings } from '@/context/SettingsContext'
+import { isLiteAppRoute } from '@/lib/liteRoutes'
 import {
   hasExistingUserSetup,
   hasRemoteUserSetup,
@@ -59,7 +60,7 @@ export function OnboardingGate() {
   const showOnboarding =
     needsOnboarding(settings) && !remoteHasSetup && !hasExistingUserSetup(settings)
 
-  if (showOnboarding && location.pathname !== '/onboarding') {
+  if (showOnboarding && location.pathname !== '/onboarding' && !isLiteAppRoute(location.pathname)) {
     return <Navigate to="/onboarding" replace />
   }
 

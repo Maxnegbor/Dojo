@@ -314,6 +314,24 @@ export function SettingsPage() {
               flashSaved()
             }}
           />
+          <ToggleRow
+            label="Show Experiments page"
+            description="Lifestyle experiments in the sidebar"
+            checked={settings.showExperimentsPage}
+            onChange={(showExperimentsPage) => {
+              updateSettings({ showExperimentsPage })
+              flashSaved()
+            }}
+          />
+          <ToggleRow
+            label="Show Contracts page"
+            description="Shared habit contracts with photo proof"
+            checked={settings.showContractsPage}
+            onChange={(showContractsPage) => {
+              updateSettings({ showContractsPage })
+              flashSaved()
+            }}
+          />
           {settings.showFocusPage && (
             <>
               <ToggleRow

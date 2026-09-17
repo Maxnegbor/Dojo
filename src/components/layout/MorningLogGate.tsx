@@ -20,6 +20,7 @@ import { localStore } from '@/lib/localStore'
 import type { DailyLog, Goal } from '@/types'
 import type { MorningLogSavePayload } from '@/components/today/MorningLogModal'
 import { formatDate } from '@/lib/utils'
+import { isLiteAppRoute } from '@/lib/liteRoutes'
 
 interface MorningLogGateProps {
   children?: React.ReactNode
@@ -101,6 +102,7 @@ export function MorningLogGate(_props: MorningLogGateProps) {
 
   const morningLogPending =
     pathname !== '/settings' &&
+    !isLiteAppRoute(pathname) &&
     !beforeMorningLogStart &&
     !missedLogPending &&
     settings.requireMorningLog &&

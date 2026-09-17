@@ -14,6 +14,7 @@ import {
   SHUTDOWN_OPEN_REQUESTED,
 } from '@/lib/dailyShutdownRequire'
 import { cn, formatDate } from '@/lib/utils'
+import { isLiteAppRoute } from '@/lib/liteRoutes'
 
 interface ShutdownGateProps {
   children: React.ReactNode
@@ -66,6 +67,7 @@ export function ShutdownGate({ children }: ShutdownGateProps) {
 
   const shutdownPending =
     pathname !== '/settings' &&
+    !isLiteAppRoute(pathname) &&
     settings.requireShutdown &&
     pastRequireTime &&
     !submitted

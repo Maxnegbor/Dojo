@@ -1,6 +1,6 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Beaker, Brain, Flag, FlaskConical, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
+import { Beaker, Brain, Flag, FlaskConical, Handshake, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MissedLogGate } from '@/components/layout/MissedLogGate'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
@@ -18,7 +18,8 @@ const NAV = [
   { to: '/', label: 'Home', icon: Sparkles },
   { to: '/focus', label: 'Focus', icon: Brain, setting: 'showFocusPage' as const },
   { to: '/goals', label: 'Goals', icon: Flag },
-  { to: '/experiments', label: 'Experiments', icon: Beaker },
+  { to: '/contracts', label: 'Contracts', icon: Handshake, setting: 'showContractsPage' as const },
+  { to: '/experiments', label: 'Experiments', icon: Beaker, setting: 'showExperimentsPage' as const },
   { to: '/metrics', label: 'Metrics', icon: Target },
   { to: '/overview', label: 'Overview', icon: LayoutDashboard },
 ]
@@ -289,11 +290,15 @@ export function AppLayout() {
   }, [pathname, focusImmersive, setFocusImmersive])
 
   const navItems = NAV.filter((item) => {
-    if (item.setting === 'showFocusPage') return settings.showFocusPage
-    return true
+    if (!('setting' in item) || !item.setting) return true
+    return settings[item.setting]
   })
 
-  if (pathname === '/focus' && !settings.showFocusPage) {
+  if (
+    (pathname === '/focus' && !settings.showFocusPage) ||
+    (pathname === '/experiments' && !settings.showExperimentsPage) ||
+    (pathname === '/contracts' && !settings.showContractsPage)
+  ) {
     return <Navigate to="/" replace />
   }
 

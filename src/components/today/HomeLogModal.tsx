@@ -6,6 +6,7 @@ import { DailyLogForm } from '@/components/today/DailyLogForm'
 import { WeeklyLogFields, useWeeklyLogDraft } from '@/components/today/WeeklyLogFields'
 import { SleepMetricField } from '@/components/today/SleepMetricField'
 import { ExperimentConfoundersSection } from '@/components/experiments/ExperimentConfoundersSection'
+import { useSettings } from '@/context/SettingsContext'
 import { flushDraftToStore } from '@/lib/dailyLogDraft'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
@@ -47,6 +48,7 @@ export function HomeLogModal({
   onClose,
   onSaved,
 }: HomeLogModalProps) {
+  const { settings } = useSettings()
   const [view, setView] = useState<'daily' | 'weekly'>('daily')
   const [saving, setSaving] = useState(false)
   const sleepMetrics = useMemo(
@@ -173,7 +175,9 @@ export function HomeLogModal({
                   Add daily metrics on the Metrics page to log them here.
                 </p>
               ) : null}
-              <ExperimentConfoundersSection date={date} surface="home_log" />
+              {settings.showExperimentsPage && (
+                <ExperimentConfoundersSection date={date} surface="home_log" />
+              )}
             </div>
           ) : (
             <WeeklyLogFields

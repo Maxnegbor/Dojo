@@ -141,3 +141,24 @@ create index if not exists idx_daily_logs_user_date on daily_logs (user_id, date
 create index if not exists idx_workouts_user_date on workouts (user_id, date);
 create index if not exists idx_schedule_blocks_user_date on schedule_blocks (user_id, date);
 create index if not exists idx_user_storage_user_id on user_storage (user_id);
+
+-- Shared household data (habit contracts). Any signed-in user can read/write.
+create table if not exists shared_app_data (
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz default now()
+);
+
+alter table shared_app_data enable row level security;
+
+create policy "Authenticated users manage shared app data"
+  on shared_app_data
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
+alter table shared_app_data replica identity full;
+
+-- Secret Dojo challenges: see supabase/migrations/005_dojo_challenges.sql
+

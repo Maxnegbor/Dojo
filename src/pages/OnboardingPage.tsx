@@ -578,6 +578,21 @@ export function OnboardingPage() {
               Exit preview
             </Button>
           )}
+          {!preview && (
+            <Button
+              variant="ghost"
+              className="order-4 text-zinc-500"
+              onClick={() => {
+                updateSettings({
+                  onboardingCompleted: true,
+                  memberSinceDate: formatDate(new Date()),
+                })
+                navigate('/contracts')
+              }}
+            >
+              Skip to habit contracts
+            </Button>
+          )}
           <OnboardingNavButtons
             onBack={stepIndex > 0 ? handleBack : undefined}
             onSkip={isGoalSubstep(step) ? handleSkipGoal : undefined}

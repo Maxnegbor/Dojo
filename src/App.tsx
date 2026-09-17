@@ -10,9 +10,11 @@ import { FocusTimerPage } from '@/pages/FocusTimerPage'
 import { GoalsPage } from '@/pages/GoalsPage'
 import { OutcomeGoalsPage } from '@/pages/OutcomeGoalsPage'
 import { ExperimentsPage } from '@/pages/ExperimentsPage'
+import { ContractsPage } from '@/pages/ContractsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { DojoChallengesPage } from '@/pages/DojoChallengesPage'
 import { WhoopCallbackPage } from '@/pages/WhoopCallbackPage'
 
 export default function App() {
@@ -21,6 +23,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/dojo" element={<DojoChallengesPage />} />
           <Route element={<RequireAuth />}>
             <Route path="whoop/callback" element={<WhoopCallbackPage />} />
             <Route element={<AppShell />}>
@@ -30,6 +33,7 @@ export default function App() {
                   <Route index element={<TodayPage />} />
                   <Route path="focus" element={<FocusTimerPage />} />
                   <Route path="goals" element={<OutcomeGoalsPage />} />
+                  <Route path="contracts" element={<ContractsPage />} />
                   <Route path="experiments" element={<ExperimentsPage />} />
                   <Route path="metrics" element={<GoalsPage />} />
                   <Route path="overview" element={<OverviewPage />} />
