@@ -77,7 +77,12 @@ export function playScheduleBlockAlarmSound() {
 }
 
 /** Clear completion chime when a focus block (or the whole session) ends. */
+let lastFocusFinishSoundAt = 0
+
 export function playFocusTimerFinishSound(options?: { sessionComplete?: boolean }) {
+  const now = performance.now()
+  if (now - lastFocusFinishSoundAt < 2000) return
+  lastFocusFinishSoundAt = now
   withAudioContext((ctx) => {
     const now = ctx.currentTime
     if (options?.sessionComplete) {

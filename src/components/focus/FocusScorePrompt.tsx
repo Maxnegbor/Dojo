@@ -21,8 +21,20 @@ export function FocusScorePrompt({ onSubmit, onSkip }: FocusScorePromptProps) {
   const [score, setScore] = useState(5)
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-zinc-700/80 bg-[#0c0c14] shadow-2xl">
+    <div
+      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-4 pb-10 backdrop-blur-[2px] sm:items-center"
+      onClick={onSkip}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onSkip()
+      }}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-labelledby="focus-score-title"
+        className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-zinc-700/80 bg-[#0c0c14] shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <button
           type="button"
           onClick={onSkip}
@@ -38,7 +50,7 @@ export function FocusScorePrompt({ onSubmit, onSkip }: FocusScorePromptProps) {
               <Brain size={20} className="text-[var(--accent-400)]" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-zinc-100">How focused were you?</h2>
+              <h2 id="focus-score-title" className="text-lg font-bold text-zinc-100">How focused were you?</h2>
             </div>
           </div>
 

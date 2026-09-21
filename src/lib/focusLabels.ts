@@ -1,3 +1,4 @@
+import { getFocusSessions } from '@/lib/focusSessions'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { generateId } from '@/lib/utils'
 
@@ -31,6 +32,9 @@ export const DEFAULT_FOCUS_LABELS: FocusLabel[] = [
   { id: 'learning', label: 'Learning', color: '#8b5cf6' },
   { id: 'admin', label: 'Admin', color: '#f59e0b' },
 ]
+
+/** Slug `createFocusLabel()` used before ids were unique. Reused after delete. */
+const GENERIC_NEW_LABEL_ID = 'new_label'
 
 function slugifyLabelId(label: string): string {
   const slug = label
@@ -74,6 +78,36 @@ export function normalizeFocusLabels(labels: FocusLabel[] | undefined | null): F
   return list
 }
 
+/** Give recycled `new_label` rows a unique id so they stop inheriting old minutes. */
+function remintGenericCreateId(labels: FocusLabel[]): FocusLabel[] {
+  if (!labels.some((entry) => entry.id === GENERIC_NEW_LABEL_ID)) return labels
+  const usedIds = new Set(labels.map((entry) => entry.id))
+  return labels.map((entry) => {
+    if (entry.id !== GENERIC_NEW_LABEL_ID) return entry
+    return normalizeLabel({ ...entry, id: generateId() }, usedIds)
+  })
+}
+
+function persistGenericIdRepair(repaired: FocusLabel[]) {
+  storageSetItem(STORAGE_KEY, JSON.stringify(repaired))
+  const archiveById = new Map(getArchivedFocusLabels().map((entry) => [entry.id, entry]))
+  if (!archiveById.has(GENERIC_NEW_LABEL_ID)) {
+    archiveById.set(GENERIC_NEW_LABEL_ID, {
+      id: GENERIC_NEW_LABEL_ID,
+      label: 'New label',
+      color: FOCUS_LABEL_SWATCHES[0],
+    })
+    saveArchivedFocusLabels([...archiveById.values()])
+  }
+  try {
+    if (storageGetItem(LAST_LABEL_KEY)?.trim() === GENERIC_NEW_LABEL_ID) {
+      storageSetItem(LAST_LABEL_KEY, '')
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export function getFocusLabels(): FocusLabel[] {
   try {
     const raw = storageGetItem(STORAGE_KEY)
@@ -84,7 +118,10 @@ export function getFocusLabels(): FocusLabel[] {
     if (!Array.isArray(parsed)) {
       return DEFAULT_FOCUS_LABELS.map((entry) => ({ ...entry }))
     }
-    return normalizeFocusLabels(parsed)
+    const normalized = normalizeFocusLabels(parsed)
+    const repaired = remintGenericCreateId(normalized)
+    if (repaired !== normalized) persistGenericIdRepair(repaired)
+    return repaired
   } catch {
     return DEFAULT_FOCUS_LABELS.map((entry) => ({ ...entry }))
   }
@@ -134,7 +171,7 @@ export function resolveFocusLabelMeta(id: string): FocusLabel {
 
 export function saveFocusLabels(labels: FocusLabel[]): FocusLabel[] {
   const previous = getFocusLabels()
-  const next = normalizeFocusLabels(labels)
+  const next = remintGenericCreateId(normalizeFocusLabels(labels))
   const nextIds = new Set(next.map((entry) => entry.id))
 
   const removed = previous.filter((entry) => !nextIds.has(entry.id))
@@ -157,13 +194,26 @@ export function saveFocusLabels(labels: FocusLabel[]): FocusLabel[] {
   return next
 }
 
+function usedFocusLabelIds(): Set<string> {
+  const used = new Set<string>()
+  for (const entry of getFocusLabels()) used.add(entry.id)
+  for (const entry of getArchivedFocusLabels()) used.add(entry.id)
+  for (const session of getFocusSessions()) {
+    if (session.label_id) used.add(session.label_id)
+  }
+  return used
+}
+
 export function createFocusLabel(patch?: Partial<Pick<FocusLabel, 'label' | 'color'>>): FocusLabel {
-  const usedIds = new Set(getFocusLabels().map((entry) => entry.id))
+  const existing = getFocusLabels()
+  const usedIds = usedFocusLabelIds()
   const swatch =
-    FOCUS_LABEL_SWATCHES[getFocusLabels().length % FOCUS_LABEL_SWATCHES.length] ??
+    FOCUS_LABEL_SWATCHES[existing.length % FOCUS_LABEL_SWATCHES.length] ??
     FOCUS_LABEL_SWATCHES[0]
+  // Unique id so a new row never inherits minutes from a deleted/renamed label.
   return normalizeLabel(
     {
+      id: generateId(),
       label: patch?.label?.trim() || 'New label',
       color: patch?.color ?? swatch,
     },
