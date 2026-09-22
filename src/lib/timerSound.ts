@@ -76,13 +76,34 @@ export function playScheduleBlockAlarmSound() {
   })
 }
 
-/** Clear completion chime when a focus block (or the whole session) ends. */
-let lastFocusFinishSoundAt = 0
+/** Repeating two-tone alarm while the timer-complete popup is up. */
+let focusAlarmTimer: number | null = null
 
+function playFocusAlarmBurst(ctx: AudioContext) {
+  const now = ctx.currentTime
+  playTone(ctx, 880, now, 0.16, 0.09, 'square')
+  playTone(ctx, 698.46, now + 0.18, 0.18, 0.08, 'square')
+}
+
+export function startFocusTimerAlarm() {
+  stopFocusTimerAlarm()
+  withAudioContext((ctx) => {
+    playFocusAlarmBurst(ctx)
+    focusAlarmTimer = window.setInterval(() => {
+      withAudioContext((inner) => playFocusAlarmBurst(inner))
+    }, 850)
+  })
+}
+
+export function stopFocusTimerAlarm() {
+  if (focusAlarmTimer != null) {
+    window.clearInterval(focusAlarmTimer)
+    focusAlarmTimer = null
+  }
+}
+
+/** One-shot completion chime (session fully done, not the looping hold alarm). */
 export function playFocusTimerFinishSound(options?: { sessionComplete?: boolean }) {
-  const now = performance.now()
-  if (now - lastFocusFinishSoundAt < 2000) return
-  lastFocusFinishSoundAt = now
   withAudioContext((ctx) => {
     const now = ctx.currentTime
     if (options?.sessionComplete) {

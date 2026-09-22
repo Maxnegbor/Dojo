@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { FocusHourlyChart } from '@/components/focus/FocusHourlyChart'
 import { FocusLabelPicker } from '@/components/focus/FocusLabelPicker'
 import { FocusScheduleAgenda } from '@/components/focus/FocusScheduleAgenda'
+import { FocusTimerAlarmModal } from '@/components/focus/FocusTimerAlarmModal'
 import {
   FocusScorePrompt,
   type FocusScorePromptPayload,
@@ -30,11 +31,49 @@ import {
   totalSessionSeconds,
   type TimerPhase,
 } from '@/lib/focusTimerLogic'
-import { playFocusTimerFinishSound, playTimerChime, unlockAudio } from '@/lib/timerSound'
+import { playTimerChime, startFocusTimerAlarm, stopFocusTimerAlarm, unlockAudio } from '@/lib/timerSound'
 import { DEFAULT_FOCUS_SETTINGS, type FocusTimerSettings } from '@/types'
 import { cn, formatDate, formatDuration } from '@/lib/utils'
 
 type Phase = TimerPhase
+
+interface PhaseHold {
+  from: 'focus' | 'break'
+  cycle: number
+  score: FocusScorePromptPayload | null
+}
+
+function holdAlarmCopy(hold: PhaseHold, settings: FocusTimerSettings) {
+  if (hold.from === 'break') {
+    const done = hold.cycle >= settings.iterations
+    return {
+      title: 'Break over',
+      subtitle: done ? 'Session complete.' : 'Time to focus again.',
+      confirmLabel: done ? 'Done' : 'Start focus',
+    }
+  }
+  if (shouldSkipBreaks(settings)) {
+    const done = hold.cycle >= settings.iterations
+    return {
+      title: 'Focus complete',
+      subtitle: done ? 'Session complete.' : 'Next focus block is ready.',
+      confirmLabel: done ? 'Done' : 'Start focus',
+    }
+  }
+  const breakMinutes = getBreakMinutesAfterFocus(settings, hold.cycle)
+  if (breakMinutes <= 0) {
+    return {
+      title: 'Focus complete',
+      subtitle: 'Session complete.',
+      confirmLabel: 'Done',
+    }
+  }
+  return {
+    title: 'Focus complete',
+    subtitle: `${breakMinutes}-minute break is ready.`,
+    confirmLabel: 'Start break',
+  }
+}
 
 function PlayIcon() {
   return (
@@ -115,6 +154,7 @@ export function FocusTimerPage() {
   const [sessionStarted, setSessionStarted] = useState(false)
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
   const [scorePrompt, setScorePrompt] = useState<FocusScorePromptPayload | null>(null)
+  const [phaseHold, setPhaseHold] = useState<PhaseHold | null>(null)
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(() => getLastFocusLabelId())
 
   const settingsRef = useRef(settings)
@@ -267,55 +307,90 @@ export function FocusTimerPage() {
         void logFocusMinutes(elapsed, undefined, sessionStart, selectedLabelIdRef.current).catch(
           () => {},
         )
-        maybePromptFocusScore(sessionStart, elapsed)
+        setRunning(false)
+        setPhaseHold({
+          from: 'focus',
+          cycle: c,
+          score: s.promptFocusScore
+            ? {
+                date: formatDate(new Date()),
+                startMs: sessionStart,
+                endMs: Date.now(),
+                minutes: elapsed,
+              }
+            : null,
+        })
+        return
+      }
 
+      setRunning(false)
+      setPhaseHold({ from: 'break', cycle: c, score: null })
+    } finally {
+      advancingRef.current = false
+    }
+  }, [logFocusMinutes])
+
+  const dismissPhaseHold = useCallback(
+    (score?: number) => {
+      const hold = phaseHold
+      if (!hold) return
+      if (score != null && hold.score) addFocusScoreSession({ ...hold.score, score })
+      setPhaseHold(null)
+
+      const s = settingsRef.current
+      const c = hold.cycle
+
+      if (hold.from === 'focus') {
         if (shouldSkipBreaks(s)) {
           if (c >= s.iterations) {
-            playFocusTimerFinishSound({ sessionComplete: true })
             setPhase('done')
             setRunning(false)
             setSessionStarted(false)
             return
           }
-          playFocusTimerFinishSound()
           setCycle(c + 1)
           setPhase('focus')
           setPhaseRemaining(s.focusMinutes * 60)
-        } else {
-          const breakMinutes = getBreakMinutesAfterFocus(s, c)
-          if (breakMinutes <= 0) {
-            playFocusTimerFinishSound({ sessionComplete: true })
-            setPhase('done')
-            setRunning(false)
-            setSessionStarted(false)
-            return
-          }
-          playFocusTimerFinishSound()
-          setActiveBreakMinutes(breakMinutes)
-          setPhase('break')
-          setPhaseRemaining(breakMinutes * 60)
+          setRunning(true)
+          setSessionStarted(true)
+          phaseStartRef.current = Date.now()
+          return
         }
-      } else {
-        if (c >= s.iterations) {
-          playFocusTimerFinishSound({ sessionComplete: true })
+        const breakMinutes = getBreakMinutesAfterFocus(s, c)
+        if (breakMinutes <= 0) {
           setPhase('done')
           setRunning(false)
           setSessionStarted(false)
           return
         }
-        if (userPrefs.timerSoundEnabled) playTimerChime()
-        setCycle(c + 1)
-        setPhase('focus')
-        setPhaseRemaining(s.focusMinutes * 60)
+        setActiveBreakMinutes(breakMinutes)
+        setPhase('break')
+        setPhaseRemaining(breakMinutes * 60)
+        setRunning(true)
+        setSessionStarted(true)
+        phaseStartRef.current = Date.now()
+        return
       }
+
+      if (c >= s.iterations) {
+        setPhase('done')
+        setRunning(false)
+        setSessionStarted(false)
+        return
+      }
+      if (userPrefs.timerSoundEnabled) playTimerChime()
+      setCycle(c + 1)
+      setPhase('focus')
+      setPhaseRemaining(s.focusMinutes * 60)
+      setRunning(true)
+      setSessionStarted(true)
       phaseStartRef.current = Date.now()
-    } finally {
-      advancingRef.current = false
-    }
-  }, [logFocusMinutes, maybePromptFocusScore, setPhaseRemaining, userPrefs.timerSoundEnabled])
+    },
+    [phaseHold, setPhaseRemaining, userPrefs.timerSoundEnabled],
+  )
 
   useEffect(() => {
-    if (!running || phase === 'done') return
+    if (!running || phase === 'done' || phaseHold) return
 
     const id = window.setInterval(() => {
       if (advancingRef.current) return
@@ -333,7 +408,7 @@ export function FocusTimerPage() {
     }, 1000)
 
     return () => clearInterval(id)
-  }, [running, phase, advancePhase, setPhaseRemaining])
+  }, [running, phase, phaseHold, advancePhase, setPhaseRemaining])
 
   useEffect(() => {
     if (running && phase !== 'done') {
@@ -348,6 +423,19 @@ export function FocusTimerPage() {
       setTimerTabSeconds(null)
     }
   }, [setTimerTabSeconds])
+
+  useEffect(() => {
+    if (!phaseHold) {
+      stopFocusTimerAlarm()
+      return
+    }
+    startFocusTimerAlarm()
+    return () => stopFocusTimerAlarm()
+  }, [phaseHold])
+
+  useEffect(() => {
+    return () => stopFocusTimerAlarm()
+  }, [])
 
   const endFocus = () => {
     if (phase !== 'focus') return
@@ -408,6 +496,8 @@ export function FocusTimerPage() {
 
   const reset = () => {
     advancingRef.current = false
+    stopFocusTimerAlarm()
+    setPhaseHold(null)
     setRunning(false)
     setSessionStarted(false)
     setPhase('focus')
@@ -777,7 +867,15 @@ export function FocusTimerPage() {
         />
       )}
 
-      {scorePrompt && (
+      {phaseHold && (
+        <FocusTimerAlarmModal
+          {...holdAlarmCopy(phaseHold, settings)}
+          scorePayload={phaseHold.score}
+          onDismiss={dismissPhaseHold}
+        />
+      )}
+
+      {scorePrompt && !phaseHold && (
         <FocusScorePrompt
           payload={scorePrompt}
           onSkip={() => setScorePrompt(null)}
