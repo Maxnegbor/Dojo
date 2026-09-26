@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  CalendarDays,
   Check,
-  ClipboardCopy,
   ListChecks,
   ListTodo,
   Moon,
@@ -11,7 +9,6 @@ import {
   Repeat,
   X,
 } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
 import { Button } from '@/components/ui/Button'
 import { DailyLogForm } from '@/components/today/DailyLogForm'
 import { SleepMetricField } from '@/components/today/SleepMetricField'
@@ -92,13 +89,13 @@ export function ShutdownModal({
   viewDate,
   tomorrowDate,
   userId,
-  todayBlocks,
+  todayBlocks: _todayBlocks,
   tomorrowBlocks,
   onUpdateTomorrowBlock,
   onDeleteTomorrowBlock,
   onCreateTomorrowBlock,
   onAssignTomorrowExercise,
-  onPasteTodaySchedule,
+  onPasteTodaySchedule: _onPasteTodaySchedule,
   onApplyScheduleTemplate,
   onClose,
   onComplete,
@@ -197,7 +194,6 @@ export function ShutdownModal({
   const [checklistChecked, setChecklistChecked] = useState<Set<string>>(() => new Set())
   const [typedReminderValue, setTypedReminderValue] = useState('')
   const [finishing, setFinishing] = useState(false)
-  const [pasting, setPasting] = useState(false)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
 
   useEffect(() => {
@@ -205,8 +201,6 @@ export function ShutdownModal({
       setStep(visibleSteps[0] ?? 'wrap-up')
     }
   }, [step, visibleSteps])
-
-  const tomorrowLabel = format(parseISO(tomorrowDate), 'EEEE, MMM d')
 
   const typedReminderReady =
     step !== 'typed-reminder' || typedReminderMatches(typedReminderText, typedReminderValue)
@@ -260,15 +254,6 @@ export function ShutdownModal({
     setStep(visibleSteps[stepPos - 1]!)
   }
 
-  const handlePasteToday = async () => {
-    setPasting(true)
-    try {
-      await onPasteTodaySchedule()
-    } finally {
-      setPasting(false)
-    }
-  }
-
   const handleApplyTemplate = async (template: ScheduleTemplate) => {
     if (!onApplyScheduleTemplate) return
     setApplyingTemplate(true)
@@ -316,58 +301,95 @@ export function ShutdownModal({
         {!required && (
           <button
             onClick={onClose}
-            className="absolute right-4 top-4 z-10 rounded-lg p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+            className={cn(
+              'absolute right-4 z-10 rounded-lg p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300',
+              step === 'schedule' ? 'top-2' : 'top-4',
+            )}
           >
             <X size={18} />
           </button>
         )}
 
-        <div className={cn('shrink-0 border-b border-zinc-800/80 px-6 py-5', !required && 'pr-12')}>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-950">
-              {step === 'schedule' ? (
-                <CalendarDays size={20} className="text-violet-400" />
-              ) : step === 'habitify' ? (
-                <Repeat size={20} className="text-violet-400" />
-              ) : step === 'todoist' ? (
-                <ListTodo size={20} className="text-violet-400" />
-              ) : step === 'checklist' ? (
-                <ListChecks size={20} className="text-violet-400" />
-              ) : step === 'typed-reminder' ? (
-                <PenLine size={20} className="text-violet-400" />
-              ) : (
-                <Moon size={20} className="text-violet-400" />
-              )}
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-zinc-100">
-                {step === 'typed-reminder' ? 'Reminder' : (stepPreset?.label ?? 'Shutdown')}
-              </h2>
-              <p className="text-xs text-zinc-400">
-                {step === 'schedule'
-                  ? `Sketch ${tomorrowLabel} — schedule and workouts`
-                  : step === 'habitify'
-                    ? 'Tick off today’s habits before you close out.'
-                    : step === 'todoist'
-                    ? 'Tick off tasks or add anything you still need to do.'
-                      : step === 'checklist'
-                      ? 'Tick anything you still want to close out tonight.'
-                      : step === 'typed-reminder'
-                        ? 'Type your reminder to finish'
-                        : 'Log anything still missing today.'}
+        {step === 'schedule' ? (
+          <div
+            className={cn(
+              'flex shrink-0 items-center gap-3 border-b border-zinc-800/80 px-4 py-2',
+              !required && 'pr-12',
+            )}
+          >
+            <h2 className="shrink-0 text-sm font-semibold text-zinc-100">
+              {stepPreset?.label ?? 'Plan tomorrow'}
+            </h2>
+            {!schedulePlansReady && (
+              <p className="min-w-0 truncate text-[10px] text-zinc-500">
+                Place or delete {unplacedPlanCount} exercise plan
+                {unplacedPlanCount === 1 ? '' : 's'} before continuing
               </p>
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {!isFirstStep && (
+                <Button variant="secondary" size="sm" onClick={goBack} disabled={finishing}>
+                  Back
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={() => void goNext()}
+                disabled={finishing || !schedulePlansReady}
+                title={
+                  schedulePlansReady
+                    ? undefined
+                    : `Place or delete ${unplacedPlanCount} exercise plan${unplacedPlanCount === 1 ? '' : 's'} before continuing`
+                }
+              >
+                {finishing ? 'Wrapping up…' : isLastStep ? 'Done for tonight' : 'Continue'}
+              </Button>
             </div>
           </div>
-          <p className="mt-2 text-[10px] uppercase tracking-wide text-zinc-600">
-            Step {stepIndex} of {stepCount}
-          </p>
-        </div>
+        ) : (
+          <div className={cn('shrink-0 border-b border-zinc-800/80 px-6 py-5', !required && 'pr-12')}>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-950">
+                {step === 'habitify' ? (
+                  <Repeat size={20} className="text-violet-400" />
+                ) : step === 'todoist' ? (
+                  <ListTodo size={20} className="text-violet-400" />
+                ) : step === 'checklist' ? (
+                  <ListChecks size={20} className="text-violet-400" />
+                ) : step === 'typed-reminder' ? (
+                  <PenLine size={20} className="text-violet-400" />
+                ) : (
+                  <Moon size={20} className="text-violet-400" />
+                )}
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-zinc-100">
+                  {step === 'typed-reminder' ? 'Reminder' : (stepPreset?.label ?? 'Shutdown')}
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  {step === 'habitify'
+                    ? 'Tick off today’s habits before you close out.'
+                    : step === 'todoist'
+                      ? 'Tick off tasks or add anything you still need to do.'
+                      : step === 'checklist'
+                        ? 'Tick anything you still want to close out tonight.'
+                        : step === 'typed-reminder'
+                          ? 'Type your reminder to finish'
+                          : 'Log anything still missing today.'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] uppercase tracking-wide text-zinc-600">
+              Step {stepIndex} of {stepCount}
+            </p>
+          </div>
+        )}
 
         <div
           className={cn(
             'min-h-0 flex-1',
             step === 'schedule'
-              ? 'flex flex-col overflow-hidden px-3 py-3 sm:px-4 sm:py-3'
+              ? 'flex flex-col overflow-hidden px-3 py-2 sm:px-4'
               : 'overflow-y-auto overscroll-contain px-6 py-5 scrollbar-hidden',
           )}
         >
@@ -428,62 +450,40 @@ export function ShutdownModal({
           )}
 
           {step === 'schedule' && (
-            <div className="flex min-h-0 flex-1 flex-col gap-3">
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-zinc-500">
-                  Drag exercise plan onto the schedule · or delete plans you won’t do
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handlePasteToday}
-                  disabled={pasting || applyingTemplate || todayBlocks.length === 0}
-                >
-                  <ClipboardCopy size={14} />
-                  {pasting ? 'Pasting…' : 'Paste today'}
-                </Button>
+            <div className="flex min-h-0 flex-1 items-stretch justify-center gap-4">
+              <div
+                data-schedule-height-host
+                className="home-canvas flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-w-[36rem]"
+              >
+                <HourlyTimeline
+                  blocks={tomorrowBlocks}
+                  date={tomorrowDate}
+                  userId={userId}
+                  isActiveDay={false}
+                  startHour={settings.timelineStartHour}
+                  endHour={settings.timelineEndHour}
+                  onUpdate={onUpdateTomorrowBlock}
+                  onDelete={onDeleteTomorrowBlock}
+                  onCreate={onCreateTomorrowBlock}
+                  onAssignExercise={onAssignTomorrowExercise}
+                  onDropPlannedWorkout={dropPlannedWorkoutOnTomorrow}
+                  headerActions={
+                    <ScheduleTemplateMenu
+                      iconOnly
+                      applying={applyingTemplate}
+                      onApply={handleApplyTemplate}
+                    />
+                  }
+                />
               </div>
-              {todayBlocks.length === 0 && (
-                <p className="shrink-0 text-[10px] text-zinc-600">
-                  Today has no schedule blocks — paste is unavailable until you plan today.
-                </p>
-              )}
-              <div className="flex min-h-0 flex-1 items-stretch justify-center gap-4 overflow-hidden">
-                <div
-                  data-schedule-height-host
-                  className="home-canvas min-h-0 w-full min-w-0 max-w-[36rem] overflow-hidden"
-                >
-                  <HourlyTimeline
-                    blocks={tomorrowBlocks}
-                    date={tomorrowDate}
-                    userId={userId}
-                    isActiveDay={false}
-                    startHour={settings.timelineStartHour}
-                    endHour={settings.timelineEndHour}
-                    onUpdate={onUpdateTomorrowBlock}
-                    onDelete={onDeleteTomorrowBlock}
-                    onCreate={onCreateTomorrowBlock}
-                    onAssignExercise={onAssignTomorrowExercise}
-                    onDropPlannedWorkout={dropPlannedWorkoutOnTomorrow}
-                    headerActions={
-                      <ScheduleTemplateMenu
-                        iconOnly
-                        applying={applyingTemplate}
-                        disabled={pasting}
-                        onApply={handleApplyTemplate}
-                      />
-                    }
-                  />
-                </div>
 
-                <div className="flex w-full shrink-0 flex-col gap-4 overflow-y-auto overscroll-contain scrollbar-hidden lg:w-[300px] xl:w-[320px]">
-                  <ExercisePlanCard
-                    viewDate={tomorrowDate}
-                    userId={userId}
-                    singleDate
-                    onScheduleChange={onTomorrowScheduleChange}
-                  />
-                </div>
+              <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-y-auto overscroll-contain pt-4 pr-4 scrollbar-hidden lg:w-[300px] xl:w-[320px]">
+                <ExercisePlanCard
+                  viewDate={tomorrowDate}
+                  userId={userId}
+                  singleDate
+                  onScheduleChange={onTomorrowScheduleChange}
+                />
               </div>
             </div>
           )}
@@ -544,16 +544,11 @@ export function ShutdownModal({
           )}
         </div>
 
+        {step !== 'schedule' && (
         <div className="shrink-0 border-t border-zinc-800/80 px-6 py-4">
           {step === 'typed-reminder' && !typedReminderReady && (
             <p className="mb-2 text-center text-[10px] text-zinc-500">
               Type the reminder exactly to finish
-            </p>
-          )}
-          {step === 'schedule' && !schedulePlansReady && (
-            <p className="mb-2 text-center text-[10px] text-zinc-500">
-              Place or delete {unplacedPlanCount} exercise plan
-              {unplacedPlanCount === 1 ? '' : 's'} before continuing
             </p>
           )}
           <div className="flex gap-2">
@@ -565,11 +560,7 @@ export function ShutdownModal({
             <Button
               onClick={() => void goNext()}
               className={isFirstStep ? 'w-full' : 'flex-[2]'}
-              disabled={
-                finishing ||
-                (step === 'typed-reminder' && !typedReminderReady) ||
-                (step === 'schedule' && !schedulePlansReady)
-              }
+              disabled={finishing || (step === 'typed-reminder' && !typedReminderReady)}
             >
               {finishing
                 ? 'Wrapping up…'
@@ -579,6 +570,7 @@ export function ShutdownModal({
             </Button>
           </div>
         </div>
+        )}
       </div>
     </div>,
     document.body,

@@ -10,9 +10,7 @@ import {
   type ScheduleColorPreset,
 } from '@/lib/scheduleColors'
 import {
-  EXERCISE_PLAN_CHANGED,
   getActivePlannedWorkoutDrag,
-  getPlannedWorkouts,
   PLANNED_WORKOUT_DRAG_MIME,
 } from '@/lib/exercisePlan'
 import { SCHEDULE_SCROLL_TO_NOW, computeScheduleScrollToNowTarget } from '@/lib/scheduleScroll'
@@ -25,7 +23,7 @@ import {
   formatScheduleBlockAlarmLead,
 } from '@/lib/scheduleBlockAlarms'
 import { ScheduleBlockAlarmMenu } from '@/components/schedule/ScheduleBlockAlarmMenu'
-import { getWorkoutTypes } from '@/lib/workoutTypes'
+import { formatWorkoutPlanLabel, getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
 import { formatHourLabel } from '@/components/settings/TimelineRangeSlider'
@@ -129,9 +127,12 @@ function isDefaultGreyTitle(title: string) {
   return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
 }
 
-function blockNeedsWorkoutType(block: ScheduleBlock, linkedBlockIds: Set<string>): boolean {
-  if (!isWorkoutScheduleColor(block.activity_type)) return false
-  return !linkedBlockIds.has(block.id)
+function blockHasChosenWorkoutType(title: string): boolean {
+  const trimmed = title.trim()
+  if (!trimmed || isDefaultGreyTitle(trimmed)) return false
+  return getWorkoutTypes().some(
+    (type) => type.label === trimmed || formatWorkoutPlanLabel(type.id) === trimmed,
+  )
 }
 
 function ScheduleBlockWorkoutTypePicker({
@@ -320,9 +321,6 @@ export function HourlyTimeline({
   const { formatTime, settings } = useSettings()
   const use24h = settings.timeFormat === '24h'
   const [colorPresets, setColorPresets] = useState(() => getScheduleColorPresets())
-  const [linkedBlockIds, setLinkedBlockIds] = useState<Set<string>>(
-    () => new Set(getPlannedWorkouts().map((p) => p.schedule_block_id).filter(Boolean) as string[]),
-  )
 
   useEffect(() => {
     const refresh = () => setColorPresets(getScheduleColorPresets())
@@ -340,19 +338,6 @@ export function HourlyTimeline({
     window.addEventListener('user-storage-ready', refresh)
     return () => {
       window.removeEventListener(SCHEDULE_BLOCK_ALARMS_CHANGED, refresh)
-      window.removeEventListener('user-storage-ready', refresh)
-    }
-  }, [])
-
-  useEffect(() => {
-    const refresh = () =>
-      setLinkedBlockIds(
-        new Set(getPlannedWorkouts().map((p) => p.schedule_block_id).filter(Boolean) as string[]),
-      )
-    window.addEventListener(EXERCISE_PLAN_CHANGED, refresh)
-    window.addEventListener('user-storage-ready', refresh)
-    return () => {
-      window.removeEventListener(EXERCISE_PLAN_CHANGED, refresh)
       window.removeEventListener('user-storage-ready', refresh)
     }
   }, [])
@@ -1299,8 +1284,9 @@ export function HourlyTimeline({
                     />
                   )}
                   {onAssignExercise &&
-                    blockNeedsWorkoutType(block, linkedBlockIds) &&
-                    !isDefaultGreyTitle(blockTitleValue(block)) && (
+                    isWorkoutScheduleColor(block.activity_type) &&
+                    !isDefaultGreyTitle(blockTitleValue(block)) &&
+                    !blockHasChosenWorkoutType(blockTitleValue(block)) && (
                       <ScheduleBlockWorkoutTypePicker
                         block={block}
                         compact={isCompact}
