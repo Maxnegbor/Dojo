@@ -77,6 +77,7 @@ export function playScheduleBlockAlarmSound() {
 }
 
 /** Repeating two-tone alarm while the timer-complete popup is up. */
+const FOCUS_ALARM_REPEAT_MS = 2500
 let focusAlarmTimer: number | null = null
 
 function playFocusAlarmBurst(ctx: AudioContext) {
@@ -91,7 +92,7 @@ export function startFocusTimerAlarm() {
     playFocusAlarmBurst(ctx)
     focusAlarmTimer = window.setInterval(() => {
       withAudioContext((inner) => playFocusAlarmBurst(inner))
-    }, 850)
+    }, FOCUS_ALARM_REPEAT_MS)
   })
 }
 

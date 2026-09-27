@@ -95,6 +95,19 @@ export function addFocusSession(params: {
   return session
 }
 
+/** Drop a label from past sessions without removing the minutes. */
+export function clearFocusSessionLabel(labelId: string) {
+  const id = labelId.trim()
+  if (!id) return
+  const sessions = readAll()
+  if (!sessions.some((session) => session.label_id === id)) return
+  writeAll(
+    sessions.map((session) =>
+      session.label_id === id ? { ...session, label_id: null } : session,
+    ),
+  )
+}
+
 export function sumFocusMinutesByLabel(
   sessions: FocusSession[],
 ): Map<string | null, number> {

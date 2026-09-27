@@ -6,7 +6,10 @@ import {
   createFocusLabel,
   FOCUS_LABEL_SWATCHES,
   FOCUS_LABELS_CHANGED,
+  getArchivedFocusLabels,
   getFocusLabels,
+  permanentlyDeleteArchivedFocusLabel,
+  restoreArchivedFocusLabel,
   saveFocusLabels,
   type FocusLabel,
 } from '@/lib/focusLabels'
@@ -25,12 +28,18 @@ interface FocusLabelsModalProps {
 
 export function FocusLabelsModal({ selectedId, onSelect, onClose }: FocusLabelsModalProps) {
   const [labels, setLabels] = useState(() => getFocusLabels())
+  const [archived, setArchived] = useState(() => getArchivedFocusLabels())
+  const [view, setView] = useState<'active' | 'deleted'>('active')
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [minutesByLabel, setMinutesByLabel] = useState(() =>
     sumFocusMinutesByLabel(getFocusSessions()),
   )
 
   useEffect(() => {
-    const syncLabels = () => setLabels(getFocusLabels())
+    const syncLabels = () => {
+      setLabels(getFocusLabels())
+      setArchived(getArchivedFocusLabels())
+    }
     const syncSessions = () => setMinutesByLabel(sumFocusMinutesByLabel(getFocusSessions()))
     window.addEventListener(FOCUS_LABELS_CHANGED, syncLabels)
     window.addEventListener(FOCUS_SESSIONS_CHANGED, syncSessions)
@@ -74,6 +83,19 @@ export function FocusLabelsModal({ selectedId, onSelect, onClose }: FocusLabelsM
     onSelect(created.id)
   }
 
+  const restoreLabel = (id: string) => {
+    setLabels(restoreArchivedFocusLabel(id))
+    setArchived(getArchivedFocusLabels())
+    setConfirmingDeleteId(null)
+  }
+
+  const permanentlyDelete = (id: string) => {
+    permanentlyDeleteArchivedFocusLabel(id)
+    setArchived(getArchivedFocusLabels())
+    setMinutesByLabel(sumFocusMinutesByLabel(getFocusSessions()))
+    setConfirmingDeleteId(null)
+  }
+
   const unlabeledMinutes = minutesByLabel.get(null) ?? 0
   const totalLabeled = useMemo(
     () => labels.reduce((sum, entry) => sum + (minutesByLabel.get(entry.id) ?? 0), 0),
@@ -90,13 +112,16 @@ export function FocusLabelsModal({ selectedId, onSelect, onClose }: FocusLabelsM
         <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
           <div>
             <h2 id="focus-labels-title" className="text-base font-semibold text-zinc-100">
-              Focus labels
+              {view === 'deleted' ? 'Deleted labels' : 'Focus labels'}
             </h2>
             <p className="mt-0.5 text-xs text-zinc-400">
-              Rename, recolor, or add what you work on.
-              {totalLabeled > 0 || unlabeledMinutes > 0
-                ? ` ${formatDuration(totalLabeled + unlabeledMinutes)} logged total.`
-                : ''}
+              {view === 'deleted'
+                ? 'Restore one, or delete it permanently. That time stays as unlabeled focus time.'
+                : `Rename, recolor, or add what you work on.${
+                    totalLabeled > 0 || unlabeledMinutes > 0
+                      ? ` ${formatDuration(totalLabeled + unlabeledMinutes)} logged total.`
+                      : ''
+                  }`}
             </p>
           </div>
           <button
@@ -110,7 +135,81 @@ export function FocusLabelsModal({ selectedId, onSelect, onClose }: FocusLabelsM
         </div>
 
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-5 py-4">
-          {labels.length === 0 ? (
+          {view === 'deleted' ? (
+            archived.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-zinc-800 px-3 py-6 text-center text-xs text-zinc-500">
+                No deleted labels.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {archived.map((entry) => {
+                  const minutes = minutesByLabel.get(entry.id) ?? 0
+                  const confirming = confirmingDeleteId === entry.id
+                  return (
+                    <li
+                      key={entry.id}
+                      className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-2.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-6 w-6 shrink-0 rounded-full"
+                          style={{ backgroundColor: entry.color }}
+                          aria-hidden
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-zinc-100">{entry.label}</p>
+                          <p className="mt-0.5 text-[10px] tabular-nums text-zinc-500">
+                            {minutes > 0 ? formatDuration(minutes) : 'No time yet'}
+                          </p>
+                        </div>
+                        {!confirming && (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => restoreLabel(entry.id)}
+                              className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-zinc-200 hover:bg-zinc-800"
+                            >
+                              Restore
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingDeleteId(entry.id)}
+                              className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-950/40"
+                            >
+                              Delete forever
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {confirming && (
+                        <div className="mt-2 flex items-center justify-between gap-2 pl-8">
+                          <p className="text-[10px] leading-snug text-zinc-500">
+                            The label goes away. Its time stays as unlabeled focus time.
+                          </p>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingDeleteId(null)}
+                              className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => permanentlyDelete(entry.id)}
+                              className="rounded-lg bg-red-600/20 px-2 py-1.5 text-[11px] font-medium text-red-300 hover:bg-red-600/30"
+                            >
+                              Delete forever
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )
+          ) : labels.length === 0 ? (
             <p className="rounded-xl border border-dashed border-zinc-800 px-3 py-6 text-center text-xs text-zinc-500">
               No labels yet. Add one to tag focus sessions.
             </p>
@@ -163,29 +262,54 @@ export function FocusLabelsModal({ selectedId, onSelect, onClose }: FocusLabelsM
             </ul>
           )}
 
-          {unlabeledMinutes > 0 && (
+          {view === 'active' && unlabeledMinutes > 0 && (
             <p className="px-1 text-[10px] text-zinc-600">
-              Untagged sessions: {formatDuration(unlabeledMinutes)}
+              Unlabeled focus time: {formatDuration(unlabeledMinutes)}
             </p>
           )}
         </div>
 
         <div className="flex gap-2 border-t border-zinc-800/80 px-5 py-4">
-          <button
-            type="button"
-            onClick={addLabel}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-700 px-3 py-2.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
-          >
-            <Plus size={14} />
-            Add label
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl bg-zinc-800 px-4 py-2.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
-          >
-            Done
-          </button>
+          {view === 'deleted' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setView('active')
+                setConfirmingDeleteId(null)
+              }}
+              className="inline-flex flex-1 items-center justify-center rounded-xl border border-zinc-700 px-3 py-2.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Back
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={addLabel}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-700 px-3 py-2.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+              >
+                <Plus size={14} />
+                Add label
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingDeleteId(null)
+                  setView('deleted')
+                }}
+                className="rounded-xl border border-zinc-700 px-3 py-2.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+              >
+                Deleted{archived.length > 0 ? ` (${archived.length})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl bg-zinc-800 px-4 py-2.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
+              >
+                Done
+              </button>
+            </>
+          )}
         </div>
       </div>
     </ModalOverlay>

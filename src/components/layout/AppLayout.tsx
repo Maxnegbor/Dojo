@@ -1,6 +1,6 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Beaker, Brain, Flag, FlaskConical, Handshake, LayoutDashboard, Settings, Sparkles, Target } from 'lucide-react'
+import { Beaker, Brain, Flag, FlaskConical, Handshake, House, LayoutDashboard, Settings, Target } from 'lucide-react'
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MissedLogGate } from '@/components/layout/MissedLogGate'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
@@ -15,7 +15,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { ScreensaverContext, type ScreensaverState } from '@/context/ScreensaverContext'
 
 const NAV = [
-  { to: '/', label: 'Home', icon: Sparkles },
+  { to: '/', label: 'Home', icon: House },
   { to: '/focus', label: 'Focus', icon: Brain, setting: 'showFocusPage' as const },
   { to: '/goals', label: 'Goals', icon: Flag },
   { to: '/contracts', label: 'Contracts', icon: Handshake, setting: 'showContractsPage' as const },
@@ -309,7 +309,7 @@ export function AppLayout() {
       <aside className={cn('relative z-30 w-14 shrink-0 transition-opacity duration-[1400ms] ease-in-out', screensaver.active && 'pointer-events-none opacity-0')}>
         <div
           className={cn(
-            'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-x-hidden overflow-y-auto border-r border-zinc-800/80 bg-[#06060b]',
+            'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-x-hidden overflow-y-auto bg-[#06060b]',
             'transition-[width] duration-200 ease-in-out',
             sidebarExpanded && `${SIDEBAR_EXPANDED_WIDTH_CLASS} shadow-[4px_0_24px_rgba(0,0,0,0.5)]`,
           )}
@@ -325,7 +325,7 @@ export function AppLayout() {
 
         <div
           className={cn(
-            'mt-auto flex shrink-0 flex-col gap-2 border-t border-zinc-800/80 py-2',
+            'mt-auto flex shrink-0 flex-col gap-2 py-2',
             sidebarExpanded && 'px-1.5',
           )}
         >

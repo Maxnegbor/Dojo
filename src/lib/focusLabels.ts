@@ -1,4 +1,4 @@
-import { getFocusSessions } from '@/lib/focusSessions'
+import { clearFocusSessionLabel, getFocusSessions } from '@/lib/focusSessions'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import { generateId } from '@/lib/utils'
 
@@ -219,6 +219,32 @@ export function createFocusLabel(patch?: Partial<Pick<FocusLabel, 'label' | 'col
     },
     usedIds,
   )
+}
+
+/** Put an archived label back on the active list. */
+export function restoreArchivedFocusLabel(id: string): FocusLabel[] {
+  const archived = getArchivedFocusLabels()
+  const entry = archived.find((item) => item.id === id)
+  if (!entry) return getFocusLabels()
+  const active = getFocusLabels()
+  if (active.some((item) => item.id === id)) {
+    saveArchivedFocusLabels(archived.filter((item) => item.id !== id))
+    window.dispatchEvent(new Event(FOCUS_LABELS_CHANGED))
+    return active
+  }
+  return saveFocusLabels([...active, entry])
+}
+
+/**
+ * Remove an archived label for good.
+ * Session minutes stay, with the label cleared so they count as unlabeled focus time.
+ */
+export function permanentlyDeleteArchivedFocusLabel(id: string) {
+  const trimmed = id.trim()
+  if (!trimmed) return
+  saveArchivedFocusLabels(getArchivedFocusLabels().filter((item) => item.id !== trimmed))
+  clearFocusSessionLabel(trimmed)
+  window.dispatchEvent(new Event(FOCUS_LABELS_CHANGED))
 }
 
 export function getFocusLabelById(id: string | null | undefined): FocusLabel | null {

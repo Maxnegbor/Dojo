@@ -221,7 +221,7 @@ export function WeeklyLogFields({ draft, heading, description }: WeeklyLogFields
             <h3 className="mb-1 text-sm font-semibold text-[var(--accent-300)]">{heading}</h3>
           ) : null}
           {description ? <p className="mb-4 text-xs text-zinc-500">{description}</p> : null}
-          <div className="space-y-4">
+          <div className="flex flex-col items-start gap-4">
             {weightGoal && (
               <WeightStepper
                 label={weightGoal.name}

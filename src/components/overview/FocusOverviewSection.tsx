@@ -47,12 +47,15 @@ function FocusLabelBreakdown({
   labelStats: FocusLabelPeriodStat[]
   totalMinutes: number
 }) {
-  if (labelStats.length === 0) return null
   const labeledTotal = labelStats.reduce((sum, entry) => sum + entry.minutes, 0)
+  const unlabeledMinutes = Math.max(0, totalMinutes - labeledTotal)
+  if (labelStats.length === 0 && unlabeledMinutes <= 0) return null
 
   return (
     <div className="mt-3 space-y-2 border-t border-zinc-800/80 pt-3">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">By label</p>
+      {labelStats.length > 0 && (
+        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">By label</p>
+      )}
       <ul className="space-y-1.5">
         {labelStats.map((entry) => {
           const pct =
@@ -84,9 +87,9 @@ function FocusLabelBreakdown({
           )
         })}
       </ul>
-      {labeledTotal < totalMinutes && (
+      {unlabeledMinutes > 0 && (
         <p className="text-[10px] text-zinc-600">
-          {formatDuration(totalMinutes - labeledTotal)} unlabeled
+          {formatDuration(unlabeledMinutes)} unlabeled focus time
         </p>
       )}
     </div>
