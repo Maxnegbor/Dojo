@@ -241,7 +241,7 @@ export function WhoopPulseOrbits({ date, layout = 'orbit' }: { date: string; lay
       <MiniStatRing
         label="recovery"
         inline={layout === 'row'}
-        className={layout === 'row' ? 'order-3' : undefined}
+        className={layout === 'row' ? 'order-2' : undefined}
         display={formatPercent(recovery)}
         value={recovery}
         max={100}
@@ -259,7 +259,7 @@ export function WhoopPulseOrbits({ date, layout = 'orbit' }: { date: string; lay
       <MiniStatRing
         label="sleep"
         inline={layout === 'row'}
-        className={layout === 'row' ? 'order-1' : undefined}
+        className={layout === 'row' ? 'order-3' : undefined}
         display={formatPercent(sleep)}
         value={sleep}
         max={100}
@@ -283,7 +283,7 @@ export function WhoopPulseOrbits({ date, layout = 'orbit' }: { date: string; lay
       <MiniStatRing
         label="strain"
         inline={layout === 'row'}
-        className={layout === 'row' ? 'order-2' : undefined}
+        className={layout === 'row' ? 'order-1' : undefined}
         display={formatStrain(strain)}
         value={strain}
         max={STRAIN_MAX}

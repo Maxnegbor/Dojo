@@ -20,8 +20,10 @@ export function RightNowHeader() {
   }, [focusNext, pendingId])
   if (!ready) return null
   const asking = pending
+  const parentGoal = asking?.parent && asking.parentGoal ? asking.parentGoal : null
   const [promptBefore = '', promptAfter = ''] = (asking?.horizon.prompt ?? '').split('ONE')
-  return <section aria-label="Your right now focus" className={`mx-auto w-full max-w-5xl shrink-0 px-3 pb-4 text-center sm:px-6 ${asking ? 'pt-10' : 'pt-2'}`}>
+  return <section aria-label="Your right now focus" className={`mx-auto w-full max-w-5xl shrink-0 px-3 pb-4 text-center sm:px-6 ${parentGoal ? 'pt-4' : 'pt-10'}`}>
+    {parentGoal && asking?.parent && <p className="mx-auto mb-8 max-w-md whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-400"><span className="font-medium text-zinc-300">{asking.parent.label} goal:</span> {parentGoal.text}</p>}
     {!asking && goal ? <div className="flex items-center justify-center gap-3">
       <h1 className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-2xl font-semibold leading-tight tracking-tight text-zinc-100 sm:text-3xl lg:text-4xl">{goal.text}</h1>
       <button type="button" aria-label="Complete your right now One Thing" title="Done — choose your next One Thing" onClick={() => {
@@ -38,7 +40,6 @@ export function RightNowHeader() {
           <span className="one-thing-gold-shine my-1 text-[1.55em] leading-none">ONE</span>
           <span>{promptAfter.trim()}</span>
         </h1>
-        {asking.parent && asking.parentGoal && <p className="max-w-md whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-400"><span className="font-medium text-zinc-300">{asking.parent.label} goal:</span> {asking.parentGoal.text}</p>}
       </div>
       <form className="mx-auto mt-3 flex max-w-2xl items-center gap-2 border-b border-zinc-700 pb-2 focus-within:border-[var(--accent-400)]" onSubmit={event => {
         event.preventDefault()
