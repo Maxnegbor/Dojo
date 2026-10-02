@@ -22,7 +22,7 @@ export function FocusScorePrompt({ onSubmit, onSkip }: FocusScorePromptProps) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-4 pb-10 backdrop-blur-[2px] sm:items-center"
+      className="fixed inset-0 z-[240] flex items-end justify-center bg-black/40 p-4 pb-10 backdrop-blur-[2px] sm:items-center"
       onClick={onSkip}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onSkip()

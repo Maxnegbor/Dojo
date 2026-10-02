@@ -1,8 +1,9 @@
+import { RightNowHeader } from '@/components/oneThing/RightNowHeader'
+import { OneThingHomeCard } from '@/components/oneThing/OneThingHomeCard'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
 import { CalendarCheck, CalendarClock, CalendarDays, ClipboardList, LayoutGrid, Moon } from 'lucide-react'
-import { HomePulseCard } from '@/components/pulse/HomePulseCard'
 import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
@@ -48,7 +49,7 @@ import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes } from '@/lib/habitTypes'
 import { HABITIFY_CHANGED, HABITIFY_JOURNAL_CHANGED } from '@/lib/habitifyStore'
 import { WHOOP_CHANGED, WHOOP_DAYS_CHANGED } from '@/lib/whoopStore'
-import { computeDayPulse, PULSE_HEADER_SCALE, pulseCorePx } from '@/lib/pulse'
+import { computeDayPulse } from '@/lib/pulse'
 import { buildPulseContributors } from '@/lib/pulseBreakdown'
 import { getPulseFormulaForDate } from '@/lib/pulseConfig'
 import { getMorningLogYesterdayDate } from '@/lib/morningLogConfig'
@@ -203,7 +204,6 @@ export function TodayPage() {
   }, [viewDate, log, goals, workouts, pulseConfig, sleepMetricsConfig, draftRevision, habitifyRevision])
 
   const headerPulseScore = dayPulse.score
-  const headerPulseLayoutPx = pulseCorePx(PULSE_HEADER_SCALE) + 8
   const shutdownAvailable = useShutdownAvailable(viewDate)
   const pastScheduleEnd = usePastScheduleEnd(settings.timelineEndHour)
   const [pastShutdownRequire, setPastShutdownRequire] = useState(() =>
@@ -747,32 +747,30 @@ export function TodayPage() {
           screensaver && 'home-stage--screensaver',
           screensaverWaking && 'home-stage--screensaver-wake',
           (screensaverActive || screensaverWaking) && 'home-stage--suppress-enter',
-          settings.showHomePulse && 'home-stage--pulse',
         )}
         style={{
           gap: screensaver ? '0px' : undefined,
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
-          ['--home-pulse-core' as string]: `${pulseCorePx(PULSE_HEADER_SCALE)}px`,
         }}
       >
+      {!screensaver && <RightNowHeader />}
       <div
         className={cn(
           'relative shrink-0 px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
           'transition-[max-height,opacity,filter,padding] duration-[2000ms] ease-in-out',
           screensaver ? 'overflow-hidden' : 'overflow-visible',
-          // Stay above the schedule grid so the lower half of the pulse stays hoverable.
           'z-40',
           screensaver && 'pointer-events-none opacity-0 blur-[1px]',
         )}
         style={{
-          maxHeight: screensaver ? '0px' : `${headerPulseLayoutPx + 24}px`,
+          maxHeight: screensaver ? '0px' : '72px',
           paddingTop: screensaver ? '0px' : undefined,
           paddingBottom: screensaver ? '0px' : undefined,
         }}
       >
         <div
           className="relative flex items-center justify-between gap-2 overflow-visible"
-          style={{ minHeight: headerPulseLayoutPx }}
+          style={{ minHeight: 48 }}
         >
           <div className="relative z-10 min-w-0 flex-1 self-center">
             <DateNavigationHeader
@@ -782,30 +780,7 @@ export function TodayPage() {
               onToday={() => setViewDate(formatDate(new Date()))}
             />
           </div>
-          <div
-            className={cn(
-              'pointer-events-none absolute inset-0 z-20 flex items-center justify-center overflow-visible',
-            )}
-          >
-            {settings.showHomePulse && (
-              <div
-                className="pointer-events-auto relative overflow-visible"
-                style={{
-                  width: pulseCorePx(PULSE_HEADER_SCALE),
-                  height: pulseCorePx(PULSE_HEADER_SCALE),
-                  // Match `.home-schedule-panel::before` shadow via --home-pulse-overlap.
-                  transform:
-                    'translateY(calc(var(--home-pulse-core) / 2 + var(--home-pulse-overlap, 0px) + 0.25rem + 4px))',
-                }}
-              >
-                <WhoopPulseOrbits date={viewDate} />
-                <HomePulseCard
-                  score={headerPulseScore}
-                  contributors={pulseContributors}
-                />
-              </div>
-            )}
-          </div>
+          {/* HomePulseCard is kept in components/pulse for later; the header stays compact. */}
           <div className="relative z-10 flex shrink-0 items-center gap-1.5 self-center">
             {isMobile && (
               <button
@@ -925,6 +900,7 @@ export function TodayPage() {
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
           screensaver && 'pointer-events-none invisible !opacity-0',
         )}>
+          <WhoopPulseOrbits date={viewDate} layout="row" />
           {(log && userId) ||
           weeklyShutdownAvailable ||
           (isActiveDay &&
@@ -980,6 +956,7 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
+          <OneThingHomeCard />
           {settings.showExperimentsPage && <ExperimentHomeCard date={viewDate} />}
         </aside>
         </div>

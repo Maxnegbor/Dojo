@@ -741,10 +741,11 @@ export function isMorningLogComplete(
   todayWorkouts: Workout[] = [],
   yesterdayWorkouts: Workout[] = [],
   requireTypedReminder = false,
+  requireChecklist = false,
 ): boolean {
   if (date && isMorningLogSubmitted(date)) return true
-  // Typed reminder can only be completed by submitting the morning log modal.
-  if (requireTypedReminder) return false
+  // Follow-up steps require an explicit submission, even with no metric fields.
+  if (requireTypedReminder || requireChecklist) return false
   if (!log) return false
 
   if (!isMorningSleepLogComplete(log, getMorningLogSleepConfig(sleepConfig))) return false

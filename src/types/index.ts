@@ -17,6 +17,7 @@ export interface ScheduleBlock {
   start_time: string
   end_time: string
   title: string
+  notes: string
   activity_type: ScheduleBlockState
   color: string
   created_at: string
@@ -265,12 +266,21 @@ export interface HabitContractPerson {
 
 export type HabitContractProofStatus = 'pending' | 'accepted' | 'disputed'
 
+export interface HabitContractPenaltyDay {
+  label: string
+  value: string
+  detail: string
+  amount: number
+}
+
 export interface HabitContractProofAnalysis {
   met_goal: boolean | null
   extracted: string
   penalty_due: number
   /** How the written rule was applied to this proof. */
   penalty_calculation: string
+  /** One row per scored day. Empty on older proofs; the UI can derive rows from penalty_calculation. */
+  days: HabitContractPenaltyDay[]
   explanation: string
   confidence: number
 }
@@ -427,8 +437,6 @@ export interface AppSettings {
   showFocusPage: boolean
   /** Show Experiments in the sidebar and allow /experiments. Off by default. */
   showExperimentsPage: boolean
-  /** Show Contracts in the sidebar and allow /contracts. */
-  showContractsPage: boolean
   /** Show a clean read-only agenda of today’s schedule beside the Focus timer. */
   showFocusSchedule: boolean
   /** @deprecated Pulse page removed from nav; kept for stored settings compatibility. */
@@ -555,7 +563,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   hideCompletedHabitsInToggle: true,
   showFocusPage: true,
   showExperimentsPage: false,
-  showContractsPage: true,
   showFocusSchedule: false,
   showPulsePage: true,
   weeklyShutdownChecklist: [],

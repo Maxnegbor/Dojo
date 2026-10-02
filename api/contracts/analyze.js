@@ -1,3 +1,5 @@
+import { rejectMissingSiteKey, siteOpenAIKey } from '../_openai.js'
+
 /** Analyze habit-contract proof (photos and/or written text) and estimate who owes whom. */
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -12,16 +14,9 @@ export default async function handler(req, res) {
     return
   }
 
-  const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : ''
-  const headerKey = authHeader.replace(/^Bearer\s+/i, '').trim()
-  const apiKey = process.env.OPENAI_API_KEY?.trim() || headerKey
+  const apiKey = siteOpenAIKey()
   if (!apiKey) {
-    res.status(501).json({
-      error: {
-        message:
-          'Set OPENAI_API_KEY on the server, or connect ChatGPT in Settings so photos can be analyzed.',
-      },
-    })
+    rejectMissingSiteKey(res)
     return
   }
 
@@ -94,7 +89,7 @@ export default async function handler(req, res) {
         {
           role: 'system',
           content:
-            'You referee habit contracts between friends. The person wrote the penalty rule and, separately, how to calculate it. If how_to_calculate is written, follow it exactly — it is the scoring method. Do not override it with a simpler reading of the penalty. Parse the penalty amount/rate exactly and do not invent a different rate. Proof may be photos, written text, or both. Use every photo and the written statement together. If a photo is a Screen Time screenshot, read hours and minutes carefully. Contracts often last a week or more, with one proof at the end covering every day — that is a batch of daily results, not one event. If how_to_calculate is empty and the rule is daily, per day, or uses a daily limit, score EVERY day in the proof on its own, then SUM. Example: "€5 if daily screentime exceeds 2 hours" and 7 days all over 2h → 7 × €5 = €35. Never collapse that to €5 once. Per-unit overage also applies per day, then sum. Only charge once for the whole window if the written instructions clearly say once per week, once per contract, or a single lump sum. penalty_due is the summed euro amount (0 if nothing is owed). penalty_calculation must list each scored day and the total. extracted should list each day\'s value. met_goal is true only if every scored day met the goal. Also estimate who owes whom from prior accepted proofs plus this result. Return JSON only: {"analysis":{"met_goal":true,"extracted":"","penalty_due":0,"penalty_calculation":"","explanation":"","confidence":0},"settlements":[{"from_person_id":"","to_person_id":"","amount":0}]}',
+            'You referee habit contracts between friends. The person wrote the penalty rule and, separately, how to calculate it. If how_to_calculate is written, follow it exactly — it is the scoring method. Do not override it with a simpler reading of the penalty. Parse the penalty amount/rate exactly and do not invent a different rate. Proof may be photos, written text, or both. Use every photo and the written statement together. If a photo is a Screen Time screenshot, read hours and minutes carefully. Contracts often last a week or more, with one proof at the end covering every day — that is a batch of daily results, not one event. If how_to_calculate is empty and the rule is daily, per day, or uses a daily limit, score EVERY day in the proof on its own, then SUM. Example: "€5 if daily screentime exceeds 2 hours" and 7 days all over 2h → 7 × €5 = €35. Never collapse that to €5 once. Per-unit overage also applies per day, then sum. Only charge once for the whole window if the written instructions clearly say once per week, once per contract, or a single lump sum. penalty_due is the summed euro amount (0 if nothing is owed) and must equal the sum of days[].amount. days is one object per scored day, in order: {"label":"Thu","value":"3h30","detail":"over by 30 min","amount":7}. Keep each day\'s detail short. Do not put the arithmetic in one paragraph. penalty_calculation is only the total line, e.g. "€7 + €8 = €15". extracted should list each day\'s value. explanation is one or two sentences about the rule and must not repeat each day\'s arithmetic. met_goal is true only if every scored day met the goal. Also estimate who owes whom from prior accepted proofs plus this result. Return JSON only: {"analysis":{"met_goal":true,"extracted":"","penalty_due":0,"penalty_calculation":"","days":[{"label":"Thu","value":"3h30","detail":"over by 30 min","amount":7}],"explanation":"","confidence":0},"settlements":[{"from_person_id":"","to_person_id":"","amount":0}]}',
         },
         { role: 'user', content },
       ],

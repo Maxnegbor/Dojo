@@ -4,8 +4,10 @@ import { format } from 'date-fns'
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import type {
   HabitContract,
+  HabitContractPenaltyDay,
   HabitContractPerson,
   HabitContractProof,
+  HabitContractProofAnalysis,
   HabitContractProofStatus,
   HabitContractsState,
   HabitContractSettlement,
@@ -77,6 +79,72 @@ function normalizePerson(raw: unknown): HabitContractPerson | null {
 
 export const BOTH_WHO = '__both__'
 
+const DAY_BOUNDARY =
+  /\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\b/gi
+
+export function normalizePenaltyDays(raw: unknown): HabitContractPenaltyDay[] {
+  if (!Array.isArray(raw)) return []
+  const days: HabitContractPenaltyDay[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const row = item as Record<string, unknown>
+    const label = asString(row.label).trim()
+    if (!label) continue
+    const amountRaw = asNumber(row.amount)
+    days.push({
+      label,
+      value: asString(row.value).trim(),
+      detail: asString(row.detail).trim(),
+      amount: Math.max(0, Math.round(amountRaw * 100) / 100),
+    })
+  }
+  return days
+}
+
+/** Turn a one-line daily calculation into one row per day for older proofs. */
+export function parsePenaltyDays(calculation: string): HabitContractPenaltyDay[] {
+  const text = calculation.replace(/\s+/g, ' ').trim()
+  if (!text) return []
+  const matches = [...text.matchAll(DAY_BOUNDARY)]
+  if (matches.length < 2) return []
+  const days: HabitContractPenaltyDay[] = []
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].index ?? 0
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? text.length) : text.length
+    const label = matches[i][0]
+    let rest = text.slice(start + label.length, end).trim().replace(/\s+\+\s*$/, '')
+    if (i === matches.length - 1) {
+      rest = rest
+        .replace(
+          /\s*=\s*(?:€\s*[\d.]+\s*\+\s*)+€\s*[\d.]+(?:\s*=\s*€\s*[\d.]+)?(?:\s*total)?\s*$/i,
+          '',
+        )
+        .trim()
+    }
+    const valueMatch = rest.match(/^(\d+\s*h(?:\s*\d+\s*m?)?|\d+\s*m)\b/i)
+    const value = valueMatch?.[1]?.replace(/\s+/g, '') ?? ''
+    const amounts = [...rest.matchAll(/€\s*([\d.]+)/g)]
+    const amountRaw = amounts.length > 0 ? Number(amounts[amounts.length - 1][1]) : 0
+    const clause = rest.match(/:\s*([^→€]+?)(?:\s*→|$)/)
+    const paren = rest.match(/\(([^)]*[A-Za-z][^)]*)\)/)
+    const detail = (clause?.[1] ?? paren?.[1] ?? '').replace(/\s+/g, ' ').trim().replace(/[.,]\s*$/, '')
+    days.push({
+      label,
+      value,
+      detail,
+      amount: Number.isFinite(amountRaw) ? Math.round(amountRaw * 100) / 100 : 0,
+    })
+  }
+  return days
+}
+
+export function penaltyDaysForAnalysis(
+  analysis: Pick<HabitContractProofAnalysis, 'days' | 'penalty_calculation'>,
+): HabitContractPenaltyDay[] {
+  if (analysis.days?.length) return analysis.days
+  return parsePenaltyDays(analysis.penalty_calculation)
+}
+
 function normalizePersonIds(row: Record<string, unknown>): string[] {
   if (Array.isArray(row.person_ids)) {
     const ids = row.person_ids.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
@@ -142,6 +210,7 @@ function normalizeProof(raw: unknown): HabitContractProof | null {
           extracted: asString((analysisRaw as { extracted?: unknown }).extracted),
           penalty_due: Math.max(0, asNumber((analysisRaw as { penalty_due?: unknown }).penalty_due)),
           penalty_calculation: asString((analysisRaw as { penalty_calculation?: unknown }).penalty_calculation),
+          days: normalizePenaltyDays((analysisRaw as { days?: unknown }).days),
           explanation: asString((analysisRaw as { explanation?: unknown }).explanation),
           confidence: Math.min(1, Math.max(0, asNumber((analysisRaw as { confidence?: unknown }).confidence))),
         }
@@ -224,6 +293,43 @@ export function formatEuros(amount: number): string {
 export function formatContractDate(dateStr: string): string {
   if (!dateStr) return ''
   return format(parseLocalDate(dateStr), 'EEE d')
+}
+
+export function groupHabitContracts(state: HabitContractsState): {
+  id: string
+  label: string
+  color: string
+  contracts: HabitContract[]
+}[] {
+  const bothLabel = state.people.length === 2 ? 'Both' : 'Everyone'
+  const shared: HabitContract[] = []
+  const byPerson = new Map<string, HabitContract[]>(state.people.map((person) => [person.id, []]))
+  for (const contract of state.contracts) {
+    if (contract.person_ids.length > 1) {
+      shared.push(contract)
+      continue
+    }
+    const bucket = contract.person_ids[0] ? byPerson.get(contract.person_ids[0]) : undefined
+    if (bucket) bucket.push(contract)
+  }
+  const groups: { id: string; label: string; color: string; contracts: HabitContract[] }[] = []
+  if (shared.length > 0) {
+    groups.push({
+      id: BOTH_WHO,
+      label: bothLabel,
+      color: '#fcd34d',
+      contracts: shared,
+    })
+  }
+  for (const person of state.people) {
+    groups.push({
+      id: person.id,
+      label: person.name,
+      color: person.color,
+      contracts: byPerson.get(person.id) ?? [],
+    })
+  }
+  return groups
 }
 
 export function contractCoversEveryone(

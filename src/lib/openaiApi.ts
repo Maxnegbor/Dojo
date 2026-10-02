@@ -1,4 +1,4 @@
-import { getOpenAIApiKey, getOpenAIModel } from '@/lib/openaiStore'
+import { getOpenAIModel } from '@/lib/openaiStore'
 
 const PROXY_URL = '/api/openai'
 
@@ -22,59 +22,30 @@ interface ChatCompletionResponse {
   error?: { message?: string }
 }
 
-function authHeaders(apiKey: string): HeadersInit {
-  return {
-    Authorization: `Bearer ${apiKey}`,
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-  }
-}
-
 function errorMessage(payload: unknown, fallback: string, status: number): string {
   if (payload && typeof payload === 'object') {
     const err = (payload as { error?: { message?: unknown } }).error
     if (typeof err?.message === 'string' && err.message.trim()) return err.message
   }
-  if (status === 401) return 'OpenAI API key is invalid. Update it in Settings → Integrations.'
-  if (status === 429) return 'OpenAI rate limit hit. Wait a moment and try again.'
+  if (status === 401 || status === 501) return 'ChatGPT is unavailable right now.'
+  if (status === 429) return 'ChatGPT is busy. Wait a moment and try again.'
   return fallback
-}
-
-export async function verifyOpenAIApiKey(apiKey: string): Promise<void> {
-  const res = await fetch(`${PROXY_URL}/models`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
-      Accept: 'application/json',
-    },
-  })
-  if (res.ok) return
-  let payload: unknown = null
-  try {
-    payload = await res.json()
-  } catch {
-    /* ignore */
-  }
-  throw new OpenAIApiError(
-    errorMessage(payload, 'Could not verify the OpenAI API key', res.status),
-    res.status,
-  )
 }
 
 export async function createChatCompletion(input: {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
-  apiKey?: string
   model?: string
 }): Promise<string> {
-  const apiKey = input.apiKey ?? getOpenAIApiKey()
-  if (!apiKey) throw new OpenAIApiError('ChatGPT is not connected', 401)
   const model = input.model ?? getOpenAIModel()
 
   const res = await fetch(PROXY_URL, {
     method: 'POST',
-    headers: authHeaders(apiKey),
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({
       model,
       messages: input.messages,

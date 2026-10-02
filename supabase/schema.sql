@@ -64,6 +64,7 @@ create table if not exists schedule_blocks (
   start_time time not null,
   end_time time not null,
   title text not null,
+  notes text not null default '',
   activity_type text not null,
   color text default '#6366f1',
   created_at timestamptz default now()

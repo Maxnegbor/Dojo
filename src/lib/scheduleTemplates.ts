@@ -12,6 +12,7 @@ export interface ScheduleTemplateBlock {
   start_time: string
   end_time: string
   title: string
+  notes: string
   /** Color preset id, or `grey`. */
   activity_type: string
 }
@@ -42,11 +43,13 @@ function normalizeTemplateBlock(raw: Partial<ScheduleTemplateBlock>): ScheduleTe
       : activityType === 'grey'
         ? GREY_BLOCK_TITLE
         : scheduleColorDefaultTitle(activityType)
+  const notes = typeof raw.notes === 'string' ? raw.notes.slice(0, 2000) : ''
 
   return {
     start_time: start.length === 4 ? `0${start}` : start,
     end_time: end.length === 4 ? `0${end}` : end,
     title,
+    notes,
     activity_type: activityType,
   }
 }
@@ -109,6 +112,7 @@ export function templateBlocksFromSchedule(blocks: ScheduleBlock[]): ScheduleTem
         start_time: block.start_time,
         end_time: block.end_time,
         title: block.title,
+        notes: block.notes,
         activity_type: block.activity_type,
       }),
     )
@@ -152,6 +156,7 @@ export function scheduleBlocksFromTemplate(
       start_time: block.start_time,
       end_time: block.end_time,
       title: block.title,
+      notes: block.notes ?? '',
       activity_type: activityType,
       color: activityType === 'grey' ? GREY_BLOCK_HEX : scheduleColorHex(activityType),
       created_at: now,

@@ -1,7 +1,9 @@
+import { rejectMissingSiteKey, siteOpenAIKey } from '../_openai.js'
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+    res.setHeader('Access-Control-Allow-Headers', 'content-type')
     res.status(204).end()
     return
   }
@@ -11,16 +13,16 @@ export default async function handler(req, res) {
     return
   }
 
-  const auth = req.headers.authorization
-  if (!auth || typeof auth !== 'string') {
-    res.status(401).json({ error: { message: 'Missing OpenAI API key' } })
+  const apiKey = siteOpenAIKey()
+  if (!apiKey) {
+    rejectMissingSiteKey(res)
     return
   }
 
   const upstream = await fetch('https://api.openai.com/v1/models', {
     method: 'GET',
     headers: {
-      Authorization: auth,
+      Authorization: `Bearer ${apiKey}`,
       Accept: 'application/json',
     },
   })

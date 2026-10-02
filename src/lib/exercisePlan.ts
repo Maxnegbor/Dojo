@@ -285,6 +285,7 @@ function scheduleBlockFromPlan(
     activity_type: workout.id,
     color: workout.hex,
     title: scheduleTitleForPlan(item),
+    notes: '',
     created_at: item.created_at,
   })
 }

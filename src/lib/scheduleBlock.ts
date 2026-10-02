@@ -31,10 +31,12 @@ function resolveActivityType(activityType: string): string {
 }
 
 export function normalizeScheduleBlock(block: ScheduleBlock): ScheduleBlock {
+  const notes = typeof block.notes === 'string' ? block.notes : ''
   if (block.activity_type === 'grey') {
     const trimmed = block.title.trim()
     return {
       ...block,
+      notes,
       color: GREY_BLOCK_HEX,
       title: trimmed.length > 0 ? block.title : GREY_BLOCK_TITLE,
     }
@@ -49,6 +51,7 @@ export function normalizeScheduleBlock(block: ScheduleBlock): ScheduleBlock {
 
   return {
     ...block,
+    notes,
     activity_type: activityType,
     color: scheduleColorHex(activityType, block.color),
     title,
@@ -71,6 +74,7 @@ export function createScheduleBlock(params: {
     activity_type: 'grey',
     color: GREY_BLOCK_HEX,
     title: GREY_BLOCK_TITLE,
+    notes: '',
     created_at: new Date().toISOString(),
   }
 }

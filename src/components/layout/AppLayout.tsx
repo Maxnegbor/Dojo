@@ -1,6 +1,6 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Beaker, Brain, Flag, FlaskConical, Handshake, House, LayoutDashboard, Settings, Target } from 'lucide-react'
+import { Beaker, Brain, CircleDot, Flag, FlaskConical, House, LayoutDashboard, Settings, Target } from 'lucide-react'
 import { FocusBadge } from '@/components/layout/FocusBadge'
 import { MissedLogGate } from '@/components/layout/MissedLogGate'
 import { MorningLogGate } from '@/components/layout/MorningLogGate'
@@ -17,8 +17,8 @@ import { ScreensaverContext, type ScreensaverState } from '@/context/Screensaver
 const NAV = [
   { to: '/', label: 'Home', icon: House },
   { to: '/focus', label: 'Focus', icon: Brain, setting: 'showFocusPage' as const },
+  { to: '/one-thing', label: 'The One Thing', icon: CircleDot },
   { to: '/goals', label: 'Goals', icon: Flag },
-  { to: '/contracts', label: 'Contracts', icon: Handshake, setting: 'showContractsPage' as const },
   { to: '/experiments', label: 'Experiments', icon: Beaker, setting: 'showExperimentsPage' as const },
   { to: '/metrics', label: 'Metrics', icon: Target },
   { to: '/overview', label: 'Overview', icon: LayoutDashboard },
@@ -296,8 +296,7 @@ export function AppLayout() {
 
   if (
     (pathname === '/focus' && !settings.showFocusPage) ||
-    (pathname === '/experiments' && !settings.showExperimentsPage) ||
-    (pathname === '/contracts' && !settings.showContractsPage)
+    (pathname === '/experiments' && !settings.showExperimentsPage)
   ) {
     return <Navigate to="/" replace />
   }

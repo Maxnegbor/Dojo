@@ -1,15 +1,11 @@
-/** Same-origin proxy so the browser can call OpenAI without CORS issues. */
+import { rejectMissingSiteKey, siteChatBody, siteOpenAIKey } from './_openai.js'
+
+/** Same-origin ChatGPT proxy. The site key stays on the server. */
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'content-type')
     res.status(204).end()
-    return
-  }
-
-  const auth = req.headers.authorization
-  if (!auth || typeof auth !== 'string') {
-    res.status(401).json({ error: { message: 'Missing OpenAI API key' } })
     return
   }
 
@@ -18,14 +14,20 @@ export default async function handler(req, res) {
     return
   }
 
+  const apiKey = siteOpenAIKey()
+  if (!apiKey) {
+    rejectMissingSiteKey(res)
+    return
+  }
+
   const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      Authorization: auth,
+      Authorization: `Bearer ${apiKey}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(req.body ?? {}),
+    body: JSON.stringify(siteChatBody(req.body)),
   })
 
   const text = await upstream.text()

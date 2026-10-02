@@ -24,7 +24,7 @@ export function FocusTimerAlarmModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[180] flex items-center justify-center bg-black/92 p-6 backdrop-blur-md"
+      className="fixed inset-0 z-[240] flex items-center justify-center bg-black/92 p-6 backdrop-blur-md"
       onClick={() => onDismiss()}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onDismiss()

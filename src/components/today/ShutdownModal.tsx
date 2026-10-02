@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { parseISO } from 'date-fns'
 import {
   Check,
+  CircleDot,
   ListChecks,
   ListTodo,
   Moon,
@@ -52,9 +54,38 @@ import { experimentsNeedingDailyLogStep } from '@/lib/experiments'
 import { ExperimentConfoundersSection } from '@/components/experiments/ExperimentConfoundersSection'
 import type { DailyLog, DailyShutdownStepId, Goal, ScheduleBlock, Workout, WorkoutCategory } from '@/types'
 import type { ScheduleTemplate } from '@/lib/scheduleTemplates'
+import { useOneThing } from '@/hooks/useOneThing'
+import { currentOneThing } from '@/lib/oneThingPeriods'
 import { cn } from '@/lib/utils'
 
 type ShutdownFlowStep = DailyShutdownStepId | 'typed-reminder'
+
+function PlanTomorrowOneThing({ date }: { date: string }) {
+  const { goals, weekStartsOn, ready } = useOneThing()
+  if (!ready) return null
+  const when = parseISO(`${date}T12:00:00`)
+  const text = (horizon: 'week' | 'month') => currentOneThing(goals, horizon, when, weekStartsOn)?.text
+  return (
+    <section className="mb-3 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
+      <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
+        <CircleDot size={13} className="text-[var(--accent-400)]" />
+        The One Thing
+      </h3>
+      <div className="space-y-2.5">
+        {(['week', 'month'] as const).map((horizon) => (
+          <div key={horizon}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              {horizon === 'week' ? 'This week' : 'This month'}
+            </p>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-200">
+              {text(horizon) ?? 'Not set'}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 interface ShutdownModalProps {
   log: DailyLog
@@ -478,6 +509,7 @@ export function ShutdownModal({
               </div>
 
               <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-y-auto overscroll-contain pt-4 pr-4 scrollbar-hidden lg:w-[300px] xl:w-[320px]">
+                <PlanTomorrowOneThing date={tomorrowDate} />
                 <ExercisePlanCard
                   viewDate={tomorrowDate}
                   userId={userId}

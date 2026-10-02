@@ -1,5 +1,6 @@
-import { getOpenAIApiKey, getOpenAIModel } from '@/lib/openaiStore'
+import { getOpenAIModel } from '@/lib/openaiStore'
 import { OpenAIApiError } from '@/lib/openaiApi'
+import { normalizePenaltyDays } from '@/lib/habitContracts'
 import type {
   HabitContract,
   HabitContractPerson,
@@ -38,6 +39,7 @@ function asAnalysis(raw: unknown): HabitContractProofAnalysis {
     penalty_due,
     penalty_calculation:
       typeof record.penalty_calculation === 'string' ? record.penalty_calculation : '',
+    days: normalizePenaltyDays(record.days),
     explanation: typeof record.explanation === 'string' ? record.explanation : '',
     confidence: Math.min(1, Math.max(0, Number(record.confidence) || 0)),
   }
@@ -132,18 +134,9 @@ function userContent(input: HabitContractAnalyzeInput) {
 async function analyzeWithUserOpenAI(
   input: HabitContractAnalyzeInput,
 ): Promise<HabitContractAnalyzeResult> {
-  const apiKey = getOpenAIApiKey()
-  if (!apiKey) {
-    throw new OpenAIApiError(
-      'Connect ChatGPT in Settings → Integrations, or set OPENAI_API_KEY for the analyze API.',
-      401,
-    )
-  }
-
   const res = await fetch('/api/openai', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
@@ -201,9 +194,12 @@ Example: "€5 if daily screentime exceeds 2 hours" and 7 days all over 2h → 7
 Per-unit overage ("€1 per 10 minutes over 2h") also applies per day, then sum.
 Only charge once for the whole window if the written instructions clearly say once per week, once per contract, or a single lump sum.
 
-penalty_due is the summed euro amount (0 if nothing is owed).
-penalty_calculation must list each scored day and the total, e.g. "Mon 4h46 (>2h) €5 + Tue 7h08 €5 + … = 7 × €5 = €35".
+penalty_due is the summed euro amount (0 if nothing is owed) and must equal the sum of days[].amount.
+days is one object per scored day, in order: {"label":"Thu","value":"3h30","detail":"over by 30 min","amount":7}.
+Keep each day's detail short. Do not put the arithmetic in one paragraph.
+penalty_calculation is only the total line, e.g. "€7 + €8 + €0 + €0 = €15".
 extracted should list each day's value.
+explanation is one or two sentences about the rule. Do not repeat each day's arithmetic.
 met_goal is true only if every scored day met the goal.
 Also estimate the household ledger from prior accepted proofs plus this new result.
 Return JSON only.`
@@ -233,7 +229,7 @@ function buildUserPrompt(input: HabitContractAnalyzeInput): string {
   return JSON.stringify(
     {
       instruction:
-        'Analyze this proof for the contract below. Follow how_to_calculate exactly when it is present. Return {"analysis":{"met_goal":true|false|null,"extracted":"","penalty_due":0,"penalty_calculation":"","explanation":"","confidence":0},"settlements":[{"from_person_id":"","to_person_id":"","amount":0}]}',
+        'Analyze this proof for the contract below. Follow how_to_calculate exactly when it is present. Score each day on its own. Return {"analysis":{"met_goal":true|false|null,"extracted":"","penalty_due":0,"penalty_calculation":"","days":[{"label":"Thu","value":"3h30","detail":"over by 30 min","amount":7}],"explanation":"","confidence":0},"settlements":[{"from_person_id":"","to_person_id":"","amount":0}]}',
       contract: contractPayload(input),
       written_proof: input.notes ?? '',
       photo_count: input.imageDataUrls.length,

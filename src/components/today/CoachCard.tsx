@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 import { format } from 'date-fns'
-import { Link } from 'react-router-dom'
 import { generateCoachAdvice } from '@/lib/coach'
 import { buildDayCoachSnapshot } from '@/lib/coachContext'
 import {
@@ -22,7 +21,6 @@ import {
   type CoachSlot,
 } from '@/lib/coachStore'
 import { OpenAIApiError } from '@/lib/openaiApi'
-import { isOpenAIConnected, OPENAI_CHANGED } from '@/lib/openaiStore'
 import { buildTodoistFilter, fetchTodoistTasks, type TodoistTask } from '@/lib/todoistApi'
 import { isTodoistConnected, TODOIST_CHANGED } from '@/lib/todoistStore'
 import type { PulseContributor } from '@/lib/pulseBreakdown'
@@ -104,7 +102,6 @@ export function CoachCard({
   const { active: screensaver } = useScreensaver()
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
-  const [connected, setConnected] = useState(() => isOpenAIConnected())
   const [schedule, setSchedule] = useState<CoachSchedule>(() => getCoachSchedule())
   const [bySlot, setBySlot] = useState<Partial<Record<CoachSlot, CoachAdvice>>>(() =>
     getCoachSlotAdvice(viewDate),
@@ -120,17 +117,14 @@ export function CoachCard({
 
   useEffect(() => {
     const sync = () => {
-      setConnected(isOpenAIConnected())
       setSchedule(getCoachSchedule())
       setBySlot(getCoachSlotAdvice(viewDate))
       setUnread(hasUnreadCoachAdvice(viewDate))
     }
-    window.addEventListener(OPENAI_CHANGED, sync)
     window.addEventListener(COACH_CHANGED, sync)
     window.addEventListener('user-storage-ready', sync)
     window.addEventListener(TODOIST_CHANGED, sync)
     return () => {
-      window.removeEventListener(OPENAI_CHANGED, sync)
       window.removeEventListener(COACH_CHANGED, sync)
       window.removeEventListener('user-storage-ready', sync)
       window.removeEventListener(TODOIST_CHANGED, sync)
@@ -145,7 +139,6 @@ export function CoachCard({
   }, [viewDate])
 
   const generateSlot = async (slot: CoachSlot, force = false) => {
-    if (!isOpenAIConnected()) return
     const started = snapshotRef.current
     if (!force && getCoachSlotAdvice(started.viewDate)[slot]) return
     if (generatingRef.current.has(slot)) return
@@ -191,7 +184,6 @@ export function CoachCard({
   }
 
   useEffect(() => {
-    if (!connected) return
     const today = formatDate(new Date())
     if (viewDate !== today) return
 
@@ -216,7 +208,7 @@ export function CoachCard({
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [connected, viewDate, schedule.morning, schedule.midday, schedule.evening])
+  }, [viewDate, schedule.morning, schedule.midday, schedule.evening])
 
   const visibleSlot = useMemo(() => {
     const withAdvice = latestSlotWithAdvice(bySlot)
@@ -288,7 +280,7 @@ export function CoachCard({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              {connected && due ? (
+              {due ? (
                 <button
                   type="button"
                   onClick={() => void generateSlot(visibleSlot, true)}
@@ -315,46 +307,24 @@ export function CoachCard({
             </div>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {!connected ? (
-              <p className="text-[12px] leading-relaxed text-zinc-500">
-                Connect ChatGPT in{' '}
-                <Link
-                  to="/settings"
-                  state={{ settingsSection: 'integrations' }}
-                  className="text-zinc-300 underline decoration-zinc-600 underline-offset-2 hover:text-zinc-100"
-                >
-                  Settings → Integrations
-                </Link>{' '}
-                for morning, midday, and evening coaching. Set the times in{' '}
-                <Link
-                  to="/settings"
-                  state={{ settingsSection: 'coach' }}
-                  className="text-zinc-300 underline decoration-zinc-600 underline-offset-2 hover:text-zinc-100"
-                >
-                  Settings → Coach
-                </Link>
-                .
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
-                {advice ? (
-                  <CoachAdviceBody advice={advice} compact />
-                ) : generating ? (
-                  <p className="text-[12px] text-zinc-500">Writing this check-in…</p>
-                ) : due ? (
-                  <p className="text-[12px] text-zinc-500">
-                    {isToday
-                      ? 'Ready to generate this check-in.'
-                      : 'No check-in saved for this day.'}
-                  </p>
-                ) : (
-                  <p className="text-[12px] text-zinc-500">
-                    Generates at {formatSlotTime(schedule[visibleSlot], settings.timeFormat)}.
-                  </p>
-                )}
-              </div>
-            )}
+            <div className="space-y-3">
+              {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
+              {advice ? (
+                <CoachAdviceBody advice={advice} compact />
+              ) : generating ? (
+                <p className="text-[12px] text-zinc-500">Writing this check-in…</p>
+              ) : due ? (
+                <p className="text-[12px] text-zinc-500">
+                  {isToday
+                    ? 'Ready to generate this check-in.'
+                    : 'No check-in saved for this day.'}
+                </p>
+              ) : (
+                <p className="text-[12px] text-zinc-500">
+                  Generates at {formatSlotTime(schedule[visibleSlot], settings.timeFormat)}.
+                </p>
+              )}
+            </div>
           </div>
         </section>
       ) : null}

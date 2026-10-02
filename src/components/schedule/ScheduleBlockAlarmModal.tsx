@@ -31,7 +31,7 @@ export function ScheduleBlockAlarmModal({
   onDismiss,
 }: ScheduleBlockAlarmModalProps) {
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/92 p-6 backdrop-blur-md">
+    <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/92 p-6 backdrop-blur-md">
       <div className="flex max-w-md flex-col items-center text-center">
         <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-red-950/80 ring-2 ring-red-500/60">
           <Bell size={40} className="text-red-400" aria-hidden />

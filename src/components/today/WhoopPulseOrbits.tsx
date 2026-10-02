@@ -77,6 +77,7 @@ function MiniStatRing({
   details,
   className,
   style,
+  inline = false,
 }: {
   label: string
   display: string
@@ -86,6 +87,7 @@ function MiniStatRing({
   details: { label: string; value: string }[]
   className?: string
   style?: CSSProperties
+  inline?: boolean
 }) {
   const size = RING_SIZE
   const stroke = 4
@@ -125,7 +127,7 @@ function MiniStatRing({
         'pointer-events-auto absolute flex items-center justify-center rounded-full bg-zinc-950',
         className,
       )}
-      style={{ width: size, height: size, ...style }}
+      style={{ width: size, height: size, ...style, ...(inline ? { position: 'relative', left: 'auto', top: 'auto', transform: 'none' } : {}) }}
       aria-label={`WHOOP ${label} ${display}`}
       onMouseEnter={() => {
         updateAnchor()
@@ -165,6 +167,7 @@ function MiniStatRing({
       <span className="relative text-[11px] font-bold tabular-nums leading-none text-zinc-50">
         {display}
       </span>
+      {inline && <span className="absolute top-full mt-1.5 text-[10px] font-medium capitalize text-zinc-400">{label}</span>}
       {open &&
         anchor &&
         createPortal(
@@ -191,7 +194,7 @@ function MiniStatRing({
   )
 }
 
-export function WhoopPulseOrbits({ date }: { date: string }) {
+export function WhoopPulseOrbits({ date, layout = 'orbit' }: { date: string; layout?: 'orbit' | 'row' }) {
   const [connected, setConnected] = useState(() => isWhoopConnected())
   const [day, setDay] = useState<WhoopDaySnapshot | null>(() => getWhoopDay(date))
 
@@ -234,9 +237,11 @@ export function WhoopPulseOrbits({ date }: { date: string }) {
   const strain = day?.strain ?? null
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 overflow-visible">
+    <div className={layout === 'row' ? 'flex w-full shrink-0 items-center justify-around gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-950/40 px-3 pt-3 pb-7' : 'pointer-events-none absolute inset-0 z-30 overflow-visible'}>
       <MiniStatRing
         label="recovery"
+        inline={layout === 'row'}
+        className={layout === 'row' ? 'order-3' : undefined}
         display={formatPercent(recovery)}
         value={recovery}
         max={100}
@@ -253,6 +258,8 @@ export function WhoopPulseOrbits({ date }: { date: string }) {
       />
       <MiniStatRing
         label="sleep"
+        inline={layout === 'row'}
+        className={layout === 'row' ? 'order-1' : undefined}
         display={formatPercent(sleep)}
         value={sleep}
         max={100}
@@ -275,6 +282,8 @@ export function WhoopPulseOrbits({ date }: { date: string }) {
       />
       <MiniStatRing
         label="strain"
+        inline={layout === 'row'}
+        className={layout === 'row' ? 'order-2' : undefined}
         display={formatStrain(strain)}
         value={strain}
         max={STRAIN_MAX}

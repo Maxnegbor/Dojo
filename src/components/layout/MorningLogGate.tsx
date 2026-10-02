@@ -15,6 +15,7 @@ import {
 } from '@/lib/morningLogConfig'
 import { persistMorningLogPayload } from '@/lib/morningLogSave'
 import { isTypedReminderRequired } from '@/lib/typedReminder'
+import { activeDailyChecklist } from '@/lib/dailyChecklist'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { localStore } from '@/lib/localStore'
 import type { DailyLog, Goal } from '@/types'
@@ -120,6 +121,7 @@ export function MorningLogGate(_props: MorningLogGateProps) {
       workouts,
       yesterdayWorkouts,
       isTypedReminderRequired(settings, 'morning'),
+      activeDailyChecklist(settings.morningLogChecklist).length > 0,
     )
 
   const saveMorningLog = async (payload: MorningLogSavePayload) => {

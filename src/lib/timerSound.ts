@@ -370,3 +370,26 @@ export function playPulseRadiantSlamSound() {
 
 /** @deprecated Use playPulseRadiantSequenceSound */
 export const playPulseRadiantTestSequenceSound = playPulseRadiantSequenceSound
+
+/** A short descending latch for committing a focus; a bright chord for finishing it. */
+export function playOneThingSound(kind: 'lock' | 'complete') {
+  withAudioContext(ctx => {
+    const notes = kind === 'lock' ? [660, 330, 165] : [523.25, 659.25, 783.99, 1046.5]
+    notes.forEach((frequency, index) => {
+      const start = ctx.currentTime + index * (kind === 'lock' ? 0.045 : 0.065)
+      const duration = kind === 'lock' ? 0.14 : 0.45
+      const oscillator = ctx.createOscillator()
+      const gain = ctx.createGain()
+      oscillator.type = kind === 'lock' ? 'triangle' : 'sine'
+      oscillator.frequency.setValueAtTime(frequency, start)
+      gain.gain.setValueAtTime(0, start)
+      gain.gain.linearRampToValueAtTime(0.065, start + 0.008)
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration)
+      oscillator.connect(gain)
+      gain.connect(ctx.destination)
+      oscillator.start(start)
+      oscillator.stop(start + duration)
+      oscillator.onended = () => { oscillator.disconnect(); gain.disconnect() }
+    })
+  })
+}

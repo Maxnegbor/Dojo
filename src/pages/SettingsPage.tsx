@@ -323,15 +323,6 @@ export function SettingsPage() {
               flashSaved()
             }}
           />
-          <ToggleRow
-            label="Show Contracts page"
-            description="Shared habit contracts with photo proof"
-            checked={settings.showContractsPage}
-            onChange={(showContractsPage) => {
-              updateSettings({ showContractsPage })
-              flashSaved()
-            }}
-          />
           {settings.showFocusPage && (
             <>
               <ToggleRow
@@ -564,7 +555,7 @@ export function SettingsPage() {
                   onChange={(e) => updateSettings({ typedReminderMorningText: e.target.value })}
                   onBlur={flashSaved}
                   rows={3}
-                  placeholder="e.g. Contracts are active today, make sure you follow the rules."
+                  placeholder="e.g. Take a moment to review your priorities for today."
                   className="w-full resize-y rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none"
                 />
                 <p className="text-[11px] text-zinc-500">
@@ -666,7 +657,7 @@ export function SettingsPage() {
                   onChange={(e) => updateSettings({ typedReminderShutdownText: e.target.value })}
                   onBlur={flashSaved}
                   rows={3}
-                  placeholder="e.g. Contracts are active today, make sure you follow the rules."
+                  placeholder="e.g. Take a moment to review your priorities for today."
                   className="w-full resize-y rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none"
                 />
                 <p className="text-[11px] text-zinc-500">

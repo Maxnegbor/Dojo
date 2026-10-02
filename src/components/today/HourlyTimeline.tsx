@@ -23,7 +23,7 @@ import {
   formatScheduleBlockAlarmLead,
 } from '@/lib/scheduleBlockAlarms'
 import { ScheduleBlockAlarmMenu } from '@/components/schedule/ScheduleBlockAlarmMenu'
-import { formatWorkoutPlanLabel, getWorkoutTypes } from '@/lib/workoutTypes'
+import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
 import { formatHourLabel } from '@/components/settings/TimelineRangeSlider'
@@ -36,6 +36,8 @@ const NOW_DOT_GUTTER = 16
 const HOUR_LABEL_COL_CLASS = 'w-11 shrink-0'
 /** Schedule snap + minimum block length (minutes). */
 const GRID_MINUTES = 30
+/** Ignore small pointer movements while double-clicking to edit. */
+const DRAG_START_PX = 4
 /** Blocks at or under this use the tight layout; 60+ matches the tall layout. */
 const COMPACT_BLOCK_MAX_MINUTES = GRID_MINUTES
 /** Minimum scroll viewport when the screen budget is tiny. */
@@ -131,7 +133,8 @@ function blockHasChosenWorkoutType(title: string): boolean {
   const trimmed = title.trim()
   if (!trimmed || isDefaultGreyTitle(trimmed)) return false
   return getWorkoutTypes().some(
-    (type) => type.label === trimmed || formatWorkoutPlanLabel(type.id) === trimmed,
+    // Planned sessions include a subtype, e.g. "Strength · Push".
+    (type) => type.label === trimmed || trimmed.startsWith(`${type.label} · `),
   )
 }
 
@@ -361,6 +364,11 @@ export function HourlyTimeline({
   const dragOffsetRef = useRef(0)
   const interactionBlockRef = useRef<ScheduleBlock | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
+  const pendingDragRef = useRef<{
+    block: ScheduleBlock
+    startX: number
+    startY: number
+  } | null>(null)
   const [resizing, setResizing] = useState<string | null>(null)
   const [resizeMode, setResizeMode] = useState<ResizeMode>(null)
   const [hoverResize, setHoverResize] = useState<{ id: string; edge: 'top' | 'bottom' } | null>(
@@ -377,6 +385,7 @@ export function HourlyTimeline({
     endMin: number
   } | null>(null)
   const [titleEdits, setTitleEdits] = useState<Record<string, string>>({})
+  const [noteEdits, setNoteEdits] = useState<Record<string, string>>({})
   const [alarmRevision, setAlarmRevision] = useState(0)
   const [alarmMenu, setAlarmMenu] = useState<{
     blockId: string
@@ -384,8 +393,10 @@ export function HourlyTimeline({
     y: number
   } | null>(null)
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
   const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
   const titleInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const notesInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const [nowLine, setNowLine] = useState<number | null>(null)
   const [maxViewportHeight, setMaxViewportHeight] = useState<number | null>(null)
 
@@ -638,6 +649,8 @@ export function HourlyTimeline({
       : block.title
 
   const beginTitleEdit = (block: ScheduleBlock) => {
+    pendingDragRef.current = null
+    setEditingNotesId((current) => (current === block.id ? null : current))
     setEditingTitleId(block.id)
     setTitleEdits((prev) =>
       prev[block.id] !== undefined ? prev : { ...prev, [block.id]: block.title },
@@ -665,6 +678,42 @@ export function HourlyTimeline({
     }
   }
 
+  const blockNotesValue = (block: ScheduleBlock) =>
+    editingNotesId === block.id && noteEdits[block.id] !== undefined
+      ? noteEdits[block.id]
+      : block.notes ?? ''
+
+  const beginNotesEdit = (block: ScheduleBlock) => {
+    pendingDragRef.current = null
+    setDragging(null)
+    setPreview(null)
+    setEditingTitleId((current) => (current === block.id ? null : current))
+    setEditingNotesId(block.id)
+    setNoteEdits((prev) =>
+      prev[block.id] !== undefined ? prev : { ...prev, [block.id]: block.notes ?? '' },
+    )
+  }
+
+  const updateNotesDraft = (blockId: string, notes: string) => {
+    setNoteEdits((prev) => ({ ...prev, [blockId]: notes }))
+  }
+
+  const commitNotesEdit = (block: ScheduleBlock) => {
+    const draft = noteEdits[block.id]
+    setEditingNotesId((current) => (current === block.id ? null : current))
+    if (draft === undefined) return
+
+    setNoteEdits((prev) => {
+      const next = { ...prev }
+      delete next[block.id]
+      return next
+    })
+
+    if (draft !== (block.notes ?? '')) {
+      onUpdate({ ...block, notes: draft })
+    }
+  }
+
   useLayoutEffect(() => {
     if (!focusTitleId) return
     if (!blocks.some((block) => block.id === focusTitleId)) return
@@ -674,6 +723,15 @@ export function HourlyTimeline({
     input.select()
     setFocusTitleId(null)
   }, [blocks, focusTitleId, editingTitleId, titleEdits])
+
+  useLayoutEffect(() => {
+    if (!editingNotesId) return
+    const textarea = notesInputRefs.current[editingNotesId]
+    if (!textarea) return
+    textarea.focus()
+    const len = textarea.value.length
+    textarea.setSelectionRange(len, len)
+  }, [editingNotesId])
 
   const getBlockStyle = (block: ScheduleBlock) => {
     if (preview?.id === block.id) {
@@ -699,9 +757,25 @@ export function HourlyTimeline({
         return
       }
 
-      if (!dragging && !resizing) return
+      const pending = pendingDragRef.current
+      if (pending && !dragging) {
+        const moved =
+          Math.abs(e.clientX - pending.startX) >= DRAG_START_PX ||
+          Math.abs(e.clientY - pending.startY) >= DRAG_START_PX
+        if (moved) {
+          const startMin = parseTimeToMinutes(pending.block.start_time)
+          const endMin = parseTimeToMinutes(pending.block.end_time)
+          interactionBlockRef.current = pending.block
+          pendingDragRef.current = null
+          setPreview({ id: pending.block.id, startMin, endMin })
+          setDragging(pending.block.id)
+        }
+      }
+
+      if (!dragging && !resizing && !pendingDragRef.current) return
       const block = interactionBlockRef.current
       if (!block) return
+      if (!dragging && !resizing) return
 
       if (dragging) {
         const duration =
@@ -810,6 +884,7 @@ export function HourlyTimeline({
     }
 
     interactionBlockRef.current = null
+    pendingDragRef.current = null
     setDragging(null)
     setResizing(null)
     setResizeMode(null)
@@ -1107,23 +1182,38 @@ export function HourlyTimeline({
                 } as CSSProperties}
                 onMouseDown={(e) => {
                   const target = e.target as HTMLElement
-                  if (target.closest('input, button, [data-resize-handle]')) return
+                  if (target.closest('input, textarea, button, [data-resize-handle]')) return
                   if (!containerRef.current) return
                   e.stopPropagation()
                   const rect = containerRef.current.getBoundingClientRect()
                   const clickMinutes = yToRawMinutes(e.clientY - rect.top)
                   const startMin = parseTimeToMinutes(block.start_time)
-                  const endMin = parseTimeToMinutes(block.end_time)
                   dragOffsetRef.current = clickMinutes - startMin
-                  interactionBlockRef.current = block
-                  setPreview({ id: block.id, startMin, endMin })
-                  setDragging(block.id)
+                  pendingDragRef.current = {
+                    block,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                  }
+                }}
+                onDoubleClick={(e) => {
+                  const target = e.target as HTMLElement
+                  if (target.closest('input, textarea, button, [data-resize-handle]')) return
+                  e.stopPropagation()
+                  e.preventDefault()
+                  pendingDragRef.current = null
+                  if (target.closest('[data-sticky-block-title]')) {
+                    beginTitleEdit(block)
+                    setFocusTitleId(block.id)
+                    return
+                  }
+                  beginNotesEdit(block)
                 }}
               >
                 <div
                   data-resize-handle
                   className={cn(
-                    'absolute inset-x-0 top-0 z-10 cursor-ns-resize',
+                    'absolute top-0 z-30 cursor-ns-resize',
+                    screensaver ? 'inset-x-0' : 'left-0 right-16',
                     isMicro ? 'h-2' : 'h-2.5',
                   )}
                   onMouseEnter={() => setHoverResize({ id: block.id, edge: 'top' })}
@@ -1146,7 +1236,7 @@ export function HourlyTimeline({
                 <div
                   aria-hidden
                   className={cn(
-                    'pointer-events-none absolute inset-x-0 top-0 z-[11] rounded-t-[7px] transition-[height,opacity,background-color,box-shadow] duration-150',
+                    'pointer-events-none absolute inset-x-0 top-0 z-[31] rounded-t-[7px] transition-[height,opacity,background-color,box-shadow] duration-150',
                     topEdgeActive
                       ? 'h-[2.5px] opacity-100'
                       : 'h-0 opacity-0',
@@ -1159,7 +1249,7 @@ export function HourlyTimeline({
                 />
                 <div
                   className={cn(
-                    'min-w-0 flex-1',
+                    'flex h-full min-h-0 min-w-0 flex-1 flex-col',
                     screensaver && isShortInline && 'pr-2',
                   )}
                   style={{
@@ -1182,34 +1272,58 @@ export function HourlyTimeline({
                     <div className="min-w-0 flex-1">
                   {isShortInline ? (
                     <div className="flex items-center gap-1.5">
-                      <ScheduleBlockTitleInput
-                        value={blockTitleValue(block)}
-                        onChange={(title) => updateTitleDraft(block.id, title)}
-                        onFocus={() => beginTitleEdit(block)}
-                        onBlur={() => commitTitleEdit(block)}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        inputRef={(el) => {
-                          titleInputRefs.current[block.id] = el
-                        }}
-                      />
+                      {editingTitleId === block.id ? (
+                        <ScheduleBlockTitleInput
+                          value={blockTitleValue(block)}
+                          onChange={(title) => updateTitleDraft(block.id, title)}
+                          onBlur={() => commitTitleEdit(block)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            e.stopPropagation()
+                            if (e.key === 'Enter' || e.key === 'Escape') {
+                              e.preventDefault()
+                              ;(e.target as HTMLInputElement).blur()
+                            }
+                          }}
+                          autoFocus
+                          inputRef={(el) => {
+                            titleInputRefs.current[block.id] = el
+                          }}
+                        />
+                      ) : (
+                        <p className="min-w-0 truncate font-bold leading-tight text-zinc-100">
+                          {blockTitleValue(block)}
+                        </p>
+                      )}
                       <span className="pointer-events-none shrink-0 tabular-nums text-zinc-400" style={{ fontSize: '0.8em' }}>
                         {formatBlockTime(displayStart)}–{formatBlockTime(displayEnd)}
                       </span>
                     </div>
                   ) : (
                     <>
-                      <ScheduleBlockTitleInput
-                        value={blockTitleValue(block)}
-                        onChange={(title) => updateTitleDraft(block.id, title)}
-                        onFocus={() => beginTitleEdit(block)}
-                        onBlur={() => commitTitleEdit(block)}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        inputRef={(el) => {
-                          titleInputRefs.current[block.id] = el
-                        }}
-                      />
+                      {editingTitleId === block.id ? (
+                        <ScheduleBlockTitleInput
+                          value={blockTitleValue(block)}
+                          onChange={(title) => updateTitleDraft(block.id, title)}
+                          onBlur={() => commitTitleEdit(block)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            e.stopPropagation()
+                            if (e.key === 'Enter' || e.key === 'Escape') {
+                              e.preventDefault()
+                              ;(e.target as HTMLInputElement).blur()
+                            }
+                          }}
+                          autoFocus
+                          inputRef={(el) => {
+                            titleInputRefs.current[block.id] = el
+                          }}
+                        />
+                      ) : (
+                        <p className="min-w-0 truncate font-bold leading-tight text-zinc-100">
+                          {blockTitleValue(block)}
+                        </p>
+                      )}
                       <p className="pointer-events-none tabular-nums text-zinc-400" style={{ fontSize: '0.8em' }}>
                         {formatBlockTime(displayStart)} – {formatBlockTime(displayEnd)}
                       </p>
@@ -1293,11 +1407,40 @@ export function HourlyTimeline({
                         onAssignExercise={onAssignExercise}
                       />
                     )}
+                  {(editingNotesId === block.id || Boolean(blockNotesValue(block).trim())) && (
+                    <div className={cn('flex min-h-0 flex-1 items-center justify-center px-1', isShortInline ? 'pb-1' : 'py-1')}>
+                      {editingNotesId === block.id ? (
+                        <textarea
+                          ref={(el) => {
+                            notesInputRefs.current[block.id] = el
+                          }}
+                          value={blockNotesValue(block)}
+                          aria-label={`Notes for ${block.title}`}
+                          onChange={(e) => updateNotesDraft(block.id, e.target.value)}
+                          onBlur={() => commitNotesEdit(block)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            e.stopPropagation()
+                            if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+                              e.preventDefault()
+                              ;(e.target as HTMLTextAreaElement).blur()
+                            }
+                          }}
+                          placeholder="Notes"
+                          className="h-full min-h-0 w-full resize-none bg-transparent text-center text-[11px] leading-snug text-zinc-200 outline-none placeholder:text-zinc-600"
+                        />
+                      ) : (
+                        <p className="pointer-events-none max-h-full overflow-hidden whitespace-pre-wrap text-center text-[11px] leading-snug text-zinc-300">
+                          {blockNotesValue(block)}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div
                   data-resize-handle
                   className={cn(
-                    'absolute inset-x-0 bottom-0 z-10 cursor-ns-resize',
+                    'absolute inset-x-0 bottom-0 z-30 cursor-ns-resize',
                     isMicro ? 'h-2' : 'h-2.5',
                   )}
                   onMouseEnter={() => setHoverResize({ id: block.id, edge: 'bottom' })}
@@ -1320,7 +1463,7 @@ export function HourlyTimeline({
                 <div
                   aria-hidden
                   className={cn(
-                    'pointer-events-none absolute inset-x-0 bottom-0 z-[11] rounded-b-[7px] transition-[height,opacity,background-color,box-shadow] duration-150',
+                    'pointer-events-none absolute inset-x-0 bottom-0 z-[31] rounded-b-[7px] transition-[height,opacity,background-color,box-shadow] duration-150',
                     bottomEdgeActive
                       ? 'h-[2.5px] opacity-100'
                       : 'h-0 opacity-0',
