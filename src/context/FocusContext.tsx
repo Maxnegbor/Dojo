@@ -1,11 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   addFocusMinutes,
+  adjustFocusMinutes,
   fetchFocusMinutesToday,
   fetchFocusMinutesWeekExceptToday,
 } from '@/lib/focusStore'
-import { recordFocusSession } from '@/lib/focusHourly'
-import { addFocusSession } from '@/lib/focusSessions'
+import { recordFocusSession, removeRecordedFocusSession } from '@/lib/focusHourly'
+import {
+  addFocusSession,
+  deleteFocusSession,
+  getFocusSessions,
+  updateFocusSession,
+  type FocusSession,
+  type FocusSessionDraft,
+} from '@/lib/focusSessions'
+import { reviseFocusScoreSession } from '@/lib/focusScores'
 import { useAuth } from '@/hooks/useData'
 import { useSettings } from '@/context/SettingsContext'
 import { formatDate } from '@/lib/utils'
@@ -38,6 +47,8 @@ interface FocusContextValue {
     sessionStartMs?: number,
     labelId?: string | null,
   ) => Promise<void>
+  updateFocusRecord: (id: string, draft: FocusSessionDraft) => Promise<void>
+  deleteFocusRecord: (id: string) => Promise<void>
 }
 
 const FocusContext = createContext<FocusContextValue | null>(null)
@@ -104,6 +115,71 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     [userId, refreshFocus],
   )
 
+  const syncDailyFocus = useCallback(
+    async (previous: FocusSession, next: FocusSession | null) => {
+      if (!userId) return
+      if (!next || next.date !== previous.date) {
+        await adjustFocusMinutes(userId, previous.date, -previous.minutes)
+        if (next) await adjustFocusMinutes(userId, next.date, next.minutes)
+      } else if (next.minutes !== previous.minutes) {
+        await adjustFocusMinutes(userId, next.date, next.minutes - previous.minutes)
+      }
+    },
+    [userId],
+  )
+
+  const updateFocusRecord = useCallback(
+    async (id: string, draft: FocusSessionDraft) => {
+      const previous = getFocusSessions().find((session) => session.id === id)
+      if (!previous) throw new Error('Focus session not found')
+      const minutes = Math.round(draft.minutes)
+      if (!Number.isFinite(minutes) || minutes < 1) throw new Error('Enter at least 1 minute')
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) throw new Error('Enter a valid date')
+      if (!Number.isFinite(draft.startMs) || !Number.isFinite(draft.endMs) || draft.endMs <= draft.startMs) {
+        throw new Error('Enter a valid time')
+      }
+
+      const predicted: FocusSession = {
+        ...previous,
+        date: draft.date,
+        startMs: draft.startMs,
+        endMs: draft.endMs,
+        minutes,
+        label_id: draft.labelId?.trim() || null,
+      }
+      await syncDailyFocus(previous, predicted)
+      const result = updateFocusSession(id, draft)
+      if (!result) {
+        await syncDailyFocus(predicted, previous)
+        throw new Error('Could not update that focus session')
+      }
+      removeRecordedFocusSession(result.previous.startMs, result.previous.endMs)
+      recordFocusSession(result.next.startMs, result.next.endMs)
+      reviseFocusScoreSession(result.previous.startMs, {
+        date: result.next.date,
+        startMs: result.next.startMs,
+        endMs: result.next.endMs,
+        minutes: result.next.minutes,
+      })
+      await refreshFocus()
+    },
+    [refreshFocus, syncDailyFocus],
+  )
+
+  const deleteFocusRecord = useCallback(
+    async (id: string) => {
+      const previous = getFocusSessions().find((session) => session.id === id)
+      if (!previous) return
+      await syncDailyFocus(previous, null)
+      const removed = deleteFocusSession(id)
+      if (!removed) return
+      removeRecordedFocusSession(removed.startMs, removed.endMs)
+      reviseFocusScoreSession(removed.startMs, null)
+      await refreshFocus()
+    },
+    [refreshFocus, syncDailyFocus],
+  )
+
   return (
     <FocusContext.Provider
       value={{
@@ -118,6 +194,8 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         setFocusTimerActive,
         refreshFocus,
         logFocusMinutes,
+        updateFocusRecord,
+        deleteFocusRecord,
       }}
     >
       {children}

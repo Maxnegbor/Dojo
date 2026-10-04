@@ -52,25 +52,36 @@ export function saveFocusSettings(settings: FocusTimerSettings) {
   storageSetItem(SETTINGS_KEY, JSON.stringify(settings))
 }
 
+/** Add or subtract focus minutes on a day. The stored total never goes below zero. */
+export async function adjustFocusMinutes(
+  userId: string,
+  date: string,
+  deltaMinutes: number,
+): Promise<number> {
+  const delta = Math.round(deltaMinutes)
+  if (!userId || delta === 0) return 0
+
+  if (isSupabaseConfigured) {
+    const { getOrCreateDailyLog, updateDailyLog } = await import('@/lib/supabase')
+    const log = await getOrCreateDailyLog(userId, date)
+    const next = Math.max(0, (log.focus_minutes ?? 0) + delta)
+    await updateDailyLog(log.id, { focus_minutes: next })
+    return next
+  }
+
+  const log = localStore.getOrCreateDailyLog(date)
+  const next = Math.max(0, (log.focus_minutes ?? 0) + delta)
+  localStore.updateDailyLog(date, { focus_minutes: next })
+  return next
+}
+
 export async function addFocusMinutes(
   userId: string,
   date: string,
   minutes: number,
 ): Promise<number> {
   if (minutes <= 0) return 0
-
-  if (isSupabaseConfigured) {
-    const { getOrCreateDailyLog, updateDailyLog } = await import('@/lib/supabase')
-    const log = await getOrCreateDailyLog(userId, date)
-    const next = (log.focus_minutes ?? 0) + minutes
-    await updateDailyLog(log.id, { focus_minutes: next })
-    return next
-  }
-
-  const log = localStore.getOrCreateDailyLog(date)
-  const next = (log.focus_minutes ?? 0) + minutes
-  localStore.updateDailyLog(date, { focus_minutes: next })
-  return next
+  return adjustFocusMinutes(userId, date, minutes)
 }
 
 export function getFocusMinutesToday(): number {

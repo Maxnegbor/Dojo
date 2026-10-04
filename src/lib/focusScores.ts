@@ -80,6 +80,29 @@ export function addFocusScoreSession(input: {
   return session
 }
 
+/** Keep a score attached to the session that started at `startMs`, or drop it. */
+export function reviseFocusScoreSession(
+  startMs: number,
+  next: { date: string; startMs: number; endMs: number; minutes: number } | null,
+) {
+  const sessions = getFocusScoreSessions()
+  const index = sessions.findIndex((session) => session.startMs === startMs)
+  if (index < 0) return
+  if (!next) {
+    saveFocusScoreSessions(sessions.filter((_, i) => i !== index))
+    return
+  }
+  const updated = [...sessions]
+  updated[index] = {
+    ...updated[index],
+    date: next.date,
+    startMs: next.startMs,
+    endMs: next.endMs,
+    minutes: Math.max(0, Math.round(next.minutes)),
+  }
+  saveFocusScoreSessions(updated)
+}
+
 /** Mean of session scores in [startDate, endDate] inclusive. Null if none. */
 export function averageFocusScoreForRange(
   startDate: string,

@@ -73,6 +73,52 @@ export function getFocusSessionsInRange(startDate: string, endDate: string): Foc
   return readAll().filter((session) => session.date >= startDate && session.date <= endDate)
 }
 
+export interface FocusSessionDraft {
+  minutes: number
+  startMs: number
+  endMs: number
+  date: string
+  labelId?: string | null
+}
+
+export function deleteFocusSession(id: string): FocusSession | null {
+  const sessions = readAll()
+  const found = sessions.find((session) => session.id === id)
+  if (!found) return null
+  writeAll(sessions.filter((session) => session.id !== id))
+  return found
+}
+
+export function updateFocusSession(
+  id: string,
+  draft: FocusSessionDraft,
+): { previous: FocusSession; next: FocusSession } | null {
+  const minutes = Math.round(draft.minutes)
+  if (!Number.isFinite(minutes) || minutes < 1) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return null
+  if (!Number.isFinite(draft.startMs) || !Number.isFinite(draft.endMs) || draft.endMs <= draft.startMs) {
+    return null
+  }
+
+  const sessions = readAll()
+  const index = sessions.findIndex((session) => session.id === id)
+  if (index < 0) return null
+
+  const previous = sessions[index]
+  const next: FocusSession = {
+    ...previous,
+    date: draft.date,
+    startMs: draft.startMs,
+    endMs: draft.endMs,
+    minutes,
+    label_id: draft.labelId?.trim() || null,
+  }
+  const updated = [...sessions]
+  updated[index] = next
+  writeAll(updated)
+  return { previous, next }
+}
+
 export function addFocusSession(params: {
   minutes: number
   startMs: number

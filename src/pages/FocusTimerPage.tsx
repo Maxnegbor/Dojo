@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2, RotateCcw, Settings2, SkipForward } from 'lucide-react'
+import { FocusSessionHistory } from '@/components/focus/FocusSessionHistory'
 import { Button } from '@/components/ui/Button'
 import { FocusHourlyChart } from '@/components/focus/FocusHourlyChart'
 import { FocusLabelPicker } from '@/components/focus/FocusLabelPicker'
@@ -21,6 +22,7 @@ import { saveFocusGoal, syncFocusGoalFromSettings } from '@/lib/focusGoalSync'
 import { getLastFocusLabelId, setLastFocusLabelId } from '@/lib/focusLabels'
 import { addFocusScoreSession } from '@/lib/focusScores'
 import { getFocusSettings, saveFocusSettings } from '@/lib/focusStore'
+import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 import {
   getBreakMinutesAfterFocus,
   isLongBreakAfterFocus,
@@ -36,6 +38,13 @@ import { DEFAULT_FOCUS_SETTINGS, type FocusTimerSettings } from '@/types'
 import { cn, formatDate, formatDuration } from '@/lib/utils'
 
 type Phase = TimerPhase
+type FocusClockMode = 'timer' | 'stopwatch'
+
+const FOCUS_CLOCK_MODE_KEY = 'personal-os-focus-clock-mode'
+
+function readClockMode(): FocusClockMode {
+  return storageGetItem(FOCUS_CLOCK_MODE_KEY) === 'stopwatch' ? 'stopwatch' : 'timer'
+}
 
 interface PhaseHold {
   from: 'focus' | 'break'
@@ -95,16 +104,31 @@ function PauseIcon() {
 function FocusTimerFace({
   progress,
   isRest,
-  minutes,
-  seconds,
+  totalSeconds,
+  countUp = false,
+  maskSeconds = false,
   className,
 }: {
   progress: number
   isRest: boolean
-  minutes: number
-  seconds: number
+  totalSeconds: number
+  /** Stopwatch: show hours once the count passes 59:59. */
+  countUp?: boolean
+  /** Hide ticking seconds as two dashes (screensaver while the timer is running). */
+  maskSeconds?: boolean
   className?: string
 }) {
+  const safe = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(safe / 3600)
+  const showHours = countUp && hours > 0
+  const minutes = showHours ? Math.floor((safe % 3600) / 60) : Math.floor(safe / 60)
+  const seconds = safe % 60
+  const minuteLabel = String(minutes).padStart(2, '0')
+  const secondLabel = String(seconds).padStart(2, '0')
+  const hourLabel = String(hours)
+  const sizeClass =
+    showHours || minuteLabel.length > 2 ? 'text-[2.75rem]' : 'text-[3.75rem]'
+
   return (
     <div className={cn('relative h-60 w-60 shrink-0', className)}>
       <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden>
@@ -121,19 +145,52 @@ function FocusTimerFace({
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="select-none text-[3.75rem] font-extralight leading-none tabular-nums tracking-tight text-zinc-50">
-          {String(minutes).padStart(2, '0')}
+        <span
+          className={cn(
+            'select-none font-extralight leading-none tabular-nums tracking-tight text-zinc-50',
+            sizeClass,
+          )}
+          aria-label={
+            maskSeconds
+              ? `${showHours ? `${hourLabel} hours ` : ''}${minuteLabel} minutes ${secondLabel} seconds`
+              : undefined
+          }
+        >
+          {showHours && (
+            <>
+              {hourLabel}
+              <span className="text-zinc-500">:</span>
+            </>
+          )}
+          {minuteLabel}
           <span className="text-zinc-500">:</span>
-          {String(seconds).padStart(2, '0')}
+          {maskSeconds ? (
+            <span className="inline-flex w-[2ch] items-baseline justify-between" aria-hidden>
+              <span>-</span>
+              <span>-</span>
+            </span>
+          ) : (
+            secondLabel
+          )}
         </span>
       </div>
     </div>
   )
 }
 
+function StopIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden className="shrink-0">
+      <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function FocusTimerPage() {
   const {
     logFocusMinutes,
+    updateFocusRecord,
+    deleteFocusRecord,
     setLiveFocusSeconds,
     liveFocusSeconds,
     setTimerTabSeconds,
@@ -152,6 +209,8 @@ export function FocusTimerPage() {
   const [activeBreakMinutes, setActiveBreakMinutes] = useState(settings.breakMinutes)
   const [running, setRunning] = useState(false)
   const [sessionStarted, setSessionStarted] = useState(false)
+  const [clockMode, setClockMode] = useState<FocusClockMode>(readClockMode)
+  const [elapsed, setElapsed] = useState(0)
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
   const [scorePrompt, setScorePrompt] = useState<FocusScorePromptPayload | null>(null)
   const [phaseHold, setPhaseHold] = useState<PhaseHold | null>(null)
@@ -161,12 +220,16 @@ export function FocusTimerPage() {
   const phaseRef = useRef(phase)
   const cycleRef = useRef(cycle)
   const remainingRef = useRef(remaining)
+  const elapsedRef = useRef(elapsed)
+  const clockModeRef = useRef(clockMode)
   const selectedLabelIdRef = useRef(selectedLabelId)
   const advancingRef = useRef(false)
 
   settingsRef.current = settings
   phaseRef.current = phase
   cycleRef.current = cycle
+  elapsedRef.current = elapsed
+  clockModeRef.current = clockMode
   selectedLabelIdRef.current = selectedLabelId
 
   const setPhaseRemaining = useCallback((seconds: number) => {
@@ -206,6 +269,28 @@ export function FocusTimerPage() {
   useEffect(() => {
     if (showSettings) setSettings(getFocusSettings())
   }, [showSettings])
+
+  useEffect(() => {
+    const syncMode = () => {
+      if (running || sessionStarted) return
+      setClockMode(readClockMode())
+    }
+    window.addEventListener('user-storage-ready', syncMode)
+    return () => window.removeEventListener('user-storage-ready', syncMode)
+  }, [running, sessionStarted])
+
+  const chooseClockMode = (next: FocusClockMode) => {
+    if (next === clockMode || running || sessionStarted) return
+    setClockMode(next)
+    storageSetItem(FOCUS_CLOCK_MODE_KEY, next)
+    elapsedRef.current = 0
+    setElapsed(0)
+    if (next === 'timer') {
+      setPhase('focus')
+      setCycle(1)
+      setPhaseRemaining(settings.focusMinutes * 60)
+    }
+  }
 
   const phaseDuration =
     phase === 'focus' ? settings.focusMinutes * 60 : activeBreakMinutes * 60
@@ -248,6 +333,24 @@ export function FocusTimerPage() {
   }, [settings, phase])
 
   useEffect(() => {
+    if (clockMode === 'stopwatch') {
+      if (!sessionStarted) {
+        setLiveFocusSeconds(0)
+        return
+      }
+      if (running) {
+        let raf = 0
+        const loop = () => {
+          setLiveFocusSeconds(Math.max(0, (Date.now() - phaseStartRef.current) / 1000))
+          raf = requestAnimationFrame(loop)
+        }
+        raf = requestAnimationFrame(loop)
+        return () => cancelAnimationFrame(raf)
+      }
+      setLiveFocusSeconds(elapsed)
+      return
+    }
+
     if (phase !== 'focus' || !sessionStarted) {
       setLiveFocusSeconds(0)
       return
@@ -264,7 +367,16 @@ export function FocusTimerPage() {
     }
 
     setLiveFocusSeconds(Math.max(0, settings.focusMinutes * 60 - remaining))
-  }, [phase, sessionStarted, running, remaining, settings.focusMinutes, setLiveFocusSeconds])
+  }, [
+    clockMode,
+    phase,
+    sessionStarted,
+    running,
+    remaining,
+    elapsed,
+    settings.focusMinutes,
+    setLiveFocusSeconds,
+  ])
 
   useEffect(() => () => setLiveFocusSeconds(0), [setLiveFocusSeconds])
 
@@ -390,7 +502,18 @@ export function FocusTimerPage() {
   )
 
   useEffect(() => {
-    if (!running || phase === 'done' || phaseHold) return
+    if (!running || phaseHold) return
+
+    if (clockMode === 'stopwatch') {
+      const id = window.setInterval(() => {
+        const next = elapsedRef.current + 1
+        elapsedRef.current = next
+        setElapsed(next)
+      }, 1000)
+      return () => clearInterval(id)
+    }
+
+    if (phase === 'done') return
 
     const id = window.setInterval(() => {
       if (advancingRef.current) return
@@ -408,15 +531,17 @@ export function FocusTimerPage() {
     }, 1000)
 
     return () => clearInterval(id)
-  }, [running, phase, phaseHold, advancePhase, setPhaseRemaining])
+  }, [running, phase, phaseHold, clockMode, advancePhase, setPhaseRemaining])
 
   useEffect(() => {
-    if (running && phase !== 'done') {
+    if (running && clockMode === 'stopwatch') {
+      setTimerTabSeconds(elapsed)
+    } else if (running && phase !== 'done') {
       setTimerTabSeconds(remaining)
     } else {
       setTimerTabSeconds(null)
     }
-  }, [running, remaining, phase, setTimerTabSeconds])
+  }, [running, remaining, elapsed, phase, clockMode, setTimerTabSeconds])
 
   useEffect(() => {
     return () => {
@@ -489,9 +614,28 @@ export function FocusTimerPage() {
 
   const start = () => {
     unlockAudio()
-    phaseStartRef.current = Date.now()
+    if (clockMode === 'stopwatch') {
+      phaseStartRef.current = Date.now() - elapsedRef.current * 1000
+    } else {
+      phaseStartRef.current = Date.now()
+    }
     setSessionStarted(true)
     setRunning(true)
+  }
+
+  const stopStopwatch = () => {
+    const seconds = elapsedRef.current
+    const minutes = seconds <= 0 ? 0 : Math.max(1, Math.round(seconds / 60))
+    const sessionStart = Date.now() - minutes * 60_000
+    setRunning(false)
+    setSessionStarted(false)
+    elapsedRef.current = 0
+    setElapsed(0)
+    if (minutes <= 0) return
+    void logFocusMinutes(minutes, undefined, sessionStart, selectedLabelIdRef.current).catch(
+      () => {},
+    )
+    maybePromptFocusScore(sessionStart, minutes)
   }
 
   const reset = () => {
@@ -500,6 +644,8 @@ export function FocusTimerPage() {
     setPhaseHold(null)
     setRunning(false)
     setSessionStarted(false)
+    elapsedRef.current = 0
+    setElapsed(0)
     setPhase('focus')
     setCycle(1)
     setActiveBreakMinutes(settings.breakMinutes)
@@ -511,6 +657,12 @@ export function FocusTimerPage() {
   const isRest = phase === 'break'
 
   const liveFocusSession = useMemo(() => {
+    if (clockMode === 'stopwatch') {
+      if (!sessionStarted) return null
+      const startMs = phaseStartRef.current
+      const elapsedMs = running ? Date.now() - startMs : elapsed * 1000
+      return { startMs, endMs: startMs + Math.max(0, elapsedMs) }
+    }
     if (phase !== 'focus' || !sessionStarted) return null
     const startMs = phaseStartRef.current
     const elapsedMs = running
@@ -518,10 +670,12 @@ export function FocusTimerPage() {
       : (settings.focusMinutes * 60 - remaining) * 1000
     return { startMs, endMs: startMs + Math.max(0, elapsedMs) }
   }, [
+    clockMode,
     phase,
     sessionStarted,
     running,
     remaining,
+    elapsed,
     settings.focusMinutes,
     liveFocusSeconds,
   ])
@@ -532,12 +686,13 @@ export function FocusTimerPage() {
     [formatTime],
   )
 
-  const progress =
-    phaseDuration > 0
+  const isStopwatch = clockMode === 'stopwatch'
+  const progress = isStopwatch
+    ? 0
+    : phaseDuration > 0
       ? Math.min(100, Math.max(0, ((phaseDuration - remaining) / phaseDuration) * 100))
       : 0
-  const minutes = Math.floor(remaining / 60)
-  const seconds = remaining % 60
+  const faceSeconds = isStopwatch ? elapsed : remaining
 
   const showSchedule = userPrefs.showFocusSchedule && !!userId
 
@@ -554,8 +709,9 @@ export function FocusTimerPage() {
           <FocusTimerFace
             progress={progress}
             isRest={isRest}
-            minutes={minutes}
-            seconds={seconds}
+            totalSeconds={faceSeconds}
+            countUp={isStopwatch}
+            maskSeconds={running}
           />
         </div>
         {showSchedule && userId && (
@@ -609,10 +765,39 @@ export function FocusTimerPage() {
 
         <div className="mx-auto flex w-full max-w-[28rem] flex-col items-center">
           <div className="flex w-full flex-col items-center px-2 pt-2 pb-4 sm:px-4">
+            <div
+              className={cn(
+                'mb-3 flex rounded-full border border-zinc-800 bg-zinc-950 p-0.5 transition-opacity duration-[1400ms] ease-in-out',
+                screensaverActive && 'pointer-events-none opacity-0',
+                (running || sessionStarted) && 'opacity-60',
+              )}
+              role="tablist"
+              aria-label="Focus clock mode"
+            >
+              {(['timer', 'stopwatch'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="tab"
+                  aria-selected={clockMode === option}
+                  disabled={running || sessionStarted}
+                  onClick={() => chooseClockMode(option)}
+                  className={cn(
+                    'rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors',
+                    clockMode === option
+                      ? 'bg-zinc-800 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-300',
+                  )}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+
             <p
           className={cn(
             'mb-1 h-4 text-xs font-medium uppercase tracking-widest transition-opacity duration-[1400ms] ease-in-out',
-            phase === 'focus'
+            isStopwatch || phase === 'focus'
               ? 'text-[var(--accent-400)]'
               : isRest
                 ? 'text-blue-400'
@@ -620,20 +805,22 @@ export function FocusTimerPage() {
             screensaverActive && 'pointer-events-none mb-0 h-0 overflow-hidden opacity-0',
           )}
         >
-          {phase === 'done'
-            ? 'Session complete'
-            : phase === 'focus'
-              ? `Focus · ${cycle}/${settings.iterations}`
-              : onLongBreak
-                ? `Long rest · ${cycle}/${settings.iterations}`
-                : `Rest · ${cycle}/${settings.iterations}`}
+          {isStopwatch
+            ? 'Stopwatch'
+            : phase === 'done'
+              ? 'Session complete'
+              : phase === 'focus'
+                ? `Focus · ${cycle}/${settings.iterations}`
+                : onLongBreak
+                  ? `Long rest · ${cycle}/${settings.iterations}`
+                  : `Rest · ${cycle}/${settings.iterations}`}
         </p>
 
         <FocusTimerFace
           progress={progress}
           isRest={isRest}
-          minutes={minutes}
-          seconds={seconds}
+          totalSeconds={faceSeconds}
+          countUp={isStopwatch}
           className="mt-4 mb-6"
         />
 
@@ -644,7 +831,7 @@ export function FocusTimerPage() {
           disabled={phase === 'done'}
         />
 
-        {sessionEndAt && phase !== 'done' ? (
+        {!isStopwatch && sessionEndAt && phase !== 'done' ? (
           <div
             className={cn(
               'mb-5 flex h-11 shrink-0 flex-wrap items-center justify-center gap-1.5 transition-opacity duration-[1400ms] ease-in-out',
@@ -684,11 +871,11 @@ export function FocusTimerPage() {
             <Button
               size="lg"
               onClick={start}
-              disabled={phase === 'done'}
+              disabled={!isStopwatch && phase === 'done'}
               aria-label={sessionStarted ? 'Resume' : 'Start'}
               className={cn(
                 'h-12 w-24 p-0 text-white',
-                isRest && 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700',
+                !isStopwatch && isRest && 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700',
               )}
             >
               <PlayIcon />
@@ -697,14 +884,14 @@ export function FocusTimerPage() {
             <Button
               size="lg"
               onClick={() => setRunning(false)}
-              disabled={!settings.allowPause || phase === 'done'}
+              disabled={(!isStopwatch && !settings.allowPause) || phase === 'done'}
               aria-label="Pause"
               className={cn(
                 'h-12 w-24 p-0 text-white',
-                isRest
+                !isStopwatch && isRest
                   ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700'
                   : undefined,
-                !settings.allowPause && 'opacity-30',
+                !isStopwatch && !settings.allowPause && 'opacity-30',
               )}
             >
               <PauseIcon />
@@ -718,18 +905,33 @@ export function FocusTimerPage() {
             screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
           )}
         >
-          <Button
-            variant="secondary"
-            onClick={() => (phase === 'focus' ? endFocus() : endBreak())}
-            disabled={!sessionStarted || phase === 'done'}
-            aria-label="End"
-            className={cn(
-              'h-12 w-12 p-0',
-              (!sessionStarted || phase === 'done') && 'opacity-30',
-            )}
-          >
-            <SkipForward size={20} />
-          </Button>
+          {isStopwatch ? (
+            <Button
+              variant="secondary"
+              onClick={stopStopwatch}
+              disabled={!sessionStarted}
+              aria-label="Stop"
+              className={cn(
+                'h-12 w-12 p-0',
+                !sessionStarted && 'opacity-30',
+              )}
+            >
+              <StopIcon />
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              onClick={() => (phase === 'focus' ? endFocus() : endBreak())}
+              disabled={!sessionStarted || phase === 'done'}
+              aria-label="End"
+              className={cn(
+                'h-12 w-12 p-0',
+                (!sessionStarted || phase === 'done') && 'opacity-30',
+              )}
+            >
+              <SkipForward size={20} />
+            </Button>
+          )}
 
           <Button variant="ghost" onClick={reset} aria-label="Reset">
             <RotateCcw size={16} />
@@ -746,13 +948,23 @@ export function FocusTimerPage() {
               screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
             )}
           >
-            <h3 className="mb-3 text-sm font-semibold text-zinc-200">Last 12 hours</h3>
             <FocusHourlyChart
+              userId={userId}
               formatHour={formatHourLabel}
               liveSession={liveFocusSession}
               useDevDummy={userPrefs.devMode}
             />
           </section>
+
+          <FocusSessionHistory
+            formatTime={formatTime}
+            onUpdate={updateFocusRecord}
+            onDelete={deleteFocusRecord}
+            className={cn(
+              'pt-6 transition-opacity duration-[1400ms] ease-in-out',
+              screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
+            )}
+          />
         </div>
 
         <div className="flex min-w-0 flex-col gap-4 overflow-visible lg:flex-row lg:flex-nowrap lg:items-start lg:justify-start">
@@ -764,6 +976,12 @@ export function FocusTimerPage() {
             )}
           >
             <h3 className="text-sm font-semibold text-zinc-200">Timer settings</h3>
+            {isStopwatch ? (
+              <p className="text-sm leading-relaxed text-zinc-400">
+                Stopwatch counts up until you stop it. You can pause or stop at any time, and the time is saved to your focus history.
+              </p>
+            ) : (
+              <>
             <MinuteSlider
               label="Focus duration"
               value={settings.focusMinutes}
@@ -803,6 +1021,8 @@ export function FocusTimerPage() {
               checked={settings.allowPause}
               onChange={(allowPause) => updateTimerSettings({ allowPause })}
             />
+              </>
+            )}
             <ToggleRow
               label="Ask for focus score"
               description="After each focus block, rate how focused you felt (1–10)"
@@ -810,6 +1030,7 @@ export function FocusTimerPage() {
               checked={settings.promptFocusScore}
               onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
             />
+            {!isStopwatch && (
             <LongBreakSettings
               enabled={settings.longBreakEnabled}
               afterCycles={settings.longBreakAfterCycles}
@@ -821,6 +1042,7 @@ export function FocusTimerPage() {
               }
               onMinutesChange={(longBreakMinutes) => updateTimerSettings({ longBreakMinutes })}
             />
+            )}
             {!settings.focusGoalEnabled && (
               <div className="border-t border-zinc-800/80 pt-4">
                 <Button
@@ -832,6 +1054,7 @@ export function FocusTimerPage() {
                 </Button>
               </div>
             )}
+            {!isStopwatch && (
             <div className="pt-1">
               <Button
                 variant="secondary"
@@ -842,6 +1065,7 @@ export function FocusTimerPage() {
                 Reset to defaults
               </Button>
             </div>
+            )}
           </section>
         )}
 

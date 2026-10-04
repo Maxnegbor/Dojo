@@ -73,6 +73,20 @@ export function recordFocusSession(startMs: number, endMs: number = Date.now()) 
   saveBuckets(buckets)
 }
 
+/** Remove a previously recorded span from the rolling hourly chart. */
+export function removeRecordedFocusSession(startMs: number, endMs: number) {
+  if (endMs <= startMs) return
+  const buckets = loadBuckets()
+  const distributed = distributeMinutesAcrossHours(startMs, endMs)
+  for (const [key, minutes] of Object.entries(distributed)) {
+    const next = (buckets[key] ?? 0) - minutes
+    if (next <= 0.05) delete buckets[key]
+    else buckets[key] = next
+  }
+  pruneBuckets(buckets)
+  saveBuckets(buckets)
+}
+
 export interface FocusHourBucket {
   hourStart: Date
   minutes: number
