@@ -952,7 +952,7 @@ export function HourlyTimeline({
         className="home-schedule-panel relative isolate flex h-full max-h-full min-h-0 w-full -ml-4 flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900"
       >
         {headerActions && !screensaver ? (
-          <div className="schedule-template-action absolute right-2 top-2 z-20 flex items-center gap-1 rounded-lg bg-zinc-950/90">
+          <div className="schedule-template-action absolute right-2 top-2 z-20 flex flex-col items-end gap-1 rounded-lg bg-zinc-950/90">
             {headerActions}
           </div>
         ) : null}

@@ -3,10 +3,11 @@ import { OneThingHomeCard } from '@/components/oneThing/OneThingHomeCard'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
-import { CalendarCheck, CalendarClock, CalendarDays, ClipboardList, LayoutGrid, Moon } from 'lucide-react'
+import { CalendarCheck, CalendarClock, CalendarDays, CalendarRange, ClipboardList, LayoutGrid, Moon } from 'lucide-react'
 import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
+import { WeekPlanner } from '@/components/today/WeekPlanner'
 import { HabitifyHabitsCard } from '@/components/today/HabitifyHabitsCard'
 import { WhoopPulseOrbits } from '@/components/today/WhoopPulseOrbits'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
@@ -127,6 +128,7 @@ export function TodayPage() {
   const [streakLogs, setStreakLogs] = useState<DailyLog[]>([])
   const [showCalendar, setShowCalendar] = useState(false)
   const [showShutdown, setShowShutdown] = useState(false)
+  const [weekPlannerOpen, setWeekPlannerOpen] = useState(false)
   const [showMorningLog, setShowMorningLog] = useState(false)
   const [showHomeLog, setShowHomeLog] = useState(false)
   const [morningLogDone, setMorningLogDone] = useState(() => isMorningLogSubmitted(viewDate))
@@ -992,17 +994,44 @@ export function TodayPage() {
               onDropPlannedWorkout={dropPlannedWorkout}
               screensaver={screensaver}
               headerActions={
-                <ScheduleTemplateMenu
-                  iconOnly
-                  applying={applyingTemplate}
-                  onApply={applyTemplateToViewDate}
-                />
+                <>
+                  <ScheduleTemplateMenu
+                    iconOnly
+                    applying={applyingTemplate}
+                    onApply={applyTemplateToViewDate}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setWeekPlannerOpen(true)}
+                    className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                    aria-label="Plan the week"
+                    title="Plan the week"
+                  >
+                    <CalendarRange size={16} />
+                  </button>
+                </>
               }
             />
           )}
         </div>
         )}
       </div>
+
+      {weekPlannerOpen && userId && (
+        <WeekPlanner
+          userId={userId}
+          anchorDate={viewDate}
+          startHour={settings.timelineStartHour}
+          endHour={settings.timelineEndHour}
+          onClose={() => {
+            setWeekPlannerOpen(false)
+            void refreshScheduleBlocks()
+          }}
+          onChanged={() => {
+            void refreshScheduleBlocks()
+          }}
+        />
+      )}
 
       {showWeeklyShutdown && (
         <WeeklyShutdownModal
