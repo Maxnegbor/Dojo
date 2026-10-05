@@ -371,6 +371,9 @@ export interface FocusTimerSettings {
   allowPause: boolean
   /** After each focus cycle, ask for a 1–10 subjective focus score. */
   promptFocusScore: boolean
+  /** After the focus alarm is dismissed, require this checklist before the break starts. */
+  alarmChecklistEnabled: boolean
+  alarmChecklist: FocusAlarmCheckItem[]
   focusGoalEnabled: boolean
   focusGoalPeriod: GoalPeriod
   focusGoalAmount: number
@@ -381,6 +384,11 @@ export type WeekStartDay = 0 | 1
 export type TimeFormat = '12h' | '24h'
 export type WeightUnit = 'kg' | 'lb'
 export type AccentColor = 'indigo' | 'violet' | 'emerald' | 'rose' | 'amber'
+
+export interface FocusAlarmCheckItem {
+  id: string
+  label: string
+}
 
 export interface WeeklyShutdownCheckItem {
   id: string
@@ -541,6 +549,8 @@ export const DEFAULT_FOCUS_SETTINGS: FocusTimerSettings = {
   longBreakMinutes: 15,
   allowPause: false,
   promptFocusScore: false,
+  alarmChecklistEnabled: false,
+  alarmChecklist: [],
   focusGoalEnabled: false,
   focusGoalPeriod: 'daily',
   focusGoalAmount: 60,

@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { FocusHourlyChart } from '@/components/focus/FocusHourlyChart'
 import { FocusLabelPicker } from '@/components/focus/FocusLabelPicker'
 import { FocusScheduleAgenda } from '@/components/focus/FocusScheduleAgenda'
+import { FocusAlarmChecklistModal } from '@/components/focus/FocusAlarmChecklistModal'
+import { FocusAlarmChecklistSettings } from '@/components/focus/FocusAlarmChecklistSettings'
 import { FocusTimerAlarmModal } from '@/components/focus/FocusTimerAlarmModal'
 import {
   FocusScorePrompt,
@@ -34,7 +36,7 @@ import {
   type TimerPhase,
 } from '@/lib/focusTimerLogic'
 import { playTimerChime, startFocusTimerAlarm, stopFocusTimerAlarm, unlockAudio } from '@/lib/timerSound'
-import { DEFAULT_FOCUS_SETTINGS, type FocusTimerSettings } from '@/types'
+import { DEFAULT_FOCUS_SETTINGS, type FocusAlarmCheckItem, type FocusTimerSettings } from '@/types'
 import { cn, formatDate, formatDuration } from '@/lib/utils'
 
 type Phase = TimerPhase
@@ -52,7 +54,12 @@ interface PhaseHold {
   score: FocusScorePromptPayload | null
 }
 
-function holdAlarmCopy(hold: PhaseHold, settings: FocusTimerSettings) {
+function activeAlarmChecklist(settings: FocusTimerSettings): FocusAlarmCheckItem[] {
+  if (!settings.alarmChecklistEnabled) return []
+  return settings.alarmChecklist.filter((item) => item.label.trim())
+}
+
+function holdAlarmCopy(hold: PhaseHold, settings: FocusTimerSettings, checklistNext = false) {
   if (hold.from === 'break') {
     const done = hold.cycle >= settings.iterations
     return {
@@ -65,22 +72,28 @@ function holdAlarmCopy(hold: PhaseHold, settings: FocusTimerSettings) {
     const done = hold.cycle >= settings.iterations
     return {
       title: 'Focus complete',
-      subtitle: done ? 'Session complete.' : 'Next focus block is ready.',
-      confirmLabel: done ? 'Done' : 'Start focus',
+      subtitle: checklistNext
+        ? 'Checklist next.'
+        : done
+          ? 'Session complete.'
+          : 'Next focus block is ready.',
+      confirmLabel: checklistNext ? 'Continue' : done ? 'Done' : 'Start focus',
     }
   }
   const breakMinutes = getBreakMinutesAfterFocus(settings, hold.cycle)
   if (breakMinutes <= 0) {
     return {
       title: 'Focus complete',
-      subtitle: 'Session complete.',
-      confirmLabel: 'Done',
+      subtitle: checklistNext ? 'Checklist next.' : 'Session complete.',
+      confirmLabel: checklistNext ? 'Continue' : 'Done',
     }
   }
   return {
     title: 'Focus complete',
-    subtitle: `${breakMinutes}-minute break is ready.`,
-    confirmLabel: 'Start break',
+    subtitle: checklistNext
+      ? `${breakMinutes}-minute break starts after your checklist.`
+      : `${breakMinutes}-minute break is ready.`,
+    confirmLabel: checklistNext ? 'Continue' : 'Start break',
   }
 }
 
@@ -191,6 +204,7 @@ export function FocusTimerPage() {
     logFocusMinutes,
     updateFocusRecord,
     deleteFocusRecord,
+    addFocusRecord,
     setLiveFocusSeconds,
     liveFocusSeconds,
     setTimerTabSeconds,
@@ -214,6 +228,10 @@ export function FocusTimerPage() {
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
   const [scorePrompt, setScorePrompt] = useState<FocusScorePromptPayload | null>(null)
   const [phaseHold, setPhaseHold] = useState<PhaseHold | null>(null)
+  const [checklistHold, setChecklistHold] = useState<{
+    hold: PhaseHold
+    items: FocusAlarmCheckItem[]
+  } | null>(null)
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(() => getLastFocusLabelId())
 
   const settingsRef = useRef(settings)
@@ -442,13 +460,8 @@ export function FocusTimerPage() {
     }
   }, [logFocusMinutes])
 
-  const dismissPhaseHold = useCallback(
-    (score?: number) => {
-      const hold = phaseHold
-      if (!hold) return
-      if (score != null && hold.score) addFocusScoreSession({ ...hold.score, score })
-      setPhaseHold(null)
-
+  const continueAfterHold = useCallback(
+    (hold: PhaseHold) => {
       const s = settingsRef.current
       const c = hold.cycle
 
@@ -498,8 +511,34 @@ export function FocusTimerPage() {
       setSessionStarted(true)
       phaseStartRef.current = Date.now()
     },
-    [phaseHold, setPhaseRemaining, userPrefs.timerSoundEnabled],
+    [setPhaseRemaining, userPrefs.timerSoundEnabled],
   )
+
+  const dismissPhaseHold = useCallback(
+    (score?: number) => {
+      const hold = phaseHold
+      if (!hold) return
+      if (score != null && hold.score) addFocusScoreSession({ ...hold.score, score })
+      setPhaseHold(null)
+
+      if (hold.from === 'focus') {
+        const items = activeAlarmChecklist(settingsRef.current)
+        if (items.length > 0) {
+          setChecklistHold({ hold, items })
+          return
+        }
+      }
+      continueAfterHold(hold)
+    },
+    [phaseHold, continueAfterHold],
+  )
+
+  const finishChecklist = useCallback(() => {
+    const pending = checklistHold
+    if (!pending) return
+    setChecklistHold(null)
+    continueAfterHold(pending.hold)
+  }, [checklistHold, continueAfterHold])
 
   useEffect(() => {
     if (!running || phaseHold) return
@@ -642,6 +681,7 @@ export function FocusTimerPage() {
     advancingRef.current = false
     stopFocusTimerAlarm()
     setPhaseHold(null)
+    setChecklistHold(null)
     setRunning(false)
     setSessionStarted(false)
     elapsedRef.current = 0
@@ -960,6 +1000,7 @@ export function FocusTimerPage() {
             formatTime={formatTime}
             onUpdate={updateFocusRecord}
             onDelete={deleteFocusRecord}
+            onCreate={addFocusRecord}
             className={cn(
               'pt-6 transition-opacity duration-[1400ms] ease-in-out',
               screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
@@ -1031,6 +1072,14 @@ export function FocusTimerPage() {
               onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
             />
             {!isStopwatch && (
+              <FocusAlarmChecklistSettings
+                enabled={settings.alarmChecklistEnabled}
+                items={settings.alarmChecklist}
+                onEnabledChange={(alarmChecklistEnabled) => updateTimerSettings({ alarmChecklistEnabled })}
+                onItemsChange={(alarmChecklist) => updateTimerSettings({ alarmChecklist })}
+              />
+            )}
+            {!isStopwatch && (
             <LongBreakSettings
               enabled={settings.longBreakEnabled}
               afterCycles={settings.longBreakAfterCycles}
@@ -1093,9 +1142,26 @@ export function FocusTimerPage() {
 
       {phaseHold && (
         <FocusTimerAlarmModal
-          {...holdAlarmCopy(phaseHold, settings)}
+          {...holdAlarmCopy(
+            phaseHold,
+            settings,
+            phaseHold.from === 'focus' && activeAlarmChecklist(settings).length > 0,
+          )}
           scorePayload={phaseHold.score}
           onDismiss={dismissPhaseHold}
+        />
+      )}
+
+      {checklistHold && (
+        <FocusAlarmChecklistModal
+          items={checklistHold.items}
+          subtitle={
+            !shouldSkipBreaks(settings) &&
+            getBreakMinutesAfterFocus(settings, checklistHold.hold.cycle) > 0
+              ? 'Check every item. The break starts after this.'
+              : 'Check every item to continue.'
+          }
+          onComplete={finishChecklist}
         />
       )}
 

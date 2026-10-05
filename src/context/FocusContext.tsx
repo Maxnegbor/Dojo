@@ -49,6 +49,7 @@ interface FocusContextValue {
   ) => Promise<void>
   updateFocusRecord: (id: string, draft: FocusSessionDraft) => Promise<void>
   deleteFocusRecord: (id: string) => Promise<void>
+  addFocusRecord: (draft: FocusSessionDraft) => Promise<void>
 }
 
 const FocusContext = createContext<FocusContextValue | null>(null)
@@ -166,6 +167,32 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     [refreshFocus, syncDailyFocus],
   )
 
+  const addFocusRecord = useCallback(
+    async (draft: FocusSessionDraft) => {
+      const minutes = Math.round(draft.minutes)
+      if (!Number.isFinite(minutes) || minutes < 1) throw new Error('Enter at least 1 minute')
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) throw new Error('Enter a valid date')
+      if (!Number.isFinite(draft.startMs) || !Number.isFinite(draft.endMs) || draft.endMs <= draft.startMs) {
+        throw new Error('Enter a valid time')
+      }
+      if (userId) await adjustFocusMinutes(userId, draft.date, minutes)
+      const session = addFocusSession({
+        minutes,
+        startMs: draft.startMs,
+        endMs: draft.endMs,
+        date: draft.date,
+        labelId: draft.labelId,
+      })
+      if (!session) {
+        if (userId) await adjustFocusMinutes(userId, draft.date, -minutes)
+        throw new Error('Could not add that focus session')
+      }
+      recordFocusSession(session.startMs, session.endMs)
+      await refreshFocus()
+    },
+    [userId, refreshFocus],
+  )
+
   const deleteFocusRecord = useCallback(
     async (id: string) => {
       const previous = getFocusSessions().find((session) => session.id === id)
@@ -196,6 +223,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         logFocusMinutes,
         updateFocusRecord,
         deleteFocusRecord,
+        addFocusRecord,
       }}
     >
       {children}

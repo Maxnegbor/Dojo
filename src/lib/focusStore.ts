@@ -1,9 +1,10 @@
-import { DEFAULT_FOCUS_SETTINGS, type FocusTimerSettings } from '@/types'
+import { DEFAULT_FOCUS_SETTINGS, type FocusAlarmCheckItem, type FocusTimerSettings } from '@/types'
 import { localStore } from '@/lib/localStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { formatDate, getWeekDates } from '@/lib/utils'
 
 import { storageGetItem, storageSetItem } from '@/lib/userStorage'
+import { generateId } from '@/lib/utils'
 
 const SETTINGS_KEY = 'personal-os-focus-settings'
 
@@ -22,6 +23,8 @@ export function getFocusSettings(): FocusTimerSettings {
         longBreakEnabled: Boolean(parsed.longBreakEnabled),
         allowPause: Boolean(parsed.allowPause),
         promptFocusScore: Boolean(parsed.promptFocusScore),
+        alarmChecklistEnabled: Boolean(parsed.alarmChecklistEnabled),
+        alarmChecklist: normalizeAlarmChecklist(parsed.alarmChecklist),
         focusGoalEnabled: Boolean(parsed.focusGoalEnabled),
         focusGoalPeriod: parsed.focusGoalPeriod === 'weekly' ? 'weekly' : 'daily',
         focusGoalAmount: snapFocusGoalAmount(
@@ -35,6 +38,19 @@ export function getFocusSettings(): FocusTimerSettings {
     /* ignore */
   }
   return { ...DEFAULT_FOCUS_SETTINGS }
+}
+
+function normalizeAlarmChecklist(raw: unknown): FocusAlarmCheckItem[] {
+  if (!Array.isArray(raw)) return []
+  const items: FocusAlarmCheckItem[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const record = entry as { id?: unknown; label?: unknown }
+    const label = typeof record.label === 'string' ? record.label : ''
+    const id = typeof record.id === 'string' && record.id.trim() ? record.id : generateId()
+    items.push({ id, label })
+  }
+  return items.slice(0, 30)
 }
 
 function snapMinutes(n: number): number {
