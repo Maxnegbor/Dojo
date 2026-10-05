@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RotateCcw, Settings2, SkipForward } from 'lucide-react'
 import { FocusSessionHistory } from '@/components/focus/FocusSessionHistory'
@@ -125,6 +125,18 @@ function PauseIcon() {
   )
 }
 
+function TimerColon() {
+  return (
+    <span
+      className="mx-[0.08em] inline-flex h-[0.55em] translate-y-[-0.04em] flex-col items-center justify-between align-middle"
+      aria-hidden
+    >
+      <span className="size-[0.13em] shrink-0 rounded-full bg-current" />
+      <span className="size-[0.13em] shrink-0 rounded-full bg-current" />
+    </span>
+  )
+}
+
 function FocusTimerFace({
   progress,
   isRest,
@@ -183,15 +195,15 @@ function FocusTimerFace({
           {showHours && (
             <>
               {hourLabel}
-              <span className="text-zinc-500">:</span>
+              <TimerColon />
             </>
           )}
           {minuteLabel}
-          <span className="text-zinc-500">:</span>
+          <TimerColon />
           {maskSeconds ? (
-            <span className="inline-flex w-[2ch] items-baseline justify-between" aria-hidden>
-              <span>-</span>
-              <span>-</span>
+            <span className="inline-flex w-[2ch] tracking-normal" aria-hidden>
+              <span className="flex w-[1ch] items-center justify-center">-</span>
+              <span className="flex w-[1ch] items-center justify-center">-</span>
             </span>
           ) : (
             secondLabel
@@ -243,12 +255,14 @@ export function FocusTimerPage() {
     items: FocusAlarmCheckItem[]
   } | null>(null)
   const [checklistHold, setChecklistHold] = useState<{
-    hold: PhaseHold
+    hold: PhaseHold | null
     items: FocusAlarmCheckItem[]
   } | null>(null)
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(() => getLastFocusLabelId())
 
   const settingsRef = useRef(settings)
+  const timerFaceRef = useRef<HTMLDivElement>(null)
+  const scheduleSlotRef = useRef<HTMLDivElement>(null)
   const phaseRef = useRef(phase)
   const cycleRef = useRef(cycle)
   const remainingRef = useRef(remaining)
@@ -555,7 +569,7 @@ export function FocusTimerPage() {
     const pending = checklistHold
     if (!pending) return
     setChecklistHold(null)
-    continueAfterHold(pending.hold)
+    if (pending.hold) continueAfterHold(pending.hold)
   }, [checklistHold, continueAfterHold])
 
   useEffect(() => {
@@ -693,6 +707,8 @@ export function FocusTimerPage() {
       () => {},
     )
     maybePromptFocusScore(sessionStart, minutes)
+    const items = activeAlarmChecklist(settings)
+    if (items.length > 0) setChecklistHold({ hold: null, items })
   }
 
   const reset = () => {
@@ -755,34 +771,50 @@ export function FocusTimerPage() {
 
   const showSchedule = userPrefs.showFocusSchedule && !!userId
 
+  useLayoutEffect(() => {
+    const face = timerFaceRef.current
+    const slot = scheduleSlotRef.current
+    const column = slot?.parentElement
+    if (!face || !slot || !column || !showSchedule) return
+
+    const align = () => {
+      const faceRect = face.getBoundingClientRect()
+      const columnTop = column.getBoundingClientRect().top
+      const nowLine = slot.querySelector('[data-focus-now]')
+      const nowOffset = nowLine
+        ? nowLine.getBoundingClientRect().top - slot.getBoundingClientRect().top
+        : 0
+      const margin = faceRect.top + faceRect.height / 2 - columnTop - nowOffset
+      slot.style.marginTop = `${Math.max(0, margin)}px`
+    }
+
+    align()
+    const observer = new ResizeObserver(align)
+    observer.observe(face)
+    observer.observe(column)
+    window.addEventListener('resize', align)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', align)
+    }
+  }, [showSchedule, screensaverActive])
+
   const focusScreensaverLayer =
     screensaverActive &&
     createPortal(
       <div
         className={cn(
-          'fixed inset-0 z-[200] flex h-dvh flex-col items-center bg-[#06060b] px-6 py-10 transition-opacity duration-[1400ms] ease-in-out',
+          'fixed inset-0 z-[200] flex h-dvh items-center justify-center bg-[#06060b] transition-opacity duration-[1400ms] ease-in-out',
           screensaverWaking && 'pointer-events-none opacity-0',
         )}
       >
-        <div className="flex shrink-0 justify-center pt-2">
-          <FocusTimerFace
-            progress={progress}
-            isRest={isRest}
-            totalSeconds={faceSeconds}
-            countUp={isStopwatch}
-            maskSeconds={running}
-          />
-        </div>
-        {showSchedule && userId && (
-          <div className="mt-8 flex min-h-0 w-full max-w-sm flex-1 flex-col pb-2">
-            <FocusScheduleAgenda
-              userId={userId}
-              formatTime={formatTime}
-              screensaver
-              className="min-h-0 w-full max-h-full flex-1"
-            />
-          </div>
-        )}
+        <FocusTimerFace
+          progress={progress}
+          isRest={isRest}
+          totalSeconds={faceSeconds}
+          countUp={isStopwatch}
+          maskSeconds={running}
+        />
       </div>,
       document.body,
     )
@@ -800,13 +832,13 @@ export function FocusTimerPage() {
         <div
           className={cn(
             'min-w-0',
-            showSettings ? 'order-2 lg:order-1' : 'hidden lg:order-1 lg:block',
+            showSettings ? 'order-3' : 'hidden lg:order-3 lg:block',
           )}
         >
           {showSettings && (
             <section
               className={cn(
-                'w-full space-y-5 lg:ml-auto lg:max-w-72',
+                'w-full space-y-5 lg:mr-auto lg:max-w-72',
                 screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
               )}
             >
@@ -866,27 +898,29 @@ export function FocusTimerPage() {
                 onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
               />
               {!isStopwatch && (
-                <>
-                  <FocusAlarmChecklistSettings
-                    label="Checklist before alarm"
-                    description="When the timer ends, check every item before the alarm starts."
-                    enabled={settings.preAlarmChecklistEnabled}
-                    items={settings.preAlarmChecklist}
-                    onEnabledChange={(preAlarmChecklistEnabled) =>
-                      updateTimerSettings({ preAlarmChecklistEnabled })
-                    }
-                    onItemsChange={(preAlarmChecklist) => updateTimerSettings({ preAlarmChecklist })}
-                  />
-                  <FocusAlarmChecklistSettings
-                    label="Checklist after alarm"
-                    description="After you dismiss the alarm, check every item before the break starts."
-                    enabled={settings.alarmChecklistEnabled}
-                    items={settings.alarmChecklist}
-                    onEnabledChange={(alarmChecklistEnabled) => updateTimerSettings({ alarmChecklistEnabled })}
-                    onItemsChange={(alarmChecklist) => updateTimerSettings({ alarmChecklist })}
-                  />
-                </>
+                <FocusAlarmChecklistSettings
+                  label="Checklist before alarm"
+                  description="When the timer ends, check every item before the alarm starts."
+                  enabled={settings.preAlarmChecklistEnabled}
+                  items={settings.preAlarmChecklist}
+                  onEnabledChange={(preAlarmChecklistEnabled) =>
+                    updateTimerSettings({ preAlarmChecklistEnabled })
+                  }
+                  onItemsChange={(preAlarmChecklist) => updateTimerSettings({ preAlarmChecklist })}
+                />
               )}
+              <FocusAlarmChecklistSettings
+                label="Checklist after alarm"
+                description={
+                  isStopwatch
+                    ? 'When you end the stopwatch, check every item.'
+                    : 'After you dismiss the alarm, check every item before the break starts. Ending the stopwatch uses this list too.'
+                }
+                enabled={settings.alarmChecklistEnabled}
+                items={settings.alarmChecklist}
+                onEnabledChange={(alarmChecklistEnabled) => updateTimerSettings({ alarmChecklistEnabled })}
+                onItemsChange={(alarmChecklist) => updateTimerSettings({ alarmChecklist })}
+              />
               {!isStopwatch && (
                 <LongBreakSettings
                   enabled={settings.longBreakEnabled}
@@ -980,13 +1014,14 @@ export function FocusTimerPage() {
                   : `Rest · ${cycle}/${settings.iterations}`}
         </p>
 
-        <FocusTimerFace
-          progress={progress}
-          isRest={isRest}
-          totalSeconds={faceSeconds}
-          countUp={isStopwatch}
-          className="mt-4 mb-6"
-        />
+        <div ref={timerFaceRef} className="mt-4 mb-6">
+          <FocusTimerFace
+            progress={progress}
+            isRest={isRest}
+            totalSeconds={faceSeconds}
+            countUp={isStopwatch}
+          />
+        </div>
 
         <FocusLabelPicker
           className={cn('mb-4 transition-opacity duration-[1400ms] ease-in-out', screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0')}
@@ -1002,13 +1037,13 @@ export function FocusTimerPage() {
               screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0',
             )}
           >
-            <div className="rounded-full border border-[var(--accent-ring)] bg-[var(--accent-950)] px-3 py-1 text-center">
+            <div className="rounded-full border border-zinc-800 bg-transparent px-3 py-1 text-center">
               <p className="text-[9px] uppercase tracking-wide text-[var(--accent-300)]/70">Ends at</p>
               <p className="text-xs font-semibold text-[var(--accent-200)]">
                 {formatTime(sessionEndAt)}
               </p>
             </div>
-            <div className="rounded-full border border-[var(--accent-ring)] bg-[var(--accent-950)] px-3 py-1 text-center">
+            <div className="rounded-full border border-zinc-800 bg-transparent px-3 py-1 text-center">
               <p className="text-[9px] uppercase tracking-wide text-[var(--accent-300)]/70">Focus time</p>
               <p className="text-xs font-semibold text-[var(--accent-200)]">
                 {formatDuration(sessionFocusMinutes)}
@@ -1132,12 +1167,18 @@ export function FocusTimerPage() {
           />
         </div>
 
-        <div className="order-3 min-w-0">
+        <div
+          ref={scheduleSlotRef}
+          className={cn(
+            'order-2 min-w-0 lg:order-1',
+            !(showSchedule && userId) && 'hidden lg:block',
+          )}
+        >
         {showSchedule && userId && (
           <FocusScheduleAgenda
             userId={userId}
             formatTime={formatTime}
-            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:sticky lg:top-0 lg:mx-0 lg:min-h-[28rem] lg:max-w-72"
+            className="mx-auto w-full lg:ml-auto lg:max-w-72"
           />
         )}
         </div>
@@ -1181,6 +1222,7 @@ export function FocusTimerPage() {
           kicker="After the alarm"
           items={checklistHold.items}
           subtitle={
+            checklistHold.hold &&
             !shouldSkipBreaks(settings) &&
             getBreakMinutesAfterFocus(settings, checklistHold.hold.cycle) > 0
               ? 'Check every item. The break starts after this.'
@@ -1190,7 +1232,7 @@ export function FocusTimerPage() {
         />
       )}
 
-      {scorePrompt && !phaseHold && (
+      {scorePrompt && !phaseHold && !checklistHold && (
         <FocusScorePrompt
           payload={scorePrompt}
           onSkip={() => setScorePrompt(null)}

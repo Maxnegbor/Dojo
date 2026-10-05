@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isToday, parseISO } from 'date-fns'
-import { CalendarRange, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { CalendarRange, Clock, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { TimeInput } from '@/components/ui/TimeInput'
 import { useSettings } from '@/context/SettingsContext'
@@ -93,7 +93,10 @@ export function ExerciseWeekEditModal({
   const [addingDay, setAddingDay] = useState<WeekdayIndex | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedSubtype, setSelectedSubtype] = useState<string | null>(null)
-  const [draftTime, setDraftTime] = useState('07:00')
+  const [draftTime, setDraftTime] = useState('')
+  const [timeArmed, setTimeArmed] = useState(false)
+  const [timeFocusKey, setTimeFocusKey] = useState(0)
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null)
   const [draftDuration, setDraftDuration] = useState('45')
   const [draftAmount, setDraftAmount] = useState('3')
   const [step, setStep] = useState<SaveStep>('edit')
@@ -124,9 +127,24 @@ export function ExerciseWeekEditModal({
   const clearDraft = () => {
     setSelectedCategoryId(null)
     setSelectedSubtype(null)
-    setDraftTime('07:00')
+    setDraftTime('')
+    setTimeArmed(false)
+    setTimeFocusKey(0)
+    setEditingSlotId(null)
     setDraftDuration('45')
     setDraftAmount('3')
+  }
+
+  const openSlotEditor = (slot: ExerciseWeekSlot) => {
+    setAddingDay(slot.weekday)
+    setEditingSlotId(slot.id)
+    setSelectedCategoryId(slot.category)
+    setSelectedSubtype(slot.subtype)
+    setDraftTime(slot.start_time ?? '')
+    setTimeArmed(Boolean(slot.start_time))
+    setTimeFocusKey(0)
+    setDraftDuration(String(slot.duration_minutes || 45))
+    setDraftAmount(slot.amount != null ? String(slot.amount) : '3')
   }
 
   const dayAtPoint = (x: number, y: number): WeekdayIndex | null => {
@@ -186,13 +204,60 @@ export function ExerciseWeekEditModal({
         weekday: day,
         category: selectedCategoryId,
         subtype: selectedSubtype,
-        start_time: draftTime || null,
+        start_time: timeArmed ? draftTime || null : null,
         duration_minutes: draftDurationMinutes,
         amount: timed ? draftDurationMinutes : amount > 0 ? amount : null,
       }),
     ])
     clearDraft()
   }
+
+  useEffect(() => {
+    if (!editingSlotId || addingDay == null) return
+    if (!selectedCategoryId || !selectedType) return
+    if (needsSubtype && !selectedSubtype) return
+    if (draftDurationMinutes <= 0) return
+    const amount = Math.max(0, Number(draftAmount) || 0)
+    const patch = {
+      weekday: addingDay,
+      category: selectedCategoryId,
+      subtype: selectedSubtype,
+      start_time: timeArmed ? draftTime || null : null,
+      duration_minutes: draftDurationMinutes,
+      amount: timed ? draftDurationMinutes : amount > 0 ? amount : null,
+    }
+    setSlots((prev) => {
+      let changed = false
+      const next = prev.map((slot) => {
+        if (slot.id !== editingSlotId) return slot
+        if (
+          slot.weekday === patch.weekday &&
+          slot.category === patch.category &&
+          slot.subtype === patch.subtype &&
+          slot.start_time === patch.start_time &&
+          slot.duration_minutes === patch.duration_minutes &&
+          slot.amount === patch.amount
+        ) {
+          return slot
+        }
+        changed = true
+        return { ...slot, ...patch }
+      })
+      return changed ? next : prev
+    })
+  }, [
+    editingSlotId,
+    addingDay,
+    selectedCategoryId,
+    selectedSubtype,
+    selectedType,
+    needsSubtype,
+    timeArmed,
+    draftTime,
+    draftDurationMinutes,
+    draftAmount,
+    timed,
+  ])
 
   const removeSlot = (id: string) => {
     setSlots((prev) => prev.filter((slot) => slot.id !== id))
@@ -250,22 +315,34 @@ export function ExerciseWeekEditModal({
       /* ignore */
     }
 
-    const next: DragState = {
-      slot,
-      x: event.clientX,
-      y: event.clientY,
-      width: rect.width,
-      overDay: slot.weekday,
-      overIndex: insertIndexAtPoint(slot.weekday, event.clientY, slot.id),
+    const originX = event.clientX
+    const originY = event.clientY
+    let dragging = false
+
+    const beginDrag = (clientX: number, clientY: number) => {
+      dragging = true
+      const overDay = dayAtPoint(clientX, clientY) ?? slot.weekday
+      const next: DragState = {
+        slot,
+        x: clientX,
+        y: clientY,
+        width: rect.width,
+        overDay,
+        overIndex: insertIndexAtPoint(overDay, clientY, slot.id),
+      }
+      dragRef.current = next
+      setDrag(next)
+      setAddingDay(null)
+      setEditingSlotId(null)
     }
-    dragRef.current = next
-    setDrag(next)
-    setAddingDay(null)
 
     const onMove = (ev: PointerEvent) => {
+      if (!dragging) {
+        if (Math.hypot(ev.clientX - originX, ev.clientY - originY) < 6) return
+        beginDrag(ev.clientX, ev.clientY)
+      }
       const overDay = dayAtPoint(ev.clientX, ev.clientY)
-      const overIndex =
-        overDay == null ? 0 : insertIndexAtPoint(overDay, ev.clientY, slot.id)
+      const overIndex = overDay == null ? 0 : insertIndexAtPoint(overDay, ev.clientY, slot.id)
       const following: DragState = {
         slot,
         x: ev.clientX,
@@ -291,13 +368,13 @@ export function ExerciseWeekEditModal({
       } catch {
         /* already released */
       }
+      if (!dragging) {
+        openSlotEditor(slot)
+        return
+      }
       const overDay = dayAtPoint(ev.clientX, ev.clientY)
       if (overDay != null) {
-        moveSlotToDay(
-          slot.id,
-          overDay,
-          insertIndexAtPoint(overDay, ev.clientY, slot.id),
-        )
+        moveSlotToDay(slot.id, overDay, insertIndexAtPoint(overDay, ev.clientY, slot.id))
       }
       dragRef.current = null
       setDrag(null)
@@ -438,7 +515,10 @@ export function ExerciseWeekEditModal({
                                     data-week-slot={slot.id}
                                     onPointerDown={(event) => startSlotDrag(slot, event)}
                                     className={cn(
-                                      'cursor-grab touch-none select-none rounded-md border border-zinc-800/80 bg-zinc-900/80 px-1.5 py-1.5 [-webkit-touch-callout:none] sm:px-2',
+                                      'cursor-grab touch-none select-none rounded-md border bg-zinc-900/80 px-1.5 py-1.5 [-webkit-touch-callout:none] sm:px-2',
+                                      editingSlotId === slot.id
+                                        ? 'border-[var(--accent-500)]/70'
+                                        : 'border-zinc-800/80',
                                       isDragging
                                         ? 'cursor-grabbing opacity-30'
                                         : 'hover:border-zinc-700',
@@ -503,7 +583,7 @@ export function ExerciseWeekEditModal({
               {addingDay != null && (
                 <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3">
                   <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Add to {weekdayLabel(addingDay)}
+                    {editingSlotId ? 'Edit' : 'Add to'} {weekdayLabel(addingDay)}
                   </p>
                   {workoutTypes.length === 0 ? (
                     <p className="text-sm text-zinc-500">
@@ -558,17 +638,50 @@ export function ExerciseWeekEditModal({
 
                       {selectedCategoryId && (!needsSubtype || selectedSubtype) && (
                         <div className="grid grid-cols-2 gap-1.5">
-                          <label className="min-w-0">
+                          <div className="min-w-0">
                             <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                               Time
                             </span>
-                            <TimeInput
-                              value={draftTime}
-                              onChange={setDraftTime}
-                              step={1800}
-                              className="w-full"
-                            />
-                          </label>
+                            {timeArmed ? (
+                              <div className="flex items-center gap-1">
+                                <TimeInput
+                                  key={timeFocusKey}
+                                  value={draftTime || '07:00'}
+                                  onChange={(next) => {
+                                    setDraftTime(next)
+                                    setTimeArmed(true)
+                                  }}
+                                  step={1800}
+                                  autoFocus={timeFocusKey > 0}
+                                  className="min-w-0 flex-1"
+                                />
+                                <button
+                                  type="button"
+                                  className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                                  aria-label="Remove start time"
+                                  onClick={() => {
+                                    setDraftTime('')
+                                    setTimeArmed(false)
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDraftTime('07:00')
+                                  setTimeArmed(true)
+                                  setTimeFocusKey((key) => key + 1)
+                                }}
+                                className="flex w-full items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/40 px-2 py-1.5 text-sm text-zinc-600"
+                              >
+                                <span>Start time</span>
+                                <Clock size={14} className="shrink-0 text-zinc-600" />
+                              </button>
+                            )}
+                          </div>
                           {timed ? (
                             <label className="min-w-0">
                               <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
@@ -601,15 +714,17 @@ export function ExerciseWeekEditModal({
                         </div>
                       )}
 
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={!canAdd}
-                        onClick={() => addSlot(addingDay)}
-                      >
-                        <Plus size={14} />
-                        Add to {weekdayLabel(addingDay)}
-                      </Button>
+                      {!editingSlotId && (
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          disabled={!canAdd}
+                          onClick={() => addSlot(addingDay)}
+                        >
+                          <Plus size={14} />
+                          Add to {weekdayLabel(addingDay)}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

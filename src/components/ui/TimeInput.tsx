@@ -25,6 +25,7 @@ interface TimeInputProps {
   step?: number
   compact?: boolean
   className?: string
+  autoFocus?: boolean
   'aria-label'?: string
 }
 
@@ -35,6 +36,7 @@ export function TimeInput({
   step = 60,
   compact = false,
   className,
+  autoFocus = false,
   'aria-label': ariaLabel,
 }: TimeInputProps) {
   const { settings } = useSettings()
@@ -69,6 +71,7 @@ export function TimeInput({
       <input
         type="time"
         step={step}
+        autoFocus={autoFocus}
         value={value}
         aria-label={ariaLabel ?? 'Time'}
         onChange={(event) => {

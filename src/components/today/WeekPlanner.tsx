@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useSettings } from '@/context/SettingsContext'
 import {
   beginPlannedWorkoutDrag,
@@ -20,10 +20,18 @@ import { applyExerciseWeekTemplateToDates } from '@/lib/exerciseWeekTemplate'
 import {
   createScheduleBlock,
   fetchScheduleBlocksForDate,
+  isGreyBlock,
   persistScheduleBlock,
   removeScheduleBlock,
+  replaceScheduleBlocksForDate,
   setScheduleBlockColor,
 } from '@/lib/scheduleBlock'
+import { removeScheduleBlockAlarm } from '@/lib/scheduleBlockAlarms'
+import {
+  getScheduleTemplates,
+  scheduleBlocksFromTemplate,
+  type ScheduleTemplate,
+} from '@/lib/scheduleTemplates'
 import { getScheduleColorPresets, isWorkoutScheduleColor } from '@/lib/scheduleColors'
 import {
   formatWorkoutPlanLabel,
@@ -31,7 +39,7 @@ import {
   getWorkoutTypes,
   isTimedWorkoutUnit,
 } from '@/lib/workoutTypes'
-import { GREY_BLOCK_HEX, type ScheduleBlock } from '@/types'
+import { GREY_BLOCK_HEX, GREY_BLOCK_TITLE, type ScheduleBlock } from '@/types'
 import {
   cn,
   formatDate,
@@ -43,7 +51,9 @@ import {
   parseTimeToMinutes,
 } from '@/lib/utils'
 
-const HOUR_HEIGHT = 56
+const MIN_HOUR_HEIGHT = 56
+const BLOCK_MOVE_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
+const RESIZE_HANDLE_MAX = 22
 const SNAP = 30
 const GUTTER = '4.25rem'
 
@@ -68,6 +78,27 @@ type Gesture =
       moved: boolean
     }
   | { kind: 'resize'; id: string; edge: 'start' | 'end'; date: string; start: number; end: number }
+
+function isUnsetBlockTitle(title: string) {
+  const trimmed = title.trim()
+  return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
+}
+
+function minutesOnDay(minutes: number) {
+  const date = new Date()
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0)
+  return date
+}
+
+function weekBlockFill(block: ScheduleBlock) {
+  if (isGreyBlock(block)) return 'rgb(42 42 48)'
+  return `color-mix(in srgb, ${block.color} 24%, rgb(9 9 11))`
+}
+
+function resizeHandleHeight(blockHeight: number) {
+  const leavesAGrip = Math.max(8, (blockHeight - 24) / 2)
+  return Math.min(RESIZE_HANDLE_MAX, leavesAGrip)
+}
 
 function snapMinutes(minutes: number) {
   return Math.round(minutes / SNAP) * SNAP
@@ -153,10 +184,16 @@ export function WeekPlanner({
   const [loading, setLoading] = useState(true)
   const [gesture, setGesture] = useState<Gesture | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [colorChosenIds, setColorChosenIds] = useState<Set<string>>(() => new Set())
+  const [titleFocus, setTitleFocus] = useState<{ id: string; select: boolean } | null>(null)
+  const titleInputRef = useRef<HTMLInputElement | null>(null)
+  const [blockMenu, setBlockMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [dayMenu, setDayMenu] = useState<{ date: string; x: number; y: number } | null>(null)
   const [planDrop, setPlanDrop] = useState<{ date: string; start: number; end: number } | null>(null)
   const [now, setNow] = useState(() => new Date())
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [scheduleViewport, setScheduleViewport] = useState(0)
   const gestureRef = useRef<Gesture | null>(null)
   gestureRef.current = gesture
   const beginGesture = (next: Gesture) => {
@@ -171,6 +208,8 @@ export function WeekPlanner({
   const windowStart = startHour * 60
   const windowEnd = endHour * 60
   const hours = Math.max(1, endHour - startHour)
+  const scheduleHeight = Math.max(hours * MIN_HOUR_HEIGHT, scheduleViewport)
+  const hourHeight = scheduleHeight / hours
   const today = formatDate(new Date())
 
   const reloadPlans = useCallback(() => {
@@ -222,11 +261,24 @@ export function WeekPlanner({
     return () => window.clearInterval(id)
   }, [])
 
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current
+    if (!scroller) return
+    const measure = () => {
+      const next = scroller.clientHeight
+      setScheduleViewport((current) => (Math.abs(current - next) < 0.5 ? current : next))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(scroller)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     const scroller = scrollRef.current
     if (!scroller || loading) return
     const nowMin = now.getHours() * 60 + now.getMinutes()
-    const top = ((nowMin - windowStart) / 60) * HOUR_HEIGHT - HOUR_HEIGHT
+    const top = ((nowMin - windowStart) / 60) * hourHeight - hourHeight
     scroller.scrollTop = Math.max(0, top)
     // Scroll once when the week finishes loading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,13 +292,16 @@ export function WeekPlanner({
         return
       }
       if (event.key === 'Escape') {
-        if (selectedId) setSelectedId(null)
+        if (blockMenu || dayMenu) {
+          setBlockMenu(null)
+          setDayMenu(null)
+        } else if (selectedId) setSelectedId(null)
         else onClose()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, selectedId])
+  }, [onClose, selectedId, blockMenu, dayMenu])
 
   const columnAt = (clientX: number) => {
     for (const date of weekDates) {
@@ -260,7 +315,7 @@ export function WeekPlanner({
 
   const rawMinutesAt = (clientY: number, el: HTMLElement) => {
     const rect = el.getBoundingClientRect()
-    return windowStart + ((clientY - rect.top) / HOUR_HEIGHT) * 60
+    return windowStart + ((clientY - rect.top) / hourHeight) * 60
   }
 
   const clampSpan = (start: number, end: number): { start: number; end: number } => {
@@ -436,20 +491,112 @@ export function WeekPlanner({
     unlinkPlannedWorkoutByScheduleBlockId(id)
     setBlocks((prev) => prev.filter((block) => block.id !== id))
     setSelectedId(null)
+    setBlockMenu(null)
     reloadPlans()
     onChanged?.()
   }
 
-  const recolor = async (block: ScheduleBlock, colorId: string) => {
-    const next = setScheduleBlockColor(block, colorId)
-    const saved = await persistScheduleBlock(next)
-    if (isWorkoutScheduleColor(block.activity_type) && !isWorkoutScheduleColor(saved.activity_type)) {
-      unlinkPlannedWorkoutByScheduleBlockId(saved.id)
-      reloadPlans()
+  const copyBlockToOtherDays = async (source: ScheduleBlock) => {
+    const copies = weekDates
+      .filter((date) => date !== source.date)
+      .map((date) => ({
+        ...source,
+        id: generateId(),
+        user_id: userId,
+        date,
+        created_at: new Date().toISOString(),
+      }))
+    const saved: ScheduleBlock[] = []
+    for (const copy of copies) saved.push(await persistScheduleBlock(copy))
+    if (saved.length > 0) {
+      setBlocks((prev) => [...prev, ...saved])
+      onChanged?.()
     }
-    setBlocks((prev) => prev.map((entry) => (entry.id === saved.id ? saved : entry)))
+    setBlockMenu(null)
+  }
+
+  const clearDay = async (date: string) => {
+    const existing = blocks.filter((block) => block.date === date)
+    for (const block of existing) {
+      await removeScheduleBlock(block.id)
+      unlinkPlannedWorkoutByScheduleBlockId(block.id)
+      removeScheduleBlockAlarm(block.id)
+    }
+    setBlocks((prev) => prev.filter((block) => block.date !== date))
+    setSelectedId((current) => (current && existing.some((block) => block.id === current) ? null : current))
+    setDayMenu(null)
+    reloadPlans()
     onChanged?.()
   }
+
+  const applyTemplateToDay = async (date: string, template: ScheduleTemplate) => {
+    if (template.blocks.length === 0) {
+      setDayMenu(null)
+      return
+    }
+    const existing = blocks.filter((block) => block.date === date)
+    const next = scheduleBlocksFromTemplate(template, date, userId)
+    const saved = await replaceScheduleBlocksForDate(existing, next, {
+      preservePlanLinkedForDate: date,
+    })
+    const kept = new Set(saved.map((block) => block.id))
+    for (const block of existing) {
+      if (kept.has(block.id)) continue
+      removeScheduleBlockAlarm(block.id)
+    }
+    setBlocks((prev) => [...prev.filter((block) => block.date !== date), ...saved])
+    setSelectedId((current) => (current && kept.has(current) ? current : null))
+    setDayMenu(null)
+    reloadPlans()
+    onChanged?.()
+  }
+
+  useEffect(() => {
+    if (!blockMenu && !dayMenu) return
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-block-menu]')) return
+      setBlockMenu(null)
+      setDayMenu(null)
+    }
+    window.addEventListener('mousedown', onPointer, true)
+    return () => window.removeEventListener('mousedown', onPointer, true)
+  }, [blockMenu, dayMenu])
+
+  const chooseColor = (block: ScheduleBlock, colorId: string) => {
+    setColorChosenIds((prev) => {
+      const next = new Set(prev)
+      next.add(block.id)
+      return next
+    })
+    setSelectedId(block.id)
+    const colored = setScheduleBlockColor(block, colorId)
+    const next = colorId === 'grey' ? { ...colored, title: '' } : colored
+    setBlocks((prev) => prev.map((entry) => (entry.id === block.id ? next : entry)))
+    setTitleFocus({ id: block.id, select: colorId !== 'grey' })
+    void persistScheduleBlock(next).then((saved) => {
+      if (isWorkoutScheduleColor(block.activity_type) && !isWorkoutScheduleColor(saved.activity_type)) {
+        unlinkPlannedWorkoutByScheduleBlockId(saved.id)
+        reloadPlans()
+      }
+      setBlocks((prev) =>
+        prev.map((entry) =>
+          entry.id === saved.id ? { ...saved, title: colorId === 'grey' ? entry.title : saved.title } : entry,
+        ),
+      )
+      onChanged?.()
+    })
+  }
+
+  useLayoutEffect(() => {
+    if (!titleFocus) return
+    const input = titleInputRef.current
+    if (!input) return
+    input.focus()
+    if (titleFocus.select && input.value) input.select()
+    else input.setSelectionRange(input.value.length, input.value.length)
+    setTitleFocus(null)
+  }, [titleFocus, blocks])
 
   const rename = async (block: ScheduleBlock, title: string) => {
     const saved = await persistScheduleBlock({ ...block, title })
@@ -472,9 +619,8 @@ export function WeekPlanner({
 
   const nowMin = now.getHours() * 60 + now.getMinutes()
   const showNow = weekDates.includes(today) && nowMin >= windowStart && nowMin <= windowEnd
-  const nowTop = ((nowMin - windowStart) / 60) * HOUR_HEIGHT
+  const nowTop = ((nowMin - windowStart) / 60) * hourHeight
   const todayIndex = weekDates.indexOf(today)
-  const selected = blocks.find((block) => block.id === selectedId) ?? null
   const colors = getScheduleColorPresets()
   const types = getWorkoutTypes()
 
@@ -516,42 +662,6 @@ export function WeekPlanner({
             <ChevronRight size={18} />
           </button>
           <h2 className="truncate text-lg font-semibold">{weekTitle(weekDates)}</h2>
-          {selected && (
-            <div className="ml-3 hidden items-center gap-1.5 sm:flex">
-              <button
-                type="button"
-                aria-label="Grey"
-                className={cn(
-                  'h-4 w-4 rounded-full ring-1 ring-white/20',
-                  selected.activity_type === 'grey' && 'ring-2 ring-white',
-                )}
-                style={{ backgroundColor: GREY_BLOCK_HEX }}
-                onClick={() => void recolor(selected, 'grey')}
-              />
-              {colors.map((color) => (
-                <button
-                  key={color.id}
-                  type="button"
-                  aria-label={color.label}
-                  title={color.label}
-                  className={cn(
-                    'h-4 w-4 rounded-full',
-                    selected.activity_type === color.id && 'ring-2 ring-white',
-                  )}
-                  style={{ backgroundColor: color.hex }}
-                  onClick={() => void recolor(selected, color.id)}
-                />
-              ))}
-              <button
-                type="button"
-                className="ml-1 rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-red-300"
-                aria-label="Delete block"
-                onClick={() => void removeSelected(selected.id)}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          )}
         </div>
         <button
           type="button"
@@ -614,10 +724,17 @@ export function WeekPlanner({
                               style={{ backgroundColor: type?.color || 'var(--accent-500)' }}
                             />
                             <span className="min-w-0 truncate font-medium">{title}</span>
+                            {item.schedule_block_id && (
+                              <Check
+                                size={13}
+                                strokeWidth={2.75}
+                                className="ml-auto shrink-0 text-emerald-400"
+                                aria-label="Placed on the week"
+                              />
+                            )}
                           </span>
                           <span className="mt-0.5 block pl-3 text-[10px] text-zinc-500">
                             {formatDuration(duration)}
-                            {item.schedule_block_id ? ' · on the week' : ''}
                           </span>
                         </li>
                       )
@@ -642,7 +759,16 @@ export function WeekPlanner({
               const day = parseLocalDate(date)
               const isToday = date === today
               return (
-                <div key={date} className="px-1 py-2 text-center">
+                <div
+                  key={date}
+                  className="px-1 py-2 text-center"
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setBlockMenu(null)
+                    setDayMenu({ date, x: event.clientX, y: event.clientY })
+                  }}
+                >
                   <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                     {day.toLocaleDateString(undefined, { weekday: 'short' })}
                   </p>
@@ -663,7 +789,7 @@ export function WeekPlanner({
             {loading ? (
               <p className="px-4 py-8 text-sm text-zinc-500">Loading week…</p>
             ) : (
-              <div className="relative" style={{ height: hours * HOUR_HEIGHT }}>
+              <div className="relative" style={{ height: hours * hourHeight }}>
                 <div
                   className="grid h-full"
                   style={{ gridTemplateColumns: `${GUTTER} repeat(7, minmax(0, 1fr))` }}
@@ -672,10 +798,13 @@ export function WeekPlanner({
                     {Array.from({ length: hours }, (_, index) => (
                       <div
                         key={startHour + index}
-                        className="absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-zinc-600"
-                        style={{ top: index * HOUR_HEIGHT }}
+                        className={cn(
+                          'absolute right-2 text-[10px] tabular-nums text-zinc-600',
+                          index === 0 ? 'top-3' : '-translate-y-1/2',
+                        )}
+                        style={index === 0 ? undefined : { top: index * hourHeight }}
                       >
-                        {index === 0 ? '' : hourLabel(startHour + index, use24h)}
+                        {hourLabel(startHour + index, use24h)}
                       </div>
                     ))}
                   </div>
@@ -702,6 +831,7 @@ export function WeekPlanner({
                         }}
                         className="relative border-l border-zinc-800/70"
                         onMouseDown={(event) => {
+                          if (event.button !== 0) return
                           if (event.target !== event.currentTarget) return
                           const start = snapMinutes(rawMinutesAt(event.clientY, event.currentTarget))
                           const clamped = Math.max(windowStart, Math.min(windowEnd - SNAP, start))
@@ -740,7 +870,7 @@ export function WeekPlanner({
                           <div
                             key={index}
                             className="pointer-events-none absolute inset-x-0 border-t border-zinc-800/80"
-                            style={{ top: index * HOUR_HEIGHT, height: HOUR_HEIGHT }}
+                            style={{ top: index * hourHeight, height: hourHeight }}
                           >
                             <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-zinc-800/50" />
                           </div>
@@ -748,23 +878,36 @@ export function WeekPlanner({
 
                         {createPreview?.date === date && (
                           <div
-                            className="pointer-events-none absolute z-[3] rounded-md border border-dashed border-[var(--accent-400)] bg-[var(--accent-500)]/20"
+                            className="pointer-events-none absolute z-[3] flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--accent-400)]/60 bg-[var(--accent-500)]/10 transition-[top,height] duration-150 ease-out"
                             style={{
-                              top: ((createPreview.start - windowStart) / 60) * HOUR_HEIGHT,
-                              height: ((createPreview.end - createPreview.start) / 60) * HOUR_HEIGHT,
+                              top: ((createPreview.start - windowStart) / 60) * hourHeight,
+                              height: ((createPreview.end - createPreview.start) / 60) * hourHeight,
                               left: 2,
                               right: 2,
                             }}
-                          />
+                          >
+                            {createPreview.end - createPreview.start >= SNAP && (
+                              <div className="flex flex-col items-center gap-0.5 px-1 text-center">
+                                <span className="text-[11px] font-semibold tabular-nums text-[var(--accent-300)]">
+                                  {formatDuration(createPreview.end - createPreview.start)}
+                                </span>
+                                <span className="text-[10px] tabular-nums text-[var(--accent-300)]/75">
+                                  {formatTime(minutesOnDay(createPreview.start))}
+                                  {' – '}
+                                  {formatTime(minutesOnDay(createPreview.end))}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {planDrop?.date === date && (
                           <div
-                            className="pointer-events-none absolute z-[3] rounded-md border border-dashed border-rose-400/80 bg-rose-500/20"
+                            className="pointer-events-none absolute z-[3] rounded-lg border-2 border-dashed border-red-400/70 bg-red-500/15 transition-[top,height] duration-150 ease-out"
                             style={{
-                              top: ((planDrop.start - windowStart) / 60) * HOUR_HEIGHT,
+                              top: ((planDrop.start - windowStart) / 60) * hourHeight,
                               height: Math.max(
-                                ((planDrop.end - planDrop.start) / 60) * HOUR_HEIGHT,
+                                ((planDrop.end - planDrop.start) / 60) * hourHeight,
                                 18,
                               ),
                               left: 2,
@@ -775,19 +918,47 @@ export function WeekPlanner({
 
                         {laidOut.map((item) => {
                           const { block, start, end, col, cols } = item
-                          const top = ((start - windowStart) / 60) * HOUR_HEIGHT
-                          const height = Math.max(((end - start) / 60) * HOUR_HEIGHT, 18)
+                          const touchGap = 4
+                          const touchesNext = laidOut.some(
+                            (other) => other.block.id !== block.id && other.start === end,
+                          )
+                          const touchesPrev = laidOut.some(
+                            (other) => other.block.id !== block.id && other.end === start,
+                          )
+                          const gapBefore = touchesPrev ? touchGap / 2 : 0
+                          const gapAfter = touchesNext ? touchGap / 2 : 0
+                          const top = ((start - windowStart) / 60) * hourHeight + gapBefore
+                          const height = Math.max(
+                            ((end - start) / 60) * hourHeight - gapBefore - gapAfter,
+                            18,
+                          )
+                          const edge = resizeHandleHeight(height)
+                          const isHalfHour = end - start <= SNAP
                           const selectedBlock = selectedId === block.id
-                          const startDate = new Date()
-                          startDate.setHours(Math.floor(start / 60), start % 60, 0, 0)
-                          const endDate = new Date()
-                          endDate.setHours(Math.floor(end / 60), end % 60, 0, 0)
+                          const awaitingColor =
+                            isGreyBlock(block) &&
+                            isUnsetBlockTitle(block.title) &&
+                            !colorChosenIds.has(block.id)
+                          const blockFill = weekBlockFill(block)
+                          const edgeTone = `color-mix(in srgb, ${block.color || GREY_BLOCK_HEX} 55%, white)`
+                          const resizeEdge =
+                            gesture?.kind === 'resize' && gesture.id === block.id ? gesture.edge : null
+                          const isLiveGesture =
+                            (gesture?.kind === 'move' || gesture?.kind === 'resize') &&
+                            gesture.id === block.id
                           return (
                             <div
                               key={block.id}
                               className={cn(
-                                'absolute z-[2] overflow-hidden rounded-md px-1.5 py-1 text-left shadow-md',
+                                'absolute rounded-lg border px-1.5 text-left shadow-md',
+                                isHalfHour ? 'flex flex-col justify-center' : 'py-1',
+                                selectedBlock
+                                  ? 'z-[4] overflow-visible'
+                                  : isLiveGesture
+                                    ? 'z-[3] overflow-hidden'
+                                    : 'z-[2] overflow-hidden',
                                 selectedBlock && 'ring-2 ring-white/80',
+                                isLiveGesture && 'shadow-lg shadow-black/40',
                                 gesture?.kind === 'move' && gesture.id === block.id
                                   ? 'cursor-grabbing'
                                   : 'cursor-grab',
@@ -797,10 +968,18 @@ export function WeekPlanner({
                                 height,
                                 left: `calc(${(col / cols) * 100}% + 2px)`,
                                 width: `calc(${100 / cols}% - 4px)`,
-                                backgroundColor: block.color || GREY_BLOCK_HEX,
-                                color: '#18181b',
+                                paddingTop: isHalfHour ? 0 : edge,
+                                borderColor: blockFill,
+                                backgroundColor: blockFill,
+                                transition: `top 150ms ${BLOCK_MOVE_EASE}, height 150ms ${BLOCK_MOVE_EASE}, left 150ms ${BLOCK_MOVE_EASE}, width 150ms ${BLOCK_MOVE_EASE}, box-shadow 150ms ease, border-color 150ms ease, background-color 150ms ease`,
+                              }}
+                              onContextMenu={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                setBlockMenu({ id: block.id, x: event.clientX, y: event.clientY })
                               }}
                               onMouseDown={(event) => {
+                                if (event.button !== 0) return
                                 const target = event.target as HTMLElement
                                 if (target.closest('input, button, [data-resize-handle]')) return
                                 event.stopPropagation()
@@ -819,36 +998,117 @@ export function WeekPlanner({
                                 })
                               }}
                             >
-                              {selectedBlock ? (
-                                <input
-                                  value={block.title}
-                                  aria-label="Block title"
-                                  className="w-full bg-transparent text-[11px] font-semibold leading-tight text-zinc-950 outline-none"
+                              {awaitingColor ? (
+                                <div
+                                  className="flex flex-wrap items-center gap-1"
                                   onMouseDown={(event) => event.stopPropagation()}
-                                  onChange={(event) => {
-                                    const title = event.target.value
-                                    setBlocks((prev) =>
-                                      prev.map((entry) =>
-                                        entry.id === block.id ? { ...entry, title } : entry,
-                                      ),
-                                    )
-                                  }}
-                                  onBlur={(event) => void rename(block, event.target.value)}
-                                />
+                                >
+                                  <button
+                                    type="button"
+                                    aria-label="Grey"
+                                    className="h-3.5 w-3.5 rounded-full ring-1 ring-black/30"
+                                    style={{ backgroundColor: GREY_BLOCK_HEX }}
+                                    onClick={() => chooseColor(block, 'grey')}
+                                  />
+                                  {colors.map((color) => (
+                                    <button
+                                      key={color.id}
+                                      type="button"
+                                      aria-label={color.label}
+                                      title={color.label}
+                                      className="h-3.5 w-3.5 rounded-full"
+                                      style={{ backgroundColor: color.hex }}
+                                      onClick={() => chooseColor(block, color.id)}
+                                    />
+                                  ))}
+                                </div>
                               ) : (
-                                <p className="truncate text-[11px] font-semibold leading-tight">
-                                  {block.title}
-                                </p>
-                              )}
-                              {height > 36 && (
-                                <p className="truncate text-[10px] leading-tight opacity-80">
-                                  {formatTime(startDate)} – {formatTime(endDate)}
-                                </p>
+                                <>
+                                  {selectedBlock ? (
+                                    <input
+                                      ref={titleInputRef}
+                                      value={block.title}
+                                      aria-label="Block title"
+                                      placeholder=""
+                                      className={cn(
+                                        'w-full border-0 bg-transparent p-0 text-[11px] font-semibold text-zinc-100 outline-none placeholder:text-zinc-500',
+                                        isHalfHour ? 'min-h-0 appearance-none leading-none' : 'leading-tight',
+                                      )}
+                                      onMouseDown={(event) => event.stopPropagation()}
+                                      onKeyDown={(event) => {
+                                        if (event.key !== 'Enter') return
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        event.currentTarget.blur()
+                                        setSelectedId(null)
+                                      }}
+                                      onChange={(event) => {
+                                        const title = event.target.value
+                                        setBlocks((prev) =>
+                                          prev.map((entry) =>
+                                            entry.id === block.id ? { ...entry, title } : entry,
+                                          ),
+                                        )
+                                      }}
+                                      onBlur={(event) => void rename(block, event.target.value)}
+                                    />
+                                  ) : (
+                                    <p
+                                      className={cn(
+                                        'truncate text-[11px] font-semibold text-zinc-100',
+                                        isHalfHour ? 'leading-none' : 'leading-tight',
+                                      )}
+                                    >
+                                      {block.title}
+                                    </p>
+                                  )}
+                                  {height > 36 && (
+                                    <p
+                                      className={cn(
+                                        'truncate text-[10px] text-zinc-400',
+                                        isHalfHour ? 'leading-none' : 'leading-tight',
+                                      )}
+                                    >
+                                      {formatTime(minutesOnDay(start))} – {formatTime(minutesOnDay(end))}
+                                    </p>
+                                  )}
+                                </>
                               )}
                               <div
                                 data-resize-handle
-                                className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"
+                                className="group/edge absolute inset-x-0 top-0 z-30 cursor-ns-resize"
+                                style={{ height: edge }}
                                 onMouseDown={(event) => {
+                                  if (event.button !== 0) return
+                                  event.stopPropagation()
+                                  const span = displayOf(block)
+                                  beginGesture({
+                                    kind: 'resize',
+                                    id: block.id,
+                                    edge: 'start',
+                                    date: span.date,
+                                    start: span.start,
+                                    end: span.end,
+                                  })
+                                }}
+                              >
+                                <div
+                                  aria-hidden
+                                  className={cn(
+                                    'pointer-events-none absolute inset-x-0 top-0 rounded-t-lg transition-[height,opacity,background-color] duration-150',
+                                    resizeEdge === 'start'
+                                      ? 'h-[2.5px] opacity-100'
+                                      : 'h-0 opacity-0 group-hover/edge:h-[2.5px] group-hover/edge:opacity-100',
+                                  )}
+                                  style={{ backgroundColor: edgeTone }}
+                                />
+                              </div>
+                              <div
+                                data-resize-handle
+                                className="group/edge absolute inset-x-0 bottom-0 z-30 cursor-ns-resize"
+                                style={{ height: edge }}
+                                onMouseDown={(event) => {
+                                  if (event.button !== 0) return
                                   event.stopPropagation()
                                   const span = displayOf(block)
                                   beginGesture({
@@ -860,7 +1120,18 @@ export function WeekPlanner({
                                     end: span.end,
                                   })
                                 }}
-                              />
+                              >
+                                <div
+                                  aria-hidden
+                                  className={cn(
+                                    'pointer-events-none absolute inset-x-0 bottom-0 rounded-b-lg transition-[height,opacity,background-color] duration-150',
+                                    resizeEdge === 'end'
+                                      ? 'h-[2.5px] opacity-100'
+                                      : 'h-0 opacity-0 group-hover/edge:h-[2.5px] group-hover/edge:opacity-100',
+                                  )}
+                                  style={{ backgroundColor: edgeTone }}
+                                />
+                              </div>
                             </div>
                           )
                         })}
@@ -888,6 +1159,75 @@ export function WeekPlanner({
           </div>
         </div>
       </div>
+      {blockMenu &&
+        (() => {
+          const source = blocks.find((block) => block.id === blockMenu.id)
+          if (!source) return null
+          const left = Math.max(8, Math.min(blockMenu.x, window.innerWidth - 200))
+          const top = Math.max(8, Math.min(blockMenu.y, window.innerHeight - 96))
+          return (
+            <div
+              data-block-menu
+              className="fixed z-50 min-w-[11.5rem] overflow-hidden rounded-lg border border-zinc-700/80 bg-zinc-950 py-1 shadow-xl"
+              style={{ left, top }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <button
+                type="button"
+                className="flex w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800/80"
+                onClick={() => void copyBlockToOtherDays(source)}
+              >
+                Copy to other days
+              </button>
+              <button
+                type="button"
+                className="flex w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-800/80"
+                onClick={() => void removeSelected(source.id)}
+              >
+                Delete
+              </button>
+            </div>
+          )
+        })()}
+      {dayMenu &&
+        (() => {
+          const templates = getScheduleTemplates()
+          const left = Math.max(8, Math.min(dayMenu.x, window.innerWidth - 200))
+          const top = Math.max(8, Math.min(dayMenu.y, window.innerHeight - 240))
+          return (
+            <div
+              data-block-menu
+              className="fixed z-50 max-h-72 min-w-[11.5rem] overflow-y-auto rounded-lg border border-zinc-700/80 bg-zinc-950 py-1 shadow-xl"
+              style={{ left, top }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <button
+                type="button"
+                className="flex w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-800/80"
+                onClick={() => void clearDay(dayMenu.date)}
+              >
+                Clear all
+              </button>
+              {templates.length > 0 && (
+                <>
+                  <div className="mx-2 my-1 border-t border-zinc-800" />
+                  {templates.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      className="flex w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800/80"
+                      onClick={() => void applyTemplateToDay(dayMenu.date, template)}
+                    >
+                      {template.name}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          )
+        })()}
     </div>,
     document.body,
   )

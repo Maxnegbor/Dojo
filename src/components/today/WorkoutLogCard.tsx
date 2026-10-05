@@ -247,7 +247,7 @@ export function WorkoutLogCard({
             return (
               <li
                 key={type.id}
-                className="rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-2.5 py-2"
+                className="rounded-lg bg-zinc-950/40 px-2.5 py-2"
               >
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
@@ -299,9 +299,9 @@ export function WorkoutLogCard({
                           if (e.key === 'Enter') void logWorkout(type.id)
                         }}
                         className={cn(
-                          'w-full rounded-md border border-zinc-700 bg-zinc-950 py-1 pl-1.5 pr-6 text-xs text-zinc-100',
+                          'w-full rounded-md border border-zinc-950 bg-zinc-950 py-1 pl-1.5 pr-6 text-xs text-zinc-100',
                           'placeholder:text-zinc-600 focus:border-[var(--accent-500)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)]',
-                          'disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500',
+                          'disabled:cursor-not-allowed disabled:border-zinc-950 disabled:text-zinc-500',
                           '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
                         )}
                       />

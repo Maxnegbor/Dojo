@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Bell, Trash2, X } from 'lucide-react'
-import { GREY_BLOCK_TITLE, type ScheduleBlock, type WorkoutCategory } from '@/types'
+import { Bell, Trash2 } from 'lucide-react'
+import { GREY_BLOCK_HEX, GREY_BLOCK_TITLE, type ScheduleBlock, type WorkoutCategory } from '@/types'
 import { createScheduleBlock, isGreyBlock, setScheduleBlockColor } from '@/lib/scheduleBlock'
 import {
   getScheduleColorPresets,
-  getWorkoutSchedulePreset,
-  isWorkoutScheduleColor,
   SCHEDULE_COLORS_CHANGED,
   type ScheduleColorPreset,
 } from '@/lib/scheduleColors'
@@ -23,7 +21,6 @@ import {
   formatScheduleBlockAlarmLead,
 } from '@/lib/scheduleBlockAlarms'
 import { ScheduleBlockAlarmMenu } from '@/components/schedule/ScheduleBlockAlarmMenu'
-import { getWorkoutTypes } from '@/lib/workoutTypes'
 import { useSettings } from '@/context/SettingsContext'
 import { ScheduleHourLabel } from '@/components/schedule/ScheduleHourLabel'
 import { formatHourLabel } from '@/components/settings/TimelineRangeSlider'
@@ -57,6 +54,7 @@ interface ScheduleBlockTitleInputProps {
   placeholder?: string
   inputRef?: React.Ref<HTMLInputElement>
   autoFocus?: boolean
+  centered?: boolean
 }
 
 function ScheduleBlockTitleInput({
@@ -66,20 +64,26 @@ function ScheduleBlockTitleInput({
   onBlur,
   onMouseDown,
   onKeyDown,
-  placeholder = 'New Block',
+  placeholder = '',
   inputRef,
   autoFocus,
+  centered = false,
 }: ScheduleBlockTitleInputProps) {
   const mirrorText = value || placeholder
+  const leading = centered ? 'leading-none' : 'leading-tight'
 
-  const mirrorClass =
-    'invisible col-start-1 row-start-1 whitespace-pre text-[1em] font-bold leading-tight'
+  const mirrorClass = cn(
+    'invisible col-start-1 row-start-1 whitespace-pre text-[1em] font-bold',
+    leading,
+  )
 
-  const inputClass =
-    'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text bg-transparent px-0 py-0 text-[1em] font-bold leading-tight text-zinc-100 outline-none focus:outline-none'
+  const inputClass = cn(
+    'col-start-1 row-start-1 min-h-0 min-w-[3ch] w-full cursor-text border-0 bg-transparent p-0 text-[1em] font-bold text-zinc-100 outline-none focus:outline-none',
+    leading,
+  )
 
   return (
-    <div className="inline-grid w-fit max-w-full">
+    <div className="inline-grid w-fit min-w-[4.5rem] max-w-full">
       <span aria-hidden className={mirrorClass}>
         {mirrorText}
       </span>
@@ -129,136 +133,53 @@ function isDefaultGreyTitle(title: string) {
   return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
 }
 
-function blockHasChosenWorkoutType(title: string): boolean {
-  const trimmed = title.trim()
-  if (!trimmed || isDefaultGreyTitle(trimmed)) return false
-  return getWorkoutTypes().some(
-    // Planned sessions include a subtype, e.g. "Strength · Push".
-    (type) => type.label === trimmed || trimmed.startsWith(`${type.label} · `),
-  )
-}
-
-function ScheduleBlockWorkoutTypePicker({
-  block,
-  onAssignExercise,
-  onCancel,
-  compact = false,
-}: {
-  block: ScheduleBlock
-  onAssignExercise: (block: ScheduleBlock, category: WorkoutCategory) => void
-  onCancel?: () => void
-  compact?: boolean
-}) {
-  const workoutTypes = useMemo(() => getWorkoutTypes(), [])
-  if (workoutTypes.length === 0) return null
-
-  return (
-    <div
-      className={cn('flex flex-wrap items-center gap-1', compact ? 'mt-1' : 'mt-1.5')}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <span className="w-full text-[9px] font-medium uppercase tracking-wide text-zinc-500">
-        Choose workout
-      </span>
-      {workoutTypes.map((type) => (
-        <button
-          key={type.id}
-          type="button"
-          title={type.label}
-          className="max-w-[5.5rem] truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-black shadow-sm transition-transform hover:scale-105"
-          style={{ backgroundColor: 'var(--accent-500)' }}
-          onClick={(e) => {
-            e.stopPropagation()
-            onAssignExercise(block, type.id)
-          }}
-        >
-          {type.label}
-        </button>
-      ))}
-      {onCancel ? (
-        <button
-          type="button"
-          aria-label="Cancel workout pick"
-          className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-          onClick={(e) => {
-            e.stopPropagation()
-            onCancel()
-          }}
-        >
-          <X size={11} />
-        </button>
-      ) : null}
-    </div>
-  )
-}
-
 function ScheduleBlockColorPicker({
   block,
   onUpdate,
-  onAssignExercise,
   compact = false,
   presets,
 }: {
   block: ScheduleBlock
   onUpdate: (block: ScheduleBlock) => void
-  onAssignExercise?: (block: ScheduleBlock, category: WorkoutCategory) => void
   compact?: boolean
   presets: ScheduleColorPreset[]
 }) {
-  const [pickingExercise, setPickingExercise] = useState(false)
-  const workoutTypes = useMemo(() => getWorkoutTypes(), [])
-  const workoutPresetId = useMemo(() => getWorkoutSchedulePreset().id, [presets])
-
-  useEffect(() => {
-    setPickingExercise(false)
-  }, [block.id, block.activity_type])
-
   if (!isGreyBlock(block)) return null
-
-  if (pickingExercise) {
-    return (
-      <ScheduleBlockWorkoutTypePicker
-        block={block}
-        compact={compact}
-        onCancel={() => setPickingExercise(false)}
-        onAssignExercise={(nextBlock, category) => {
-          onAssignExercise?.(nextBlock, category)
-          setPickingExercise(false)
-        }}
-      />
-    )
-  }
 
   return (
     <div className={cn('flex flex-wrap items-center gap-1.5', compact ? 'mt-1' : 'mt-1.5')}>
-      {presets.map((preset) => {
-        const isWorkout = preset.role === 'workout' || preset.id === workoutPresetId
-        return (
-          <button
-            key={preset.id}
-            type="button"
-            title={
-              isWorkout && onAssignExercise && workoutTypes.length > 0
-                ? `${preset.label} — choose workout`
-                : preset.label
-            }
-            className={cn(
-              'rounded-full border-2 border-transparent opacity-80 transition-transform hover:scale-110 hover:opacity-100',
-              compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
-            )}
-            style={{ backgroundColor: preset.hex }}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (isWorkout && onAssignExercise && workoutTypes.length > 0) {
-                setPickingExercise(true)
-                return
-              }
-              onUpdate(setScheduleBlockColor(block, preset.id))
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          />
-        )
-      })}
+      <button
+        type="button"
+        aria-label="Grey"
+        title="Grey"
+        className={cn(
+          'rounded-full ring-1 ring-black/30 transition-transform hover:scale-110',
+          compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+        )}
+        style={{ backgroundColor: GREY_BLOCK_HEX }}
+        onClick={(event) => {
+          event.stopPropagation()
+          onUpdate({ ...setScheduleBlockColor(block, 'grey'), title: '' })
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      />
+      {presets.map((preset) => (
+        <button
+          key={preset.id}
+          type="button"
+          title={preset.label}
+          className={cn(
+            'rounded-full border-2 border-transparent opacity-80 transition-transform hover:scale-110 hover:opacity-100',
+            compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+          )}
+          style={{ backgroundColor: preset.hex }}
+          onClick={(event) => {
+            event.stopPropagation()
+            onUpdate(setScheduleBlockColor(block, preset.id))
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        />
+      ))}
     </div>
   )
 }
@@ -315,7 +236,6 @@ export function HourlyTimeline({
   onUpdate,
   onDelete,
   onCreate,
-  onAssignExercise,
   headerActions,
   onDropPlannedWorkout,
   screensaver = false,
@@ -848,9 +768,6 @@ export function HourlyTimeline({
           end_time: minutesToTime(endMin),
         })
         onCreate(block)
-        setEditingTitleId(block.id)
-        setTitleEdits((prev) => ({ ...prev, [block.id]: block.title }))
-        setFocusTitleId(block.id)
       }
       setCreating(null)
       setHoverResize(null)
@@ -1143,24 +1060,43 @@ export function HourlyTimeline({
             const displayEnd = isInteracting
               ? minutesToTime(Math.round(preview.endMin))
               : block.end_time
+            const blockStart = isInteracting ? preview.startMin : parseTimeToMinutes(block.start_time)
             const blockEnd = isInteracting ? preview.endMin : parseTimeToMinutes(block.end_time)
-            const touchesNext = blocks.some((other) => other.id !== block.id &&
-              (preview?.id === other.id ? preview.startMin : parseTimeToMinutes(other.start_time)) === blockEnd)
+            const otherSpan = (other: ScheduleBlock) =>
+              preview?.id === other.id
+                ? { start: preview.startMin, end: preview.endMin }
+                : { start: parseTimeToMinutes(other.start_time), end: parseTimeToMinutes(other.end_time) }
+            const touchesNext = blocks.some(
+              (other) => other.id !== block.id && otherSpan(other).start === blockEnd,
+            )
+            const touchesPrev = blocks.some(
+              (other) => other.id !== block.id && otherSpan(other).end === blockStart,
+            )
+            const touchGap = 4
+            const gapBefore = touchesPrev ? touchGap / 2 : 0
+            const gapAfter = touchesNext ? touchGap / 2 : 0
             const topEdgeActive =
               (hoverResize?.id === block.id && hoverResize.edge === 'top') ||
               (resizing === block.id && resizeMode === 'top')
             const bottomEdgeActive =
               (hoverResize?.id === block.id && hoverResize.edge === 'bottom') ||
               (resizing === block.id && resizeMode === 'bottom')
+            const awaitingColor =
+              isGreyBlock(block) &&
+              isDefaultGreyTitle(blockTitleValue(block)) &&
+              editingTitleId !== block.id
             const blockFill = isGreyBlock(block)
-              ? 'rgb(32 32 37)'
-              : `color-mix(in srgb, ${block.color} 12%, rgb(9 9 11))`
+              ? 'rgb(42 42 48)'
+              : `color-mix(in srgb, ${block.color} 24%, rgb(9 9 11))`
             return (
               <div
                 key={block.id}
                 data-schedule-block=""
+                data-center-title={isShortInline ? '' : undefined}
+                data-awaiting-color={awaitingColor ? '' : undefined}
                 className={cn(
-                  'absolute left-0 right-0 z-[2] flex overflow-hidden rounded-lg border border-[var(--timeblock-rest-edge)] hover:border-[var(--timeblock-edge)] bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
+                  'absolute left-0 right-0 z-[2] flex overflow-hidden rounded-lg border bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
+                  !awaitingColor && 'group/block',
                   isLiveGesture && 'z-[3] shadow-lg shadow-black/40',
                   isShortInline
                     ? 'items-center px-1.5'
@@ -1171,11 +1107,9 @@ export function HourlyTimeline({
                 )}
                 style={{
                   ...style,
-                  // Overlap touching 1px borders so rounded blocks retain a single divider.
-                  height: style.height + (touchesNext ? 1 : 0),
-                  '--timeblock-rest-edge': `color-mix(in srgb, ${block.color} 25%, ${blockFill})`,
-                  '--timeblock-edge': `color-mix(in srgb, ${block.color} 55%, transparent)`,
-                  borderColor: isLiveGesture ? 'var(--timeblock-edge)' : undefined,
+                  top: style.top + gapBefore,
+                  height: Math.max(style.height - gapBefore - gapAfter, 18),
+                  borderColor: blockFill,
                   backgroundColor: blockFill,
                   transition:
                     'top 150ms cubic-bezier(0.22, 1, 0.36, 1), height 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms ease, border-color 150ms ease',
@@ -1250,6 +1184,7 @@ export function HourlyTimeline({
                 <div
                   className={cn(
                     'flex h-full min-h-0 min-w-0 flex-1 flex-col',
+                    isShortInline && 'justify-center',
                     screensaver && isShortInline && 'pr-2',
                   )}
                   style={{
@@ -1260,8 +1195,8 @@ export function HourlyTimeline({
                   <div
                     data-sticky-block-title=""
                     className={cn(
-                      'relative z-[20] flex shrink-0 items-start gap-1 will-change-transform data-[stuck=true]:rounded-t-lg',
-                      isShortInline && 'items-center',
+                      'relative z-[20] flex shrink-0 gap-1 will-change-transform data-[stuck=true]:rounded-t-lg',
+                      isShortInline ? 'h-full items-center' : 'items-start',
                       screensaver && !isShortInline && (isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1'),
                       !screensaver && isShortInline && '-mx-1.5 w-[calc(100%+0.75rem)] px-1.5',
                       !screensaver && !isShortInline && isCompact && '-mx-1.5 -mt-0.5 w-[calc(100%+0.75rem)] px-1.5 pt-0.5',
@@ -1269,6 +1204,24 @@ export function HourlyTimeline({
                     )}
                     style={{ backgroundColor: blockFill }}
                   >
+                    {awaitingColor ? (
+                      <div
+                        data-color-picker=""
+                        className="min-w-0 flex-1"
+                        onMouseDown={(event) => event.stopPropagation()}
+                      >
+                        <ScheduleBlockColorPicker
+                          block={block}
+                          onUpdate={(next) => {
+                            onUpdate(next)
+                            setEditingTitleId(next.id)
+                            setTitleEdits((prev) => ({ ...prev, [next.id]: next.title }))
+                            setFocusTitleId(next.id)
+                          }}
+                          presets={colorPresets}
+                        />
+                      </div>
+                    ) : (
                     <div className="min-w-0 flex-1">
                   {isShortInline ? (
                     <div className="flex items-center gap-1.5">
@@ -1286,16 +1239,17 @@ export function HourlyTimeline({
                             }
                           }}
                           autoFocus
+                          centered
                           inputRef={(el) => {
                             titleInputRefs.current[block.id] = el
                           }}
                         />
                       ) : (
-                        <p className="min-w-0 truncate font-bold leading-tight text-zinc-100">
+                        <p className="min-w-0 truncate font-bold leading-none text-zinc-100">
                           {blockTitleValue(block)}
                         </p>
                       )}
-                      <span className="pointer-events-none shrink-0 tabular-nums text-zinc-400" style={{ fontSize: '0.8em' }}>
+                      <span className="pointer-events-none shrink-0 tabular-nums leading-none text-zinc-400" style={{ fontSize: '0.8em' }}>
                         {formatBlockTime(displayStart)}–{formatBlockTime(displayEnd)}
                       </span>
                     </div>
@@ -1330,8 +1284,12 @@ export function HourlyTimeline({
                     </>
                   )}
                     </div>
-                    {!screensaver && (
-                      <div className="-mr-1 flex shrink-0 items-center gap-0.5">
+                    )}
+                    {!awaitingColor && !screensaver && (
+                      <div
+                        data-block-actions=""
+                        className="-mr-1 flex shrink-0 items-center gap-0.5 opacity-0 pointer-events-none transition-opacity duration-150 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100"
+                      >
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1388,25 +1346,6 @@ export function HourlyTimeline({
                       </div>
                     )}
                   </div>
-                  {isDefaultGreyTitle(blockTitleValue(block)) && (
-                    <ScheduleBlockColorPicker
-                      block={block}
-                      onUpdate={onUpdate}
-                      onAssignExercise={onAssignExercise}
-                      compact={isCompact}
-                      presets={colorPresets}
-                    />
-                  )}
-                  {onAssignExercise &&
-                    isWorkoutScheduleColor(block.activity_type) &&
-                    !isDefaultGreyTitle(blockTitleValue(block)) &&
-                    !blockHasChosenWorkoutType(blockTitleValue(block)) && (
-                      <ScheduleBlockWorkoutTypePicker
-                        block={block}
-                        compact={isCompact}
-                        onAssignExercise={onAssignExercise}
-                      />
-                    )}
                   {(editingNotesId === block.id || Boolean(blockNotesValue(block).trim())) && (
                     <div className={cn('flex min-h-0 flex-1 items-center justify-center px-1', isShortInline ? 'pb-1' : 'py-1')}>
                       {editingNotesId === block.id ? (

@@ -34,6 +34,11 @@ export function useStickyScheduleTitles(
       for (const blockEl of blocks) {
         const titleEl = blockEl.querySelector<HTMLElement>(TITLE_SELECTOR)
         if (!titleEl) continue
+        if (blockEl.hasAttribute('data-center-title')) {
+          titleEl.style.transform = ''
+          delete titleEl.dataset.stuck
+          continue
+        }
 
         const blockRect = blockEl.getBoundingClientRect()
         const offset = stickyTitleOffset(
