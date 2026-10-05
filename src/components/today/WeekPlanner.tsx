@@ -406,6 +406,7 @@ export function WeekPlanner({
     const onMove = (event: MouseEvent) => {
       const current = gestureRef.current
       if (!current) return
+      window.getSelection()?.removeAllRanges()
       const api = interactionRef.current
       const column = api.columnAt(event.clientX)
       if (!column) return
@@ -478,13 +479,32 @@ export function WeekPlanner({
       void api.saveBlock(block, { date: current.date, start: current.start, end: current.end })
     }
 
+    const blockSelect = (event: Event) => {
+      if (gestureRef.current) event.preventDefault()
+    }
+
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+    document.addEventListener('selectstart', blockSelect)
     return () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      document.removeEventListener('selectstart', blockSelect)
     }
   }, [])
+
+  useEffect(() => {
+    if (!gesture) return
+    const { userSelect } = document.body.style
+    document.body.style.userSelect = 'none'
+    document.body.style.setProperty('-webkit-user-select', 'none')
+    window.getSelection()?.removeAllRanges()
+    return () => {
+      document.body.style.userSelect = userSelect
+      document.body.style.removeProperty('-webkit-user-select')
+      window.getSelection()?.removeAllRanges()
+    }
+  }, [Boolean(gesture)])
 
   const removeSelected = async (id: string) => {
     await removeScheduleBlock(id)
@@ -833,6 +853,7 @@ export function WeekPlanner({
                         onMouseDown={(event) => {
                           if (event.button !== 0) return
                           if (event.target !== event.currentTarget) return
+                          event.preventDefault()
                           const start = snapMinutes(rawMinutesAt(event.clientY, event.currentTarget))
                           const clamped = Math.max(windowStart, Math.min(windowEnd - SNAP, start))
                           setSelectedId(null)
@@ -982,6 +1003,7 @@ export function WeekPlanner({
                                 if (event.button !== 0) return
                                 const target = event.target as HTMLElement
                                 if (target.closest('input, button, [data-resize-handle]')) return
+                                event.preventDefault()
                                 event.stopPropagation()
                                 const column = columnRefs.current[date]
                                 if (!column) return
@@ -1080,6 +1102,7 @@ export function WeekPlanner({
                                 style={{ height: edge }}
                                 onMouseDown={(event) => {
                                   if (event.button !== 0) return
+                                  event.preventDefault()
                                   event.stopPropagation()
                                   const span = displayOf(block)
                                   beginGesture({
@@ -1109,6 +1132,7 @@ export function WeekPlanner({
                                 style={{ height: edge }}
                                 onMouseDown={(event) => {
                                   if (event.button !== 0) return
+                                  event.preventDefault()
                                   event.stopPropagation()
                                   const span = displayOf(block)
                                   beginGesture({
