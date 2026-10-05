@@ -26,6 +26,8 @@ import { WeeklyShutdownModal } from '@/components/today/WeeklyShutdownModal'
 import { MonthCalendarModal } from '@/components/today/MonthCalendarModal'
 import { HabitRampFailureModal } from '@/components/today/HabitRampFailureModal'
 import { useAuth, useDailyLog } from '@/hooks/useData'
+import { useOneThing } from '@/hooks/useOneThing'
+import { nextOneThingToSet } from '@/lib/oneThingPeriods'
 import { useDailyLogDraftRevision } from '@/hooks/useDailyLogDraftRevision'
 import { usePulseConfig } from '@/hooks/usePulseConfig'
 import { useSleepMetricsConfig } from '@/hooks/useSleepMetricsConfig'
@@ -113,6 +115,10 @@ import { getPreviousWeekDates } from '@/lib/weightGoal'
 
 export function TodayPage() {
   const { settings } = useSettings()
+  const oneThing = useOneThing()
+  const oneThingPending =
+    oneThing.ready &&
+    Boolean(nextOneThingToSet(oneThing.goals, oneThing.now, oneThing.weekStartsOn))
   const isMobile = useIsMobile()
   const [homePane, setHomePane] = useState<'cards' | 'schedule'>('cards')
   const location = useLocation()
@@ -758,6 +764,12 @@ export function TodayPage() {
       {!screensaver && <RightNowHeader />}
       <div
         className={cn(
+          'flex min-h-0 flex-1 flex-col transition-[filter] duration-500',
+          oneThingPending && !screensaver && 'pointer-events-none select-none blur-md',
+        )}
+      >
+      <div
+        className={cn(
           'relative shrink-0 px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
           'transition-[max-height,opacity,filter,padding] duration-[2000ms] ease-in-out',
           screensaver ? 'overflow-hidden' : 'overflow-visible',
@@ -1015,6 +1027,7 @@ export function TodayPage() {
           )}
         </div>
         )}
+      </div>
       </div>
 
       {weekPlannerOpen && userId && (

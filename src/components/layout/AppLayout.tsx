@@ -200,10 +200,10 @@ function BottomNav({
     </nav>
   )
 }
-const SIDEBAR_EXPAND_DELAY_MS = 800
+const SIDEBAR_EXPAND_DELAY_MS = 0
 const SIDEBAR_COLLAPSE_DELAY_MS = 100
-/** Expanded width: 70% of prior w-56 (14rem). */
-const SIDEBAR_EXPANDED_WIDTH_CLASS = 'w-[9.8rem]'
+/** Wide enough for the longest label, "The One Thing". */
+const SIDEBAR_EXPANDED_WIDTH_CLASS = 'w-[11.5rem]'
 const SCREENSAVER_WAKE_MS = 1400
 
 function sidebarLabelClass(expanded: boolean) {

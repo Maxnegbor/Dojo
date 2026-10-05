@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { FocusLabelsModal } from '@/components/focus/FocusLabelsModal'
 import {
   FOCUS_LABELS_CHANGED,
   getFocusLabels,
+  resolveFocusLabelMeta,
   type FocusLabel,
 } from '@/lib/focusLabels'
 import { cn } from '@/lib/utils'
+
+const COLLAPSE_DELAY_MS = 1000
 
 interface FocusLabelPickerProps {
   value: string | null
@@ -23,6 +26,29 @@ export function FocusLabelPicker({
 }: FocusLabelPickerProps) {
   const [labels, setLabels] = useState<FocusLabel[]>(() => getFocusLabels())
   const [editorOpen, setEditorOpen] = useState(false)
+  const [open, setOpen] = useState(false)
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelCollapse = () => {
+    if (collapseTimerRef.current == null) return
+    clearTimeout(collapseTimerRef.current)
+    collapseTimerRef.current = null
+  }
+
+  const reveal = () => {
+    cancelCollapse()
+    setOpen(true)
+  }
+
+  const scheduleCollapse = () => {
+    cancelCollapse()
+    collapseTimerRef.current = setTimeout(() => {
+      collapseTimerRef.current = null
+      setOpen(false)
+    }, COLLAPSE_DELAY_MS)
+  }
+
+  useEffect(() => () => cancelCollapse(), [])
 
   useEffect(() => {
     const sync = () => setLabels(getFocusLabels())
@@ -34,12 +60,34 @@ export function FocusLabelPicker({
     }
   }, [])
 
+  const current = value ? resolveFocusLabelMeta(value) : null
+
   return (
     <div className={cn('w-full', className)}>
-      <p className="mb-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-        Working on
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-1.5">
+      <div className="-mx-8 px-8 py-3" onPointerEnter={reveal} onPointerLeave={scheduleCollapse}>
+        <p className="mb-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+          Working on
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+        {!open && (
+          <span
+            className={cn(
+              'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
+              current
+                ? 'border-transparent text-zinc-950'
+                : 'border-zinc-500 bg-zinc-800 text-zinc-100',
+            )}
+            style={
+              current
+                ? { backgroundColor: current.color, borderColor: current.color }
+                : undefined
+            }
+          >
+            {current ? current.label : 'None'}
+          </span>
+        )}
+        {open && (
+          <>
         <button
           type="button"
           disabled={disabled}
@@ -92,6 +140,9 @@ export function FocusLabelPicker({
         >
           <Pencil size={12} strokeWidth={2.25} />
         </button>
+          </>
+        )}
+      </div>
       </div>
 
       {editorOpen && (

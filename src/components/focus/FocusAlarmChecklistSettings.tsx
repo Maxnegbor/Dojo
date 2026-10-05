@@ -4,6 +4,8 @@ import { generateId } from '@/lib/utils'
 import type { FocusAlarmCheckItem } from '@/types'
 
 interface FocusAlarmChecklistSettingsProps {
+  label: string
+  description: string
   enabled: boolean
   items: FocusAlarmCheckItem[]
   onEnabledChange: (enabled: boolean) => void
@@ -11,6 +13,8 @@ interface FocusAlarmChecklistSettingsProps {
 }
 
 export function FocusAlarmChecklistSettings({
+  label,
+  description,
   enabled,
   items,
   onEnabledChange,
@@ -23,8 +27,8 @@ export function FocusAlarmChecklistSettings({
   return (
     <div className="space-y-3">
       <ToggleRow
-        label="Checklist after alarm"
-        description="After you dismiss the alarm, check every item before the break starts."
+        label={label}
+        description={description}
         compact
         checked={enabled}
         onChange={onEnabledChange}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Maximize2, Minimize2, RotateCcw, Settings2, SkipForward } from 'lucide-react'
+import { RotateCcw, Settings2, SkipForward } from 'lucide-react'
 import { FocusSessionHistory } from '@/components/focus/FocusSessionHistory'
 import { Button } from '@/components/ui/Button'
 import { FocusHourlyChart } from '@/components/focus/FocusHourlyChart'
@@ -54,9 +54,20 @@ interface PhaseHold {
   score: FocusScorePromptPayload | null
 }
 
+function activeChecklist(
+  enabled: boolean,
+  items: FocusAlarmCheckItem[],
+): FocusAlarmCheckItem[] {
+  if (!enabled) return []
+  return items.filter((item) => item.label.trim())
+}
+
+function activePreAlarmChecklist(settings: FocusTimerSettings): FocusAlarmCheckItem[] {
+  return activeChecklist(settings.preAlarmChecklistEnabled, settings.preAlarmChecklist)
+}
+
 function activeAlarmChecklist(settings: FocusTimerSettings): FocusAlarmCheckItem[] {
-  if (!settings.alarmChecklistEnabled) return []
-  return settings.alarmChecklist.filter((item) => item.label.trim())
+  return activeChecklist(settings.alarmChecklistEnabled, settings.alarmChecklist)
 }
 
 function holdAlarmCopy(hold: PhaseHold, settings: FocusTimerSettings, checklistNext = false) {
@@ -208,7 +219,6 @@ export function FocusTimerPage() {
     setLiveFocusSeconds,
     liveFocusSeconds,
     setTimerTabSeconds,
-    focusImmersive,
     setFocusImmersive,
     setFocusTimerActive,
   } = useFocus()
@@ -228,6 +238,10 @@ export function FocusTimerPage() {
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
   const [scorePrompt, setScorePrompt] = useState<FocusScorePromptPayload | null>(null)
   const [phaseHold, setPhaseHold] = useState<PhaseHold | null>(null)
+  const [preChecklistHold, setPreChecklistHold] = useState<{
+    hold: PhaseHold
+    items: FocusAlarmCheckItem[]
+  } | null>(null)
   const [checklistHold, setChecklistHold] = useState<{
     hold: PhaseHold
     items: FocusAlarmCheckItem[]
@@ -398,15 +412,6 @@ export function FocusTimerPage() {
 
   useEffect(() => () => setLiveFocusSeconds(0), [setLiveFocusSeconds])
 
-  useEffect(() => {
-    if (!focusImmersive) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setFocusImmersive(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [focusImmersive, setFocusImmersive])
-
   useEffect(() => () => setFocusImmersive(false), [setFocusImmersive])
 
   useEffect(() => {
@@ -438,7 +443,7 @@ export function FocusTimerPage() {
           () => {},
         )
         setRunning(false)
-        setPhaseHold({
+        const hold: PhaseHold = {
           from: 'focus',
           cycle: c,
           score: s.promptFocusScore
@@ -449,7 +454,13 @@ export function FocusTimerPage() {
                 minutes: elapsed,
               }
             : null,
-        })
+        }
+        const before = activePreAlarmChecklist(s)
+        if (before.length > 0) {
+          setPreChecklistHold({ hold, items: before })
+          return
+        }
+        setPhaseHold(hold)
         return
       }
 
@@ -532,6 +543,13 @@ export function FocusTimerPage() {
     },
     [phaseHold, continueAfterHold],
   )
+
+  const finishPreChecklist = useCallback(() => {
+    const pending = preChecklistHold
+    if (!pending) return
+    setPreChecklistHold(null)
+    setPhaseHold(pending.hold)
+  }, [preChecklistHold])
 
   const finishChecklist = useCallback(() => {
     const pending = checklistHold
@@ -681,6 +699,7 @@ export function FocusTimerPage() {
     advancingRef.current = false
     stopFocusTimerAlarm()
     setPhaseHold(null)
+    setPreChecklistHold(null)
     setChecklistHold(null)
     setRunning(false)
     setSessionStarted(false)
@@ -777,33 +796,138 @@ export function FocusTimerPage() {
           screensaverActive && 'pointer-events-none opacity-0',
         )}
       >
-      <button
-        type="button"
-        onClick={() => setFocusImmersive(!focusImmersive)}
-        className={cn(
-          'absolute right-0 top-0 z-10 rounded-lg p-2 text-zinc-400 transition-all duration-[1400ms] ease-in-out hover:bg-zinc-800/60 hover:text-zinc-200',
-          screensaverActive && 'pointer-events-none opacity-0',
-        )}
-        aria-pressed={focusImmersive}
-        aria-label={focusImmersive ? 'Exit fullscreen' : 'Enter fullscreen'}
-        title={focusImmersive ? 'Exit fullscreen (Esc)' : 'Hide sidebar'}
-      >
-        {focusImmersive ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-      </button>
-
-      <header
-        className={cn(
-          'text-center transition-[max-height,opacity,margin] duration-[1400ms] ease-in-out',
-          screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
-        )}
-      >
-        <h1 className="text-2xl font-bold text-zinc-100">Focus</h1>
-      </header>
-
       <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_28rem_minmax(0,1fr)]">
-        <div className="hidden lg:block" aria-hidden />
+        <div
+          className={cn(
+            'min-w-0',
+            showSettings ? 'order-2 lg:order-1' : 'hidden lg:order-1 lg:block',
+          )}
+        >
+          {showSettings && (
+            <section
+              className={cn(
+                'w-full space-y-5 lg:ml-auto lg:max-w-72',
+                screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
+              )}
+            >
+              <h3 className="text-sm font-semibold text-zinc-200">Timer settings</h3>
+              {isStopwatch ? (
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  Stopwatch counts up until you stop it. You can pause or stop at any time, and the time is saved to your focus history.
+                </p>
+              ) : (
+                <>
+                  <MinuteSlider
+                    label="Focus duration"
+                    value={settings.focusMinutes}
+                    disabled={running || sessionStarted}
+                    onChange={(focusMinutes) => {
+                      updateTimerSettings({ focusMinutes })
+                      if (!running && !sessionStarted) {
+                        setPhaseRemaining(focusMinutes * 60)
+                      }
+                    }}
+                  />
+                  <MinuteSlider
+                    label="Break duration"
+                    value={settings.breakMinutes}
+                    disabled={shouldSkipBreaks(settings) || running || sessionStarted}
+                    onChange={(breakMinutes) => updateTimerSettings({ breakMinutes })}
+                  />
+                  <CycleStepper
+                    label="Cycles"
+                    value={settings.iterations}
+                    onChange={(iterations) =>
+                      updateTimerSettings({
+                        iterations,
+                        ...(iterations > 1 ? { skipBreaks: false } : {}),
+                      })
+                    }
+                  />
+                  {settings.iterations <= 1 && (
+                    <SkipBreaksToggle
+                      checked={settings.skipBreaks}
+                      onChange={(skipBreaks) => updateTimerSettings({ skipBreaks })}
+                    />
+                  )}
+                  <ToggleRow
+                    label="Allow pause"
+                    compact
+                    checked={settings.allowPause}
+                    onChange={(allowPause) => updateTimerSettings({ allowPause })}
+                  />
+                </>
+              )}
+              <ToggleRow
+                label="Ask for focus score"
+                description="After each focus block, rate how focused you felt (1–10)"
+                compact
+                checked={settings.promptFocusScore}
+                onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
+              />
+              {!isStopwatch && (
+                <>
+                  <FocusAlarmChecklistSettings
+                    label="Checklist before alarm"
+                    description="When the timer ends, check every item before the alarm starts."
+                    enabled={settings.preAlarmChecklistEnabled}
+                    items={settings.preAlarmChecklist}
+                    onEnabledChange={(preAlarmChecklistEnabled) =>
+                      updateTimerSettings({ preAlarmChecklistEnabled })
+                    }
+                    onItemsChange={(preAlarmChecklist) => updateTimerSettings({ preAlarmChecklist })}
+                  />
+                  <FocusAlarmChecklistSettings
+                    label="Checklist after alarm"
+                    description="After you dismiss the alarm, check every item before the break starts."
+                    enabled={settings.alarmChecklistEnabled}
+                    items={settings.alarmChecklist}
+                    onEnabledChange={(alarmChecklistEnabled) => updateTimerSettings({ alarmChecklistEnabled })}
+                    onItemsChange={(alarmChecklist) => updateTimerSettings({ alarmChecklist })}
+                  />
+                </>
+              )}
+              {!isStopwatch && (
+                <LongBreakSettings
+                  enabled={settings.longBreakEnabled}
+                  afterCycles={settings.longBreakAfterCycles}
+                  minutes={settings.longBreakMinutes}
+                  disabled={shouldSkipBreaks(settings) || running || sessionStarted}
+                  onEnabledChange={(longBreakEnabled) => updateTimerSettings({ longBreakEnabled })}
+                  onAfterCyclesChange={(longBreakAfterCycles) =>
+                    updateTimerSettings({ longBreakAfterCycles })
+                  }
+                  onMinutesChange={(longBreakMinutes) => updateTimerSettings({ longBreakMinutes })}
+                />
+              )}
+              {!settings.focusGoalEnabled && (
+                <div className="border-t border-zinc-800/80 pt-4">
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => setShowFocusGoalModal(true)}
+                  >
+                    Set focus goal
+                  </Button>
+                </div>
+              )}
+              {!isStopwatch && (
+                <div className="pt-1">
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    disabled={running || sessionStarted}
+                    onClick={resetTimerDefaults}
+                  >
+                    Reset to defaults
+                  </Button>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
 
-        <div className="mx-auto flex w-full max-w-[28rem] flex-col items-center">
+        <div className="order-1 mx-auto flex w-full min-w-0 max-w-[28rem] flex-col items-center lg:order-2">
           <div className="flex w-full flex-col items-center px-2 pt-2 pb-4 sm:px-4">
             <div
               className={cn(
@@ -1008,121 +1132,12 @@ export function FocusTimerPage() {
           />
         </div>
 
-        <div className="flex min-w-0 flex-col gap-4 overflow-visible lg:flex-row lg:flex-nowrap lg:items-start lg:justify-start">
-        {showSettings && (
-          <section
-            className={cn(
-              'w-full shrink-0 space-y-5 lg:w-72',
-              screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
-            )}
-          >
-            <h3 className="text-sm font-semibold text-zinc-200">Timer settings</h3>
-            {isStopwatch ? (
-              <p className="text-sm leading-relaxed text-zinc-400">
-                Stopwatch counts up until you stop it. You can pause or stop at any time, and the time is saved to your focus history.
-              </p>
-            ) : (
-              <>
-            <MinuteSlider
-              label="Focus duration"
-              value={settings.focusMinutes}
-              disabled={running || sessionStarted}
-              onChange={(focusMinutes) => {
-                updateTimerSettings({ focusMinutes })
-                if (!running && !sessionStarted) {
-                  setPhaseRemaining(focusMinutes * 60)
-                }
-              }}
-            />
-            <MinuteSlider
-              label="Break duration"
-              value={settings.breakMinutes}
-              disabled={shouldSkipBreaks(settings) || running || sessionStarted}
-              onChange={(breakMinutes) => updateTimerSettings({ breakMinutes })}
-            />
-            <CycleStepper
-              label="Cycles"
-              value={settings.iterations}
-              onChange={(iterations) =>
-                updateTimerSettings({
-                  iterations,
-                  ...(iterations > 1 ? { skipBreaks: false } : {}),
-                })
-              }
-            />
-            {settings.iterations <= 1 && (
-              <SkipBreaksToggle
-                checked={settings.skipBreaks}
-                onChange={(skipBreaks) => updateTimerSettings({ skipBreaks })}
-              />
-            )}
-            <ToggleRow
-              label="Allow pause"
-              compact
-              checked={settings.allowPause}
-              onChange={(allowPause) => updateTimerSettings({ allowPause })}
-            />
-              </>
-            )}
-            <ToggleRow
-              label="Ask for focus score"
-              description="After each focus block, rate how focused you felt (1–10)"
-              compact
-              checked={settings.promptFocusScore}
-              onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
-            />
-            {!isStopwatch && (
-              <FocusAlarmChecklistSettings
-                enabled={settings.alarmChecklistEnabled}
-                items={settings.alarmChecklist}
-                onEnabledChange={(alarmChecklistEnabled) => updateTimerSettings({ alarmChecklistEnabled })}
-                onItemsChange={(alarmChecklist) => updateTimerSettings({ alarmChecklist })}
-              />
-            )}
-            {!isStopwatch && (
-            <LongBreakSettings
-              enabled={settings.longBreakEnabled}
-              afterCycles={settings.longBreakAfterCycles}
-              minutes={settings.longBreakMinutes}
-              disabled={shouldSkipBreaks(settings) || running || sessionStarted}
-              onEnabledChange={(longBreakEnabled) => updateTimerSettings({ longBreakEnabled })}
-              onAfterCyclesChange={(longBreakAfterCycles) =>
-                updateTimerSettings({ longBreakAfterCycles })
-              }
-              onMinutesChange={(longBreakMinutes) => updateTimerSettings({ longBreakMinutes })}
-            />
-            )}
-            {!settings.focusGoalEnabled && (
-              <div className="border-t border-zinc-800/80 pt-4">
-                <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => setShowFocusGoalModal(true)}
-                >
-                  Set focus goal
-                </Button>
-              </div>
-            )}
-            {!isStopwatch && (
-            <div className="pt-1">
-              <Button
-                variant="secondary"
-                className="w-full"
-                disabled={running || sessionStarted}
-                onClick={resetTimerDefaults}
-              >
-                Reset to defaults
-              </Button>
-            </div>
-            )}
-          </section>
-        )}
-
+        <div className="order-3 min-w-0">
         {showSchedule && userId && (
           <FocusScheduleAgenda
             userId={userId}
             formatTime={formatTime}
-            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:mx-0 lg:sticky lg:top-0 lg:min-h-[28rem] lg:w-72 lg:shrink-0"
+            className="mx-auto max-h-[min(36rem,75vh)] w-full lg:sticky lg:top-0 lg:mx-0 lg:min-h-[28rem] lg:max-w-72"
           />
         )}
         </div>
@@ -1152,8 +1167,18 @@ export function FocusTimerPage() {
         />
       )}
 
+      {preChecklistHold && (
+        <FocusAlarmChecklistModal
+          kicker="Before the alarm"
+          items={preChecklistHold.items}
+          subtitle="Check every item. The alarm starts after this."
+          onComplete={finishPreChecklist}
+        />
+      )}
+
       {checklistHold && (
         <FocusAlarmChecklistModal
+          kicker="After the alarm"
           items={checklistHold.items}
           subtitle={
             !shouldSkipBreaks(settings) &&

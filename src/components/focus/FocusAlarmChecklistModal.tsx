@@ -6,12 +6,18 @@ import type { FocusAlarmCheckItem } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface FocusAlarmChecklistModalProps {
+  kicker: string
   items: FocusAlarmCheckItem[]
   subtitle: string
   onComplete: () => void
 }
 
-export function FocusAlarmChecklistModal({ items, subtitle, onComplete }: FocusAlarmChecklistModalProps) {
+export function FocusAlarmChecklistModal({
+  kicker,
+  items,
+  subtitle,
+  onComplete,
+}: FocusAlarmChecklistModalProps) {
   const [checked, setChecked] = useState<Set<string>>(() => new Set())
   const ready = items.length > 0 && items.every((item) => checked.has(item.id))
 
@@ -33,7 +39,7 @@ export function FocusAlarmChecklistModal({ items, subtitle, onComplete }: FocusA
         className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-[#0c0c14] shadow-2xl"
       >
         <div className="border-b border-zinc-800/80 px-6 py-5">
-          <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">After the alarm</p>
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">{kicker}</p>
           <h2 id="focus-alarm-checklist-title" className="mt-1 text-lg font-bold text-zinc-100">
             Checklist
           </h2>

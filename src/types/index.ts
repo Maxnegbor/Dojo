@@ -371,6 +371,9 @@ export interface FocusTimerSettings {
   allowPause: boolean
   /** After each focus cycle, ask for a 1–10 subjective focus score. */
   promptFocusScore: boolean
+  /** When a focus block ends, require this checklist before the alarm starts. */
+  preAlarmChecklistEnabled: boolean
+  preAlarmChecklist: FocusAlarmCheckItem[]
   /** After the focus alarm is dismissed, require this checklist before the break starts. */
   alarmChecklistEnabled: boolean
   alarmChecklist: FocusAlarmCheckItem[]
@@ -549,6 +552,8 @@ export const DEFAULT_FOCUS_SETTINGS: FocusTimerSettings = {
   longBreakMinutes: 15,
   allowPause: false,
   promptFocusScore: false,
+  preAlarmChecklistEnabled: false,
+  preAlarmChecklist: [],
   alarmChecklistEnabled: false,
   alarmChecklist: [],
   focusGoalEnabled: false,
