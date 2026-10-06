@@ -220,7 +220,7 @@ export function AppLayout() {
   const { focusImmersive, setFocusImmersive, focusTimerActive } = useFocus()
   const { pathname } = useLocation()
   const isMobile = useIsMobile()
-  const isIdle = useIdleScreensaver()
+  const isIdle = useIdleScreensaver(pathname === '/focus' && focusTimerActive)
   const onScreensaverRoute = pathname === '/' || (pathname === '/focus' && focusTimerActive)
   const [screensaver, setScreensaver] = useState<ScreensaverState>({
     active: false,

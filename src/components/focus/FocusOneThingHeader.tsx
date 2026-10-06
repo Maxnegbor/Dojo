@@ -19,7 +19,7 @@ export function FocusOneThingHeader({
       {answer ? (
         <div className="flex items-center justify-center gap-3">
         <h1 className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl">
-          <span className="one-thing-gold-shine-occasional">{answer}</span>
+          <span className="text-[var(--accent-400)]">{answer}</span>
         </h1>
         <button
           type="button"

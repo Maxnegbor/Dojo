@@ -836,11 +836,12 @@ export function FocusTimerPage() {
       <div
         className={cn(
           'fixed inset-0 z-[200] flex h-dvh flex-col items-center justify-center gap-8 px-6 bg-[#06060b] transition-opacity duration-[1400ms] ease-in-out',
+          userId && 'pb-28',
           screensaverWaking && 'pointer-events-none opacity-0',
         )}
       >
         {sessionOneThing && <p className="max-h-[35dvh] w-full max-w-3xl overflow-y-auto whitespace-pre-wrap break-words text-center text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl">
-          <span className="one-thing-gold-shine-occasional">{sessionOneThing}</span>
+          <span className="text-[var(--accent-400)]">{sessionOneThing}</span>
         </p>}
         <FocusTimerFace
           progress={progress}
@@ -849,6 +850,14 @@ export function FocusTimerPage() {
           countUp={isStopwatch}
           maskSeconds={running}
         />
+        {userId && (
+          <FocusScheduleAgenda
+            userId={userId}
+            formatTime={formatTime}
+            horizontal
+            className="absolute inset-x-0 bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          />
+        )}
       </div>,
       document.body,
     )

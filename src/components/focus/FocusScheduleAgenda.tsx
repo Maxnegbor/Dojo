@@ -10,6 +10,7 @@ interface FocusScheduleAgendaProps {
   formatTime: (date: Date) => string
   className?: string
   screensaver?: boolean
+  horizontal?: boolean
 }
 
 const HOUR_HEIGHT = 72
@@ -31,6 +32,7 @@ export function FocusScheduleAgenda({
   formatTime,
   className,
   screensaver = false,
+  horizontal = false,
 }: FocusScheduleAgendaProps) {
   const { settings } = useSettings()
   const use24h = settings.timeFormat === '24h'
@@ -97,6 +99,51 @@ export function FocusScheduleAgenda({
     if (end <= start) return []
     return [{ block, startMin, endMin, start, end }]
   })
+
+  if (horizontal) {
+    const minuteLeft = (minute: number) => `${((minute - rangeStart) / spanMinutes) * 100}%`
+    return (
+      <aside aria-label="Focus screensaver schedule" className={cn('w-full px-4 sm:px-8', className)}>
+        <div className="relative h-24 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/70">
+          {visibleBlocks.map(({ block, start, end }) => (
+            <div
+              key={block.id}
+              data-schedule-block=""
+              className="absolute top-8 bottom-3 flex min-w-0 items-center overflow-hidden rounded-md px-3"
+              style={{
+                left: minuteLeft(start),
+                width: `calc(${((end - start) / spanMinutes) * 100}% - 2px)`,
+                backgroundColor: isGreyBlock(block)
+                  ? 'rgb(42 42 48)'
+                  : `color-mix(in srgb, ${block.color} 24%, rgb(9 9 11))`,
+              }}
+              title={block.title}
+            >
+              <p className="truncate text-sm font-semibold text-zinc-100 sm:text-base">{block.title}</p>
+            </div>
+          ))}
+          {halfHourMarks.map(minute => (
+            <div key={minute} className="pointer-events-none absolute top-6 bottom-0 border-l border-dashed border-zinc-400/15" style={{ left: minuteLeft(minute) }} />
+          ))}
+          {hourMarks.map(minute => (
+            <div key={minute} className="pointer-events-none absolute inset-y-0 border-l border-zinc-400/25" style={{ left: minuteLeft(minute) }}>
+              <span className={cn(
+                'absolute top-1 whitespace-nowrap text-xs tabular-nums text-zinc-400',
+                rangeEnd - minute < 15 ? 'right-1' : 'left-2',
+              )}>
+                {use24h
+                  ? `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:00`
+                  : `${Math.floor(minute / 60) % 12 || 12}${minute < 720 || minute === 1440 ? 'am' : 'pm'}`}
+              </span>
+            </div>
+          ))}
+          <div data-focus-now="" aria-label="Now" className="pointer-events-none absolute top-6 bottom-0 z-10 w-0.5 bg-[var(--accent-500)]" style={{ left: minuteLeft(nowMinutes) }}>
+            <span className="absolute top-0 left-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--accent-500)]" />
+          </div>
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside
