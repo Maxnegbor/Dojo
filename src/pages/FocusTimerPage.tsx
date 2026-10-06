@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RotateCcw, Settings2, SkipForward } from 'lucide-react'
+import { FocusTodoBox } from '@/components/focus/FocusTodoBox'
 import { FocusOneThingHeader } from '@/components/focus/FocusOneThingHeader'
 import { FocusSessionHistory } from '@/components/focus/FocusSessionHistory'
 import { Button } from '@/components/ui/Button'
@@ -890,10 +891,10 @@ export function FocusTimerPage() {
       <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_28rem_minmax(0,1fr)]">
         <div
           className={cn(
-            'min-w-0',
-            showSettings ? 'order-3' : 'hidden lg:order-3 lg:block',
+            'order-3 mx-auto w-full min-w-0 max-w-[28rem] space-y-5 lg:mr-auto lg:ml-0 lg:max-w-72',
           )}
         >
+          <FocusTodoBox key={userId ?? 'guest'} />
           {showSettings && (
             <section
               className={cn(
