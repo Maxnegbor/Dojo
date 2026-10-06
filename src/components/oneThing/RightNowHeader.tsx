@@ -37,7 +37,7 @@ export function RightNowHeader() {
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 text-center">
         <h1 className="flex flex-col items-center text-center text-xl font-semibold leading-snug tracking-tight text-[var(--accent-400)] sm:text-2xl">
           <span>{promptBefore.trim()}</span>
-          <span className="one-thing-gold-shine my-1 whitespace-nowrap text-[1.55em] leading-none">The ONE Thing</span>
+          <span className="one-thing-gold-shine my-1 whitespace-nowrap text-[1.55em] leading-snug pb-[0.1em]">The ONE Thing</span>
           <span>{promptAfter.trim()}</span>
         </h1>
       </div>

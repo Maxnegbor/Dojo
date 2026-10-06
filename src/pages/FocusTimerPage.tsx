@@ -249,9 +249,11 @@ export function FocusTimerPage() {
   const [sessionOneThing, setSessionOneThing] = useState('')
   const [oneThingDismissed, setOneThingDismissed] = useState(false)
   const oneThingBlocking = !sessionOneThing && !oneThingDismissed
+  const focusPageRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!oneThingBlocking) return
+    const page = focusPageRef.current
+    if (!oneThingBlocking || !page) return
     const dismissOutside = (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest('[data-focus-one-thing]')) return
       // The first click only reveals the page; it must not also start the timer.
@@ -262,11 +264,11 @@ export function FocusTimerPage() {
     const dismissOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOneThingDismissed(true)
     }
-    document.addEventListener('click', dismissOutside, true)
-    document.addEventListener('keydown', dismissOnEscape)
+    page.addEventListener('click', dismissOutside, true)
+    page.addEventListener('keydown', dismissOnEscape)
     return () => {
-      document.removeEventListener('click', dismissOutside, true)
-      document.removeEventListener('keydown', dismissOnEscape)
+      page.removeEventListener('click', dismissOutside, true)
+      page.removeEventListener('keydown', dismissOnEscape)
     }
   }, [oneThingBlocking])
   const [clockMode, setClockMode] = useState<FocusClockMode>(readClockMode)
@@ -855,6 +857,7 @@ export function FocusTimerPage() {
     <>
       {focusScreensaverLayer}
       <div
+        ref={focusPageRef}
         className={cn(
           'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-start gap-4 py-6 transition-[gap,padding,opacity] duration-[1400ms] ease-in-out',
           screensaverActive && !oneThingBlocking && 'pointer-events-none opacity-0',
