@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RotateCcw, Settings2, SkipForward } from 'lucide-react'
+import { FocusOneThingHeader } from '@/components/focus/FocusOneThingHeader'
 import { FocusSessionHistory } from '@/components/focus/FocusSessionHistory'
 import { Button } from '@/components/ui/Button'
 import { FocusHourlyChart } from '@/components/focus/FocusHourlyChart'
@@ -245,6 +246,7 @@ export function FocusTimerPage() {
   const [activeBreakMinutes, setActiveBreakMinutes] = useState(settings.breakMinutes)
   const [running, setRunning] = useState(false)
   const [sessionStarted, setSessionStarted] = useState(false)
+  const [sessionOneThing, setSessionOneThing] = useState('')
   const [clockMode, setClockMode] = useState<FocusClockMode>(readClockMode)
   const [elapsed, setElapsed] = useState(0)
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
@@ -684,6 +686,7 @@ export function FocusTimerPage() {
   }
 
   const start = () => {
+    if (!sessionOneThing) return
     unlockAudio()
     if (clockMode === 'stopwatch') {
       phaseStartRef.current = Date.now() - elapsedRef.current * 1000
@@ -695,6 +698,7 @@ export function FocusTimerPage() {
   }
 
   const stopStopwatch = () => {
+    setSessionOneThing('')
     const seconds = elapsedRef.current
     const minutes = seconds <= 0 ? 0 : Math.max(1, Math.round(seconds / 60))
     const sessionStart = Date.now() - minutes * 60_000
@@ -712,6 +716,7 @@ export function FocusTimerPage() {
   }
 
   const reset = () => {
+    setSessionOneThing('')
     advancingRef.current = false
     stopFocusTimerAlarm()
     setPhaseHold(null)
@@ -800,14 +805,17 @@ export function FocusTimerPage() {
   }, [showSchedule, screensaverActive])
 
   const focusScreensaverLayer =
-    screensaverActive &&
+    screensaverActive && sessionOneThing &&
     createPortal(
       <div
         className={cn(
-          'fixed inset-0 z-[200] flex h-dvh items-center justify-center bg-[#06060b] transition-opacity duration-[1400ms] ease-in-out',
+          'fixed inset-0 z-[200] flex h-dvh flex-col items-center justify-center gap-8 px-6 bg-[#06060b] transition-opacity duration-[1400ms] ease-in-out',
           screensaverWaking && 'pointer-events-none opacity-0',
         )}
       >
+        <p className="max-h-[35dvh] w-full max-w-3xl overflow-y-auto whitespace-pre-wrap break-words text-center text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl">
+          <span className="one-thing-gold-shine-occasional">{sessionOneThing}</span>
+        </p>
         <FocusTimerFace
           progress={progress}
           isRest={isRest}
@@ -825,7 +833,15 @@ export function FocusTimerPage() {
       <div
         className={cn(
           'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-start gap-4 py-6 transition-[gap,padding,opacity] duration-[1400ms] ease-in-out',
-          screensaverActive && 'pointer-events-none opacity-0',
+          screensaverActive && sessionOneThing && 'pointer-events-none opacity-0',
+        )}
+      >
+      <FocusOneThingHeader answer={sessionOneThing} onAnswer={setSessionOneThing} />
+      <div
+        inert={!sessionOneThing}
+        className={cn(
+          'flex flex-col gap-4 transition-[filter] duration-500',
+          !sessionOneThing && 'pointer-events-none select-none blur-md',
         )}
       >
       <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_28rem_minmax(0,1fr)]">
@@ -1182,6 +1198,8 @@ export function FocusTimerPage() {
           />
         )}
         </div>
+      </div>
+
       </div>
 
       {showFocusGoalModal && (

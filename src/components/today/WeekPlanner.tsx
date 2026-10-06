@@ -820,7 +820,7 @@ export function WeekPlanner({
                         key={startHour + index}
                         className={cn(
                           'absolute right-2 text-[10px] tabular-nums text-zinc-600',
-                          index === 0 ? 'top-3' : '-translate-y-1/2',
+                          index === 0 ? 'top-1' : '-translate-y-1/2',
                         )}
                         style={index === 0 ? undefined : { top: index * hourHeight }}
                       >
