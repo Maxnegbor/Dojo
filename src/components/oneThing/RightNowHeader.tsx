@@ -21,7 +21,7 @@ export function RightNowHeader() {
   if (!ready) return null
   const asking = pending
   const parentGoal = asking?.parent && asking.parentGoal ? asking.parentGoal : null
-  const [promptBefore = '', promptAfter = ''] = (asking?.horizon.prompt ?? '').split('ONE')
+  const [promptBefore = '', promptAfter = ''] = (asking?.horizon.prompt ?? '').split('the ONE Thing')
   return <section aria-label="Your right now focus" className={`mx-auto w-full max-w-5xl shrink-0 px-3 pb-4 text-center sm:px-6 ${parentGoal ? 'pt-4' : 'pt-10'}`}>
     {parentGoal && asking?.parent && <p className="mx-auto mb-8 max-w-md whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-400"><span className="font-medium text-zinc-300">{asking.parent.label} goal:</span> {parentGoal.text}</p>}
     {!asking && goal ? <div className="flex items-center justify-center gap-3">
@@ -37,7 +37,7 @@ export function RightNowHeader() {
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 text-center">
         <h1 className="flex flex-col items-center text-center text-xl font-semibold leading-snug tracking-tight text-[var(--accent-400)] sm:text-2xl">
           <span>{promptBefore.trim()}</span>
-          <span className="one-thing-gold-shine my-1 text-[1.55em] leading-none">ONE</span>
+          <span className="one-thing-gold-shine my-1 whitespace-nowrap text-[1.55em] leading-none">The ONE Thing</span>
           <span>{promptAfter.trim()}</span>
         </h1>
       </div>

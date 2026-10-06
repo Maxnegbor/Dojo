@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { Check, CornerDownLeft } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { playOneThingSound } from '@/lib/timerSound'
 
 export function FocusOneThingHeader({
   answer,
+  compact = false,
   onAnswer,
 }: {
   answer: string
+  compact?: boolean
   onAnswer: (answer: string) => void
 }) {
   const [draft, setDraft] = useState('')
@@ -34,12 +37,16 @@ export function FocusOneThingHeader({
         </div>
       ) : (
         <>
-          <h1 className="mx-auto flex max-w-3xl flex-col items-center text-xl font-semibold leading-snug tracking-tight text-[var(--accent-400)] sm:text-2xl">
-            <span>What's the</span>
-            <span className="one-thing-gold-shine my-1 text-[1.55em] leading-none">ONE</span>
-            <span>Thing I can do right now in this focus session such that everything else becomes easier or unnecessary?</span>
+          <h1 data-focus-one-thing className={cn(
+            'mx-auto flex max-w-3xl flex-col items-center font-semibold leading-snug tracking-tight text-[var(--accent-400)]',
+            compact ? 'text-sm sm:text-base' : 'text-xl sm:text-2xl',
+          )}>
+            <span>What's</span>
+            <span className={cn('one-thing-gold-shine whitespace-nowrap', !compact && 'my-1 text-[1.55em] leading-none')}>The ONE Thing</span>
+            <span>I can do in this focus session such that everything else becomes easier or unnecessary?</span>
           </h1>
           <form
+            data-focus-one-thing
             className="mx-auto mt-3 flex max-w-2xl items-center gap-2 border-b border-zinc-700 pb-2 focus-within:border-[var(--accent-400)]"
             onSubmit={event => {
               event.preventDefault()
@@ -59,7 +66,7 @@ export function FocusOneThingHeader({
               }}
               maxLength={1500}
               placeholder="Type your One Thing…"
-              className="min-w-0 flex-1 bg-transparent text-center text-lg text-zinc-100 outline-none placeholder:text-zinc-600"
+              className={cn('min-w-0 flex-1 bg-transparent text-center text-zinc-100 outline-none placeholder:text-zinc-600', compact ? 'text-sm' : 'text-lg')}
             />
             <button type="submit" disabled={!draft.trim()} aria-label="Set your focus session One Thing" title="Press Enter to lock it in" className="rounded-lg p-2 text-[var(--accent-400)] hover:bg-zinc-800 disabled:opacity-30">
               <CornerDownLeft size={18} />

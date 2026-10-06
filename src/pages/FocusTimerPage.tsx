@@ -247,6 +247,28 @@ export function FocusTimerPage() {
   const [running, setRunning] = useState(false)
   const [sessionStarted, setSessionStarted] = useState(false)
   const [sessionOneThing, setSessionOneThing] = useState('')
+  const [oneThingDismissed, setOneThingDismissed] = useState(false)
+  const oneThingBlocking = !sessionOneThing && !oneThingDismissed
+
+  useEffect(() => {
+    if (!oneThingBlocking) return
+    const dismissOutside = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-focus-one-thing]')) return
+      // The first click only reveals the page; it must not also start the timer.
+      event.preventDefault()
+      event.stopPropagation()
+      setOneThingDismissed(true)
+    }
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOneThingDismissed(true)
+    }
+    document.addEventListener('click', dismissOutside, true)
+    document.addEventListener('keydown', dismissOnEscape)
+    return () => {
+      document.removeEventListener('click', dismissOutside, true)
+      document.removeEventListener('keydown', dismissOnEscape)
+    }
+  }, [oneThingBlocking])
   const [clockMode, setClockMode] = useState<FocusClockMode>(readClockMode)
   const [elapsed, setElapsed] = useState(0)
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
@@ -686,7 +708,7 @@ export function FocusTimerPage() {
   }
 
   const start = () => {
-    if (!sessionOneThing) return
+    if (oneThingBlocking) return
     unlockAudio()
     if (clockMode === 'stopwatch') {
       phaseStartRef.current = Date.now() - elapsedRef.current * 1000
@@ -699,6 +721,7 @@ export function FocusTimerPage() {
 
   const stopStopwatch = () => {
     setSessionOneThing('')
+    setOneThingDismissed(false)
     const seconds = elapsedRef.current
     const minutes = seconds <= 0 ? 0 : Math.max(1, Math.round(seconds / 60))
     const sessionStart = Date.now() - minutes * 60_000
@@ -717,6 +740,7 @@ export function FocusTimerPage() {
 
   const reset = () => {
     setSessionOneThing('')
+    setOneThingDismissed(false)
     advancingRef.current = false
     stopFocusTimerAlarm()
     setPhaseHold(null)
@@ -805,7 +829,7 @@ export function FocusTimerPage() {
   }, [showSchedule, screensaverActive])
 
   const focusScreensaverLayer =
-    screensaverActive && sessionOneThing &&
+    screensaverActive && !oneThingBlocking &&
     createPortal(
       <div
         className={cn(
@@ -813,9 +837,9 @@ export function FocusTimerPage() {
           screensaverWaking && 'pointer-events-none opacity-0',
         )}
       >
-        <p className="max-h-[35dvh] w-full max-w-3xl overflow-y-auto whitespace-pre-wrap break-words text-center text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl">
+        {sessionOneThing && <p className="max-h-[35dvh] w-full max-w-3xl overflow-y-auto whitespace-pre-wrap break-words text-center text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl">
           <span className="one-thing-gold-shine-occasional">{sessionOneThing}</span>
-        </p>
+        </p>}
         <FocusTimerFace
           progress={progress}
           isRest={isRest}
@@ -833,15 +857,22 @@ export function FocusTimerPage() {
       <div
         className={cn(
           'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-start gap-4 py-6 transition-[gap,padding,opacity] duration-[1400ms] ease-in-out',
-          screensaverActive && sessionOneThing && 'pointer-events-none opacity-0',
+          screensaverActive && !oneThingBlocking && 'pointer-events-none opacity-0',
         )}
       >
-      <FocusOneThingHeader answer={sessionOneThing} onAnswer={setSessionOneThing} />
+      <FocusOneThingHeader
+        answer={sessionOneThing}
+        compact={oneThingDismissed}
+        onAnswer={answer => {
+          setSessionOneThing(answer)
+          setOneThingDismissed(false)
+        }}
+      />
       <div
-        inert={!sessionOneThing}
+        inert={oneThingBlocking}
         className={cn(
           'flex flex-col gap-4 transition-[filter] duration-500',
-          !sessionOneThing && 'pointer-events-none select-none blur-md',
+          oneThingBlocking && 'pointer-events-none select-none blur-md',
         )}
       >
       <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_28rem_minmax(0,1fr)]">
