@@ -103,8 +103,14 @@ export function FocusScheduleAgenda({
   if (horizontal) {
     const minuteLeft = (minute: number) => `${((minute - rangeStart) / spanMinutes) * 100}%`
     return (
-      <aside aria-label="Focus screensaver schedule" className={cn('w-full px-4 sm:px-8', className)}>
-        <div className="relative h-24 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/70">
+      <aside aria-label="Focus screensaver schedule" className={cn('w-full', className)}>
+        <div
+          className="relative h-24 overflow-hidden"
+          style={{
+            maskImage: 'linear-gradient(to right, transparent, #000 5%, #000 95%, transparent)',
+            WebkitMaskImage: 'linear-gradient(to right, transparent, #000 5%, #000 95%, transparent)',
+          }}
+        >
           {visibleBlocks.map(({ block, start, end }) => (
             <div
               key={block.id}

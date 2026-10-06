@@ -21,6 +21,7 @@ import { useFocus } from '@/context/FocusContext'
 import { useScreensaver } from '@/context/ScreensaverContext'
 import { useSettings } from '@/context/SettingsContext'
 import { useAuth } from '@/hooks/useData'
+import { useFocusOneThing } from '@/hooks/useFocusOneThing'
 import { saveFocusGoal, syncFocusGoalFromSettings } from '@/lib/focusGoalSync'
 import { getLastFocusLabelId, setLastFocusLabelId } from '@/lib/focusLabels'
 import { addFocusScoreSession } from '@/lib/focusScores'
@@ -246,8 +247,11 @@ export function FocusTimerPage() {
   const [activeBreakMinutes, setActiveBreakMinutes] = useState(settings.breakMinutes)
   const [running, setRunning] = useState(false)
   const [sessionStarted, setSessionStarted] = useState(false)
-  const [sessionOneThing, setSessionOneThing] = useState('')
+  const { answer: sessionOneThing, setAnswer: setSessionOneThing } = useFocusOneThing(running || sessionStarted)
   const [oneThingDismissed, setOneThingDismissed] = useState(false)
+  useEffect(() => {
+    if (!sessionOneThing) setOneThingDismissed(false)
+  }, [sessionOneThing])
   const oneThingBlocking = !sessionOneThing && !oneThingDismissed
   const focusPageRef = useRef<HTMLDivElement>(null)
 
@@ -722,8 +726,6 @@ export function FocusTimerPage() {
   }
 
   const stopStopwatch = () => {
-    setSessionOneThing('')
-    setOneThingDismissed(false)
     const seconds = elapsedRef.current
     const minutes = seconds <= 0 ? 0 : Math.max(1, Math.round(seconds / 60))
     const sessionStart = Date.now() - minutes * 60_000
@@ -741,8 +743,6 @@ export function FocusTimerPage() {
   }
 
   const reset = () => {
-    setSessionOneThing('')
-    setOneThingDismissed(false)
     advancingRef.current = false
     stopFocusTimerAlarm()
     setPhaseHold(null)
