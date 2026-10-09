@@ -760,30 +760,30 @@ export function WeekPlanner({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
         <aside
           className={cn(
-            'flex shrink-0 flex-col overflow-hidden border-zinc-800 transition-[width,max-height] duration-300 ease-out',
+            'flex shrink-0 flex-col border-zinc-800 transition-[width,max-height] duration-300 ease-out',
             planOpen
-              ? 'max-h-40 w-full border-b md:max-h-none md:w-56 md:border-b-0 md:border-r'
-              : 'max-h-11 w-full border-b md:max-h-none md:w-10 md:border-b-0 md:border-r',
+              ? 'relative max-h-40 w-full overflow-hidden border-b md:max-h-none md:w-56 md:border-b-0 md:border-r'
+              : 'relative z-30 w-0 max-h-0 overflow-visible border-0 md:max-h-none',
           )}
         >
-          <div className={cn('flex shrink-0 items-center', planOpen ? 'gap-1 px-2 py-2' : 'justify-center px-1 py-2')}>
-            <p
-              className={cn(
-                'min-w-0 flex-1 truncate px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500',
-                !planOpen && 'sr-only',
-              )}
-            >
-              Exercise plan
-            </p>
+          <div className={cn('flex shrink-0 items-center', planOpen ? 'gap-1 px-2 py-2' : 'absolute left-0 top-0')}>
+            {planOpen && (
+              <p className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                Exercise plan
+              </p>
+            )}
             <button
               type="button"
               aria-expanded={planOpen}
               aria-label={planOpen ? 'Collapse exercise plan' : 'Expand exercise plan'}
               onClick={() => setPlanOpen((open) => !open)}
-              className="rounded-lg p-1.5 text-zinc-400 transition-colors duration-200 ease-out hover:bg-zinc-800 hover:text-zinc-100"
+              className={cn(
+                'rounded-lg p-1.5 text-zinc-400 transition-colors duration-200 ease-out hover:bg-zinc-800 hover:text-zinc-100',
+                !planOpen && 'bg-[#09090b] text-zinc-300 shadow-md shadow-black/40 hover:text-zinc-100',
+              )}
             >
               {planOpen ? (
                 <ChevronLeft size={16} className="max-md:-rotate-90" />
@@ -792,6 +792,7 @@ export function WeekPlanner({
               )}
             </button>
           </div>
+          {planOpen && (
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-4">
             {weekDates.map((date) => {
               const items = plansByDate.get(date) ?? []
@@ -861,6 +862,7 @@ export function WeekPlanner({
               <p className="px-1 text-xs text-zinc-600">Nothing planned this week.</p>
             )}
           </div>
+          )}
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
