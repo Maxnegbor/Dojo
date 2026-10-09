@@ -1,7 +1,6 @@
 import { RightNowHeader } from '@/components/oneThing/RightNowHeader'
 import { OneThingHomeCard } from '@/components/oneThing/OneThingHomeCard'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
 import { CalendarCheck, CalendarClock, CalendarDays, CalendarRange, ClipboardList, LayoutGrid, Moon } from 'lucide-react'
@@ -766,11 +765,11 @@ export function TodayPage() {
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-      {!screensaver &&
-        createPortal(
+      {!screensaver && (
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-[60] flex justify-center">
           <div
             className={cn(
-              'fixed inset-x-0 top-3 z-[340] flex justify-center',
+              'pointer-events-auto',
               oneThingPending && !weekPlannerOpen && 'pointer-events-none blur-md',
             )}
           >
@@ -786,9 +785,9 @@ export function TodayPage() {
                 void refreshScheduleBlocks()
               }}
             />
-          </div>,
-          document.body,
-        )}
+          </div>
+        </div>
+      )}
       {!screensaver && <RightNowHeader />}
       <div
         className={cn(

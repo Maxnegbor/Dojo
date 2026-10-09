@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { DayNoteButton, DayNotesEditor } from '@/components/today/DayNotes'
 import { getDayNoteItems } from '@/lib/dayNotes'
@@ -195,6 +194,7 @@ export function WeekPlanner({
   const [dayMenu, setDayMenu] = useState<{ date: string; x: number; y: number } | null>(null)
   const [notesDate, setNotesDate] = useState<string | null>(null)
   const [planDrop, setPlanDrop] = useState<{ date: string; start: number; end: number } | null>(null)
+  const [planOpen, setPlanOpen] = useState(true)
   const [now, setNow] = useState(() => new Date())
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -720,12 +720,12 @@ export function WeekPlanner({
     return { block: source, date: gesture.date, start: gesture.start, end: gesture.end }
   })()
 
-  return createPortal(
+  return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Week planner"
-      className="fixed inset-0 z-[300] flex flex-col bg-[#09090b] text-zinc-100"
+      className="absolute inset-0 z-50 flex flex-col bg-[#09090b] text-zinc-100"
     >
       <header className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-zinc-800 px-4">
         <div className="flex min-w-0 items-center gap-2">
@@ -761,10 +761,37 @@ export function WeekPlanner({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="flex max-h-40 w-full shrink-0 flex-col overflow-hidden border-b border-zinc-800 md:max-h-none md:w-56 md:border-b-0 md:border-r">
-          <p className="px-3 py-3 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-            Exercise plan
-          </p>
+        <aside
+          className={cn(
+            'flex shrink-0 flex-col overflow-hidden border-zinc-800 transition-[width,max-height] duration-300 ease-out',
+            planOpen
+              ? 'max-h-40 w-full border-b md:max-h-none md:w-56 md:border-b-0 md:border-r'
+              : 'max-h-11 w-full border-b md:max-h-none md:w-10 md:border-b-0 md:border-r',
+          )}
+        >
+          <div className={cn('flex shrink-0 items-center', planOpen ? 'gap-1 px-2 py-2' : 'justify-center px-1 py-2')}>
+            <p
+              className={cn(
+                'min-w-0 flex-1 truncate px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500',
+                !planOpen && 'sr-only',
+              )}
+            >
+              Exercise plan
+            </p>
+            <button
+              type="button"
+              aria-expanded={planOpen}
+              aria-label={planOpen ? 'Collapse exercise plan' : 'Expand exercise plan'}
+              onClick={() => setPlanOpen((open) => !open)}
+              className="rounded-lg p-1.5 text-zinc-400 transition-colors duration-200 ease-out hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              {planOpen ? (
+                <ChevronLeft size={16} className="max-md:-rotate-90" />
+              ) : (
+                <ChevronRight size={16} className="max-md:rotate-90" />
+              )}
+            </button>
+          </div>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-4">
             {weekDates.map((date) => {
               const items = plansByDate.get(date) ?? []
@@ -1271,18 +1298,17 @@ export function WeekPlanner({
                   })}
                 </div>
 
-                {showNow && (
+                {showNow && todayIndex >= 0 && (
                   <div
                     className="pointer-events-none absolute z-20"
-                    style={{ top: nowTop, left: GUTTER, right: 0 }}
+                    style={{
+                      top: nowTop,
+                      left: `calc(${GUTTER} + (100% - ${GUTTER}) * ${todayIndex} / 7)`,
+                      width: `calc((100% - ${GUTTER}) / 7)`,
+                    }}
                   >
                     <div className="absolute inset-x-0 h-px bg-rose-500" />
-                    {todayIndex >= 0 && (
-                      <div
-                        className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-rose-500"
-                        style={{ left: `calc((100% / 7) * ${todayIndex})` }}
-                      />
-                    )}
+                    <div className="absolute left-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-rose-500" />
                   </div>
                 )}
               </div>
@@ -1370,7 +1396,6 @@ export function WeekPlanner({
           )
         })()}
       {notesDate && <DayNotesEditor date={notesDate} onClose={() => setNotesDate(null)} />}
-    </div>,
-    document.body,
+    </div>
   )
 }
