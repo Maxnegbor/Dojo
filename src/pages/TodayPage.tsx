@@ -1,6 +1,7 @@
 import { RightNowHeader } from '@/components/oneThing/RightNowHeader'
 import { OneThingHomeCard } from '@/components/oneThing/OneThingHomeCard'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
 import { CalendarCheck, CalendarClock, CalendarDays, CalendarRange, ClipboardList, LayoutGrid, Moon } from 'lucide-react'
@@ -765,6 +766,29 @@ export function TodayPage() {
           transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
         }}
       >
+      {!screensaver &&
+        createPortal(
+          <div
+            className={cn(
+              'fixed inset-x-0 top-3 z-[340] flex justify-center',
+              oneThingPending && !weekPlannerOpen && 'pointer-events-none blur-md',
+            )}
+          >
+            <ScheduleViewToggle
+              mode={weekPlannerOpen ? 'week' : 'day'}
+              onChange={(mode) => {
+                if (mode === 'week') {
+                  setWeekPlannerOpen(true)
+                  return
+                }
+                if (!weekPlannerOpen) return
+                setWeekPlannerOpen(false)
+                void refreshScheduleBlocks()
+              }}
+            />
+          </div>,
+          document.body,
+        )}
       {!screensaver && <RightNowHeader />}
       <div
         className={cn(
@@ -787,10 +811,10 @@ export function TodayPage() {
         }}
       >
         <div
-          className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-visible"
+          className="relative flex items-center justify-between gap-2 overflow-visible"
           style={{ minHeight: 48 }}
         >
-          <div className="relative z-10 min-w-0">
+          <div className="relative z-10 min-w-0 flex-1 self-center">
             <DateNavigationHeader
               date={viewDate}
               onPrev={() => shiftDate(-1)}
@@ -798,14 +822,8 @@ export function TodayPage() {
               onToday={() => setViewDate(formatDate(new Date()))}
             />
           </div>
-          <ScheduleViewToggle
-            mode="day"
-            onChange={(mode) => {
-              if (mode === 'week') setWeekPlannerOpen(true)
-            }}
-          />
           {/* HomePulseCard is kept in components/pulse for later; the header stays compact. */}
-          <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5">
+          <div className="relative z-10 flex shrink-0 items-center gap-1.5 self-center">
             {isMobile && (
               <button
                 type="button"

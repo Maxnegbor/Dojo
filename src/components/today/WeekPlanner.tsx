@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { DayNoteButton, DayNotesEditor } from '@/components/today/DayNotes'
-import { ScheduleViewToggle } from '@/components/today/ScheduleViewToggle'
 import { getDayNoteItems } from '@/lib/dayNotes'
 import { useSettings } from '@/context/SettingsContext'
 import {
@@ -728,7 +727,7 @@ export function WeekPlanner({
       aria-label="Week planner"
       className="fixed inset-0 z-[300] flex flex-col bg-[#09090b] text-zinc-100"
     >
-      <header className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-zinc-800 px-4 py-3">
+      <header className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-zinc-800 px-4">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
@@ -748,12 +747,7 @@ export function WeekPlanner({
           </button>
           <h2 className="truncate text-lg font-semibold">{weekTitle(weekDates)}</h2>
         </div>
-        <ScheduleViewToggle
-          mode="week"
-          onChange={(mode) => {
-            if (mode === 'day') onClose()
-          }}
-        />
+        <div className="h-8 w-[9.5rem]" aria-hidden />
         <div className="flex justify-end">
           <button
             type="button"

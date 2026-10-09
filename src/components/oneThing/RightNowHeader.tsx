@@ -22,7 +22,7 @@ export function RightNowHeader() {
   const asking = pending
   const parentGoal = asking?.parent && asking.parentGoal ? asking.parentGoal : null
   const [promptBefore = '', promptAfter = ''] = (asking?.horizon.prompt ?? '').split('the ONE Thing')
-  return <section aria-label="Your right now focus" className={`mx-auto w-full max-w-5xl shrink-0 px-3 pb-4 text-center sm:px-6 ${parentGoal ? 'pt-4' : 'pt-10'}`}>
+  return <section aria-label="Your right now focus" className="mx-auto w-full max-w-5xl shrink-0 px-3 pt-12 pb-4 text-center sm:px-6">
     {parentGoal && asking?.parent && <p className="mx-auto mb-8 max-w-md whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-400"><span className="font-medium text-zinc-300">{asking.parent.label} goal:</span> {parentGoal.text}</p>}
     {!asking && goal ? <div className="flex items-center justify-center gap-3">
       <h1 className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl"><span className="one-thing-gold-shine-occasional">{goal.text}</span></h1>
