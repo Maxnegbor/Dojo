@@ -8,6 +8,8 @@ import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { WeekPlanner } from '@/components/today/WeekPlanner'
+import { DayNotesEditor, DayNotesMarker } from '@/components/today/DayNotes'
+import { ScheduleViewToggle } from '@/components/today/ScheduleViewToggle'
 import { HabitifyHabitsCard } from '@/components/today/HabitifyHabitsCard'
 import { WhoopPulseOrbits } from '@/components/today/WhoopPulseOrbits'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
@@ -135,6 +137,11 @@ export function TodayPage() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [showShutdown, setShowShutdown] = useState(false)
   const [weekPlannerOpen, setWeekPlannerOpen] = useState(false)
+  const [dayNotesOpen, setDayNotesOpen] = useState(false)
+
+  useEffect(() => {
+    setDayNotesOpen(false)
+  }, [viewDate])
   const [showMorningLog, setShowMorningLog] = useState(false)
   const [showHomeLog, setShowHomeLog] = useState(false)
   const [morningLogDone, setMorningLogDone] = useState(() => isMorningLogSubmitted(viewDate))
@@ -399,26 +406,23 @@ export function TodayPage() {
   }
 
   const saveBlock = async (block: ScheduleBlock) => {
-    const normalized = normalizeScheduleBlock(block)
-    const previous = blocks.find((b) => b.id === normalized.id)
-
-    if (isSupabaseConfigured) {
-      const { upsertScheduleBlock } = await import('@/lib/supabase')
-      await upsertScheduleBlock(normalized)
-    } else localStore.upsertScheduleBlock(normalized)
+    const saved = await persistScheduleBlock(block)
 
     setBlocks((prev) => {
-      const idx = prev.findIndex((b) => b.id === normalized.id)
-      if (idx >= 0) { const next = [...prev]; next[idx] = normalized; return next }
-      return [...prev, normalized]
+      const idx = prev.findIndex((b) => b.id === saved.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = saved
+        return next
+      }
+      return [...prev, saved]
     })
 
     if (
-      previous &&
-      isWorkoutScheduleColor(previous.activity_type) &&
-      !isWorkoutScheduleColor(normalized.activity_type)
+      isWorkoutScheduleColor(block.activity_type) &&
+      !isWorkoutScheduleColor(saved.activity_type)
     ) {
-      unlinkPlannedWorkoutByScheduleBlockId(normalized.id)
+      unlinkPlannedWorkoutByScheduleBlockId(saved.id)
     }
   }
 
@@ -970,6 +974,14 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
+          <div className="flex justify-center">
+            <ScheduleViewToggle
+              mode="day"
+              onChange={(mode) => {
+                if (mode === 'week') setWeekPlannerOpen(true)
+              }}
+            />
+          </div>
           <OneThingHomeCard />
           {settings.showExperimentsPage && <ExperimentHomeCard date={viewDate} />}
         </aside>
@@ -990,6 +1002,13 @@ export function TodayPage() {
               <LayoutGrid size={16} className="text-[var(--accent-400)]" />
               Today cards
             </button>
+          )}
+          {!showShutdown && (
+            <DayNotesMarker
+              date={viewDate}
+              onEdit={() => setDayNotesOpen(true)}
+              className="shrink-0 pb-2"
+            />
           )}
           {!showShutdown && (
             <HourlyTimeline
@@ -1029,6 +1048,10 @@ export function TodayPage() {
         )}
       </div>
       </div>
+
+      {dayNotesOpen && (
+        <DayNotesEditor date={viewDate} onClose={() => setDayNotesOpen(false)} />
+      )}
 
       {weekPlannerOpen && userId && (
         <WeekPlanner

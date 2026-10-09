@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { DayNoteButton, DayNotesEditor } from '@/components/today/DayNotes'
+import { ScheduleViewToggle } from '@/components/today/ScheduleViewToggle'
+import { getDayNoteItems } from '@/lib/dayNotes'
 import { useSettings } from '@/context/SettingsContext'
 import {
   beginPlannedWorkoutDrag,
@@ -76,6 +79,8 @@ type Gesture =
       end: number
       offset: number
       moved: boolean
+      /** Shift was held when the drag started, so this moves a copy. */
+      copy: boolean
     }
   | { kind: 'resize'; id: string; edge: 'start' | 'end'; date: string; start: number; end: number }
 
@@ -189,6 +194,7 @@ export function WeekPlanner({
   const titleInputRef = useRef<HTMLInputElement | null>(null)
   const [blockMenu, setBlockMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [dayMenu, setDayMenu] = useState<{ date: string; x: number; y: number } | null>(null)
+  const [notesDate, setNotesDate] = useState<string | null>(null)
   const [planDrop, setPlanDrop] = useState<{ date: string; start: number; end: number } | null>(null)
   const [now, setNow] = useState(() => new Date())
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -338,7 +344,11 @@ export function WeekPlanner({
   const displayOf = useCallback(
     (block: ScheduleBlock): Span => {
       const active = gesture
-      if (active && (active.kind === 'move' || active.kind === 'resize') && active.id === block.id) {
+      if (
+        active &&
+        (active.kind === 'resize' || (active.kind === 'move' && !active.copy)) &&
+        active.id === block.id
+      ) {
         return { date: active.date, start: active.start, end: active.end }
       }
       return {
@@ -476,6 +486,23 @@ export function WeekPlanner({
         setSelectedId(block.id)
         return
       }
+      if (current.kind === 'move' && current.copy) {
+        const copy = {
+          ...block,
+          id: generateId(),
+          user_id: api.userId,
+          date: current.date,
+          start_time: minutesToTime(current.start),
+          end_time: minutesToTime(current.end),
+          created_at: new Date().toISOString(),
+        }
+        void persistScheduleBlock(copy).then((saved) => {
+          setBlocks((prev) => [...prev, saved])
+          setSelectedId(saved.id)
+          api.onChanged?.()
+        })
+        return
+      }
       void api.saveBlock(block, { date: current.date, start: current.start, end: current.end })
     }
 
@@ -495,12 +522,14 @@ export function WeekPlanner({
 
   useEffect(() => {
     if (!gesture) return
-    const { userSelect } = document.body.style
+    const { userSelect, cursor } = document.body.style
     document.body.style.userSelect = 'none'
     document.body.style.setProperty('-webkit-user-select', 'none')
+    if (gesture.kind === 'move') document.body.style.cursor = 'grabbing'
     window.getSelection()?.removeAllRanges()
     return () => {
       document.body.style.userSelect = userSelect
+      document.body.style.cursor = cursor
       document.body.style.removeProperty('-webkit-user-select')
       window.getSelection()?.removeAllRanges()
     }
@@ -583,7 +612,7 @@ export function WeekPlanner({
     return () => window.removeEventListener('mousedown', onPointer, true)
   }, [blockMenu, dayMenu])
 
-  const chooseColor = (block: ScheduleBlock, colorId: string) => {
+  const chooseColor = (block: ScheduleBlock, colorId: string, typedTitle?: string) => {
     setColorChosenIds((prev) => {
       const next = new Set(prev)
       next.add(block.id)
@@ -591,9 +620,10 @@ export function WeekPlanner({
     })
     setSelectedId(block.id)
     const colored = setScheduleBlockColor(block, colorId)
-    const next = colorId === 'grey' ? { ...colored, title: '' } : colored
+    const next =
+      colorId === 'grey' ? { ...colored, title: typedTitle ?? '' } : colored
     setBlocks((prev) => prev.map((entry) => (entry.id === block.id ? next : entry)))
-    setTitleFocus({ id: block.id, select: colorId !== 'grey' })
+    setTitleFocus({ id: block.id, select: colorId !== 'grey' && typedTitle == null })
     void persistScheduleBlock(next).then((saved) => {
       if (isWorkoutScheduleColor(block.activity_type) && !isWorkoutScheduleColor(saved.activity_type)) {
         unlinkPlannedWorkoutByScheduleBlockId(saved.id)
@@ -607,6 +637,35 @@ export function WeekPlanner({
       onChanged?.()
     })
   }
+
+  useEffect(() => {
+    const awaiting = blocks.filter(
+      (block) =>
+        isGreyBlock(block) && isUnsetBlockTitle(block.title) && !colorChosenIds.has(block.id),
+    )
+    if (awaiting.length === 0 || blockMenu || dayMenu) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || gestureRef.current) return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.key.length !== 1) return
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        target.closest('input, textarea, select, [contenteditable="true"]')
+      ) {
+        return
+      }
+      const newest = [...awaiting].sort((a, b) => a.created_at.localeCompare(b.created_at))
+      const block = awaiting.find((entry) => entry.id === selectedId) ?? newest[newest.length - 1]
+      if (!block) return
+      event.preventDefault()
+      chooseColor(block, 'grey', event.key)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [blocks, blockMenu, colorChosenIds, dayMenu, selectedId])
 
   useLayoutEffect(() => {
     if (!titleFocus) return
@@ -655,6 +714,12 @@ export function WeekPlanner({
     gesture?.kind === 'create'
       ? { date: gesture.date, ...clampSpan(gesture.anchor, gesture.current) }
       : null
+  const copyPreview = (() => {
+    if (gesture?.kind !== 'move' || !gesture.copy || !gesture.moved) return null
+    const source = blocks.find((block) => block.id === gesture.id)
+    if (!source) return null
+    return { block: source, date: gesture.date, start: gesture.start, end: gesture.end }
+  })()
 
   return createPortal(
     <div
@@ -663,7 +728,7 @@ export function WeekPlanner({
       aria-label="Week planner"
       className="fixed inset-0 z-[300] flex flex-col bg-[#09090b] text-zinc-100"
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
+      <header className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-zinc-800 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
@@ -683,14 +748,22 @@ export function WeekPlanner({
           </button>
           <h2 className="truncate text-lg font-semibold">{weekTitle(weekDates)}</h2>
         </div>
-        <button
-          type="button"
-          className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-          aria-label="Close week planner"
-          onClick={onClose}
-        >
-          <X size={18} />
-        </button>
+        <ScheduleViewToggle
+          mode="week"
+          onChange={(mode) => {
+            if (mode === 'day') onClose()
+          }}
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="rounded-lg p-2 text-zinc-400 transition-colors duration-200 ease-out hover:bg-zinc-800 hover:text-zinc-100"
+            aria-label="Close week planner"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -781,7 +854,7 @@ export function WeekPlanner({
               return (
                 <div
                   key={date}
-                  className="px-1 py-2 text-center"
+                  className="relative px-1 py-2 text-center"
                   onContextMenu={(event) => {
                     event.preventDefault()
                     event.stopPropagation()
@@ -800,6 +873,9 @@ export function WeekPlanner({
                   >
                     {day.getDate()}
                   </p>
+                  <div className="absolute right-0.5 top-1.5">
+                    <DayNoteButton date={date} onEdit={() => setNotesDate(date)} />
+                  </div>
                 </div>
               )
             })}
@@ -922,6 +998,44 @@ export function WeekPlanner({
                           </div>
                         )}
 
+                        {copyPreview?.date === date && (
+                          <div
+                            className={cn(
+                              'pointer-events-none absolute z-[5] rounded-lg border px-1.5 text-left shadow-lg shadow-black/40',
+                              copyPreview.end - copyPreview.start <= SNAP
+                                ? 'flex flex-col justify-center'
+                                : 'py-1',
+                            )}
+                            style={{
+                              top: ((copyPreview.start - windowStart) / 60) * hourHeight,
+                              height: Math.max(
+                                ((copyPreview.end - copyPreview.start) / 60) * hourHeight,
+                                18,
+                              ),
+                              left: 2,
+                              right: 2,
+                              borderColor: weekBlockFill(copyPreview.block),
+                              backgroundColor: weekBlockFill(copyPreview.block),
+                              transition: `top 150ms ${BLOCK_MOVE_EASE}, height 150ms ${BLOCK_MOVE_EASE}`,
+                            }}
+                          >
+                            <p
+                              className={cn(
+                                'truncate text-[11px] font-semibold text-zinc-100',
+                                copyPreview.end - copyPreview.start <= SNAP ? 'leading-none' : 'leading-tight',
+                              )}
+                            >
+                              {copyPreview.block.title}
+                            </p>
+                            {((copyPreview.end - copyPreview.start) / 60) * hourHeight > 36 && (
+                              <p className="truncate text-[10px] leading-tight text-zinc-400">
+                                {formatTime(minutesOnDay(copyPreview.start))} –{' '}
+                                {formatTime(minutesOnDay(copyPreview.end))}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         {planDrop?.date === date && (
                           <div
                             className="pointer-events-none absolute z-[3] rounded-lg border-2 border-dashed border-red-400/70 bg-red-500/15 transition-[top,height] duration-150 ease-out"
@@ -965,7 +1079,7 @@ export function WeekPlanner({
                           const resizeEdge =
                             gesture?.kind === 'resize' && gesture.id === block.id ? gesture.edge : null
                           const isLiveGesture =
-                            (gesture?.kind === 'move' || gesture?.kind === 'resize') &&
+                            ((gesture?.kind === 'move' && !gesture.copy) || gesture?.kind === 'resize') &&
                             gesture.id === block.id
                           return (
                             <div
@@ -980,7 +1094,7 @@ export function WeekPlanner({
                                     : 'z-[2] overflow-hidden',
                                 selectedBlock && 'ring-2 ring-white/80',
                                 isLiveGesture && 'shadow-lg shadow-black/40',
-                                gesture?.kind === 'move' && gesture.id === block.id
+                                gesture?.kind === 'move' && !gesture.copy && gesture.id === block.id
                                   ? 'cursor-grabbing'
                                   : 'cursor-grab',
                               )}
@@ -1017,6 +1131,7 @@ export function WeekPlanner({
                                   end: span.end,
                                   offset: pointer - span.start,
                                   moved: false,
+                                  copy: event.shiftKey,
                                 })
                               }}
                             >
@@ -1046,44 +1161,42 @@ export function WeekPlanner({
                                 </div>
                               ) : (
                                 <>
-                                  {selectedBlock ? (
-                                    <input
-                                      ref={titleInputRef}
-                                      value={block.title}
-                                      aria-label="Block title"
-                                      placeholder=""
-                                      className={cn(
-                                        'w-full border-0 bg-transparent p-0 text-[11px] font-semibold text-zinc-100 outline-none placeholder:text-zinc-500',
-                                        isHalfHour ? 'min-h-0 appearance-none leading-none' : 'leading-tight',
-                                      )}
-                                      onMouseDown={(event) => event.stopPropagation()}
-                                      onKeyDown={(event) => {
-                                        if (event.key !== 'Enter') return
-                                        event.preventDefault()
-                                        event.stopPropagation()
-                                        event.currentTarget.blur()
-                                        setSelectedId(null)
-                                      }}
-                                      onChange={(event) => {
-                                        const title = event.target.value
-                                        setBlocks((prev) =>
-                                          prev.map((entry) =>
-                                            entry.id === block.id ? { ...entry, title } : entry,
-                                          ),
-                                        )
-                                      }}
-                                      onBlur={(event) => void rename(block, event.target.value)}
-                                    />
-                                  ) : (
-                                    <p
-                                      className={cn(
-                                        'truncate text-[11px] font-semibold text-zinc-100',
-                                        isHalfHour ? 'leading-none' : 'leading-tight',
-                                      )}
-                                    >
-                                      {block.title}
+                                  <div
+                                    className={cn(
+                                      'relative text-[11px] font-semibold text-zinc-100',
+                                      isHalfHour ? 'leading-none' : 'leading-tight',
+                                    )}
+                                  >
+                                    <p className={cn('truncate', selectedBlock && 'invisible')}>
+                                      {block.title || '\u00a0'}
                                     </p>
-                                  )}
+                                    {selectedBlock && (
+                                      <input
+                                        ref={titleInputRef}
+                                        value={block.title}
+                                        aria-label="Block title"
+                                        placeholder=""
+                                        className="absolute inset-0 m-0 box-border h-full w-full appearance-none border-0 bg-transparent p-0 font-[inherit] text-[length:inherit] leading-[inherit] text-inherit outline-none"
+                                        onMouseDown={(event) => event.stopPropagation()}
+                                        onKeyDown={(event) => {
+                                          if (event.key !== 'Enter') return
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          event.currentTarget.blur()
+                                          setSelectedId(null)
+                                        }}
+                                        onChange={(event) => {
+                                          const title = event.target.value
+                                          setBlocks((prev) =>
+                                            prev.map((entry) =>
+                                              entry.id === block.id ? { ...entry, title } : entry,
+                                            ),
+                                          )
+                                        }}
+                                        onBlur={(event) => void rename(block, event.target.value)}
+                                      />
+                                    )}
+                                  </div>
                                   {height > 36 && (
                                     <p
                                       className={cn(
@@ -1229,6 +1342,16 @@ export function WeekPlanner({
             >
               <button
                 type="button"
+                className="flex w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800/80"
+                onClick={() => {
+                  setNotesDate(dayMenu.date)
+                  setDayMenu(null)
+                }}
+              >
+                {getDayNoteItems(dayMenu.date).length > 0 ? 'Edit notes' : 'Add notes'}
+              </button>
+              <button
+                type="button"
                 className="flex w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-800/80"
                 onClick={() => void clearDay(dayMenu.date)}
               >
@@ -1252,6 +1375,7 @@ export function WeekPlanner({
             </div>
           )
         })()}
+      {notesDate && <DayNotesEditor date={notesDate} onClose={() => setNotesDate(null)} />}
     </div>,
     document.body,
   )

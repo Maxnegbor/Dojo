@@ -180,7 +180,39 @@ export async function replaceScheduleBlocksForDate(
   return saved.sort((a, b) => a.start_time.localeCompare(b.start_time))
 }
 
-export async function persistScheduleBlock(block: ScheduleBlock): Promise<ScheduleBlock> {
+function isDefaultBlockTitle(title: string) {
+  const trimmed = title.trim()
+  return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
+}
+
+/**
+ * A move or resize often resends the block it captured before the rename.
+ * That copy still says "New Block". An emptied title is a real clear, so only
+ * the untouched default label is ignored.
+ */
+function mergeBlockWrite(previous: ScheduleBlock | undefined, incoming: ScheduleBlock): ScheduleBlock {
+  const next = normalizeScheduleBlock(incoming)
+  const staleDefault = incoming.title === GREY_BLOCK_TITLE || incoming.title === 'New Block'
+  if (!previous || !staleDefault || isDefaultBlockTitle(previous.title)) return next
+  return { ...next, title: previous.title }
+}
+
+function sameScheduleWrite(a: ScheduleBlock, b: ScheduleBlock) {
+  return (
+    a.title === b.title &&
+    a.notes === b.notes &&
+    a.date === b.date &&
+    a.start_time === b.start_time &&
+    a.end_time === b.end_time &&
+    a.activity_type === b.activity_type &&
+    a.color === b.color
+  )
+}
+
+const desiredScheduleBlocks = new Map<string, ScheduleBlock>()
+const scheduleWriteInflight = new Map<string, Promise<ScheduleBlock>>()
+
+async function writeScheduleBlock(block: ScheduleBlock): Promise<ScheduleBlock> {
   const normalized = normalizeScheduleBlock(block)
   if (isSupabaseConfigured) {
     const { upsertScheduleBlock } = await import('@/lib/supabase')
@@ -188,6 +220,39 @@ export async function persistScheduleBlock(block: ScheduleBlock): Promise<Schedu
   }
   localStore.upsertScheduleBlock(normalized)
   return normalized
+}
+
+async function flushScheduleBlock(id: string): Promise<ScheduleBlock> {
+  let written: ScheduleBlock | null = null
+  while (true) {
+    const snapshot = desiredScheduleBlocks.get(id)
+    if (!snapshot) {
+      if (!written) throw new Error('Missing schedule block')
+      return written
+    }
+    written = await writeScheduleBlock(snapshot)
+    const latest = desiredScheduleBlocks.get(id)
+    if (latest && sameScheduleWrite(latest, snapshot)) {
+      desiredScheduleBlocks.set(id, written)
+      return written
+    }
+  }
+}
+
+export function persistScheduleBlock(block: ScheduleBlock): Promise<ScheduleBlock> {
+  const id = block.id
+  desiredScheduleBlocks.set(id, mergeBlockWrite(desiredScheduleBlocks.get(id), block))
+
+  const existing = scheduleWriteInflight.get(id)
+  if (existing) {
+    return existing.then(() => persistScheduleBlock(desiredScheduleBlocks.get(id) ?? block))
+  }
+
+  const job = flushScheduleBlock(id)
+  scheduleWriteInflight.set(id, job)
+  return job.finally(() => {
+    if (scheduleWriteInflight.get(id) === job) scheduleWriteInflight.delete(id)
+  })
 }
 
 export async function removeScheduleBlock(id: string): Promise<void> {

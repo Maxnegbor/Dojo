@@ -13,19 +13,17 @@ export function FocusBadge({ className }: FocusBadgeProps) {
   const { focusToday, focusWeekExceptToday, liveFocusSeconds } = useFocus()
   const focusSettings = getFocusSettings()
 
-  const liveMinutes = liveFocusSeconds / 60
-  const dailyMinutes = focusToday + liveMinutes
+  const dailyMinutes = focusToday
 
   const progressMinutes = useMemo(() => {
     if (focusSettings.focusGoalEnabled && focusSettings.focusGoalPeriod === 'weekly') {
-      return focusWeekExceptToday + focusToday + liveMinutes
+      return focusWeekExceptToday + focusToday
     }
     return dailyMinutes
   }, [
     dailyMinutes,
     focusToday,
     focusWeekExceptToday,
-    liveMinutes,
     focusSettings.focusGoalEnabled,
     focusSettings.focusGoalPeriod,
   ])

@@ -47,6 +47,13 @@ interface FocusContextValue {
     sessionStartMs?: number,
     labelId?: string | null,
   ) => Promise<void>
+  /** Add minutes for a session that is still running. Extends one history row instead of starting a new one. */
+  creditFocusMinutes: (params: {
+    minutes: number
+    sessionId: string | null
+    startMs: number
+    labelId?: string | null
+  }) => Promise<string | null | false>
   updateFocusRecord: (id: string, draft: FocusSessionDraft) => Promise<void>
   deleteFocusRecord: (id: string) => Promise<void>
   addFocusRecord: (draft: FocusSessionDraft) => Promise<void>
@@ -114,6 +121,77 @@ export function FocusProvider({ children }: { children: ReactNode }) {
       }
     },
     [userId, refreshFocus],
+  )
+
+  const creditFocusMinutes = useCallback(
+    async (params: {
+      minutes: number
+      sessionId: string | null
+      startMs: number
+      labelId?: string | null
+    }): Promise<string | null | false> => {
+      const delta = Math.round(params.minutes)
+      if (delta <= 0) return params.sessionId
+      if (!userId) return false
+
+      const today = formatDate(new Date())
+      setFocusToday((current) => current + delta)
+      let total = 0
+      try {
+        total = await addFocusMinutes(userId, today, delta)
+      } catch {
+        setFocusToday((current) => Math.max(0, current - delta))
+        return false
+      }
+      setFocusToday(total)
+
+      const labelId = params.labelId ?? null
+      const existing = params.sessionId
+        ? getFocusSessions().find((session) => session.id === params.sessionId)
+        : undefined
+      const sameDay = existing && existing.date === today ? existing : undefined
+
+      if (sameDay) {
+        const nextMinutes = sameDay.minutes + delta
+        const endMs = sameDay.startMs + nextMinutes * 60_000
+        const result = updateFocusSession(sameDay.id, {
+          minutes: nextMinutes,
+          startMs: sameDay.startMs,
+          endMs,
+          date: sameDay.date,
+          labelId,
+        })
+        if (result) {
+          removeRecordedFocusSession(result.previous.startMs, result.previous.endMs)
+          recordFocusSession(result.next.startMs, result.next.endMs)
+          return result.next.id
+        }
+      }
+
+      const startMs =
+        formatDate(new Date(params.startMs)) === today
+          ? params.startMs
+          : Date.now() - delta * 60_000
+      const created = addFocusSession({
+        minutes: delta,
+        startMs,
+        endMs: startMs + delta * 60_000,
+        date: today,
+        labelId,
+      })
+      if (!created) {
+        try {
+          const rolled = await adjustFocusMinutes(userId, today, -delta)
+          setFocusToday(rolled)
+        } catch {
+          setFocusToday((current) => Math.max(0, current - delta))
+        }
+        return false
+      }
+      recordFocusSession(created.startMs, created.endMs)
+      return created.id
+    },
+    [userId],
   )
 
   const syncDailyFocus = useCallback(
@@ -221,6 +299,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         setFocusTimerActive,
         refreshFocus,
         logFocusMinutes,
+        creditFocusMinutes,
         updateFocusRecord,
         deleteFocusRecord,
         addFocusRecord,

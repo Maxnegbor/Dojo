@@ -316,6 +316,11 @@ export function HourlyTimeline({
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
   const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
   const titleInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const blocksRef = useRef(blocks)
+  blocksRef.current = blocks
+  const titleEditsRef = useRef(titleEdits)
+  titleEditsRef.current = titleEdits
+  const placeTitleCaretAtEnd = useRef(false)
   const notesInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const [nowLine, setNowLine] = useState<number | null>(null)
   const [maxViewportHeight, setMaxViewportHeight] = useState<number | null>(null)
@@ -639,10 +644,56 @@ export function HourlyTimeline({
     if (!blocks.some((block) => block.id === focusTitleId)) return
     const input = titleInputRefs.current[focusTitleId]
     if (!input) return
+    const caretAtEnd = placeTitleCaretAtEnd.current
     input.focus()
-    input.select()
+    if (caretAtEnd) {
+      const end = input.value.length
+      input.setSelectionRange(end, end)
+    } else {
+      input.select()
+    }
     setFocusTitleId(null)
+    queueMicrotask(() => {
+      placeTitleCaretAtEnd.current = false
+    })
   }, [blocks, focusTitleId, editingTitleId, titleEdits])
+
+  useEffect(() => {
+    const awaiting = blocks.filter(
+      (block) =>
+        isGreyBlock(block) &&
+        isDefaultGreyTitle(block.title) &&
+        editingTitleId !== block.id,
+    )
+    if (awaiting.length === 0) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.key.length !== 1) return
+      if (document.querySelector('[role="dialog"]')) return
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        target.closest('input, textarea, select, [contenteditable="true"]')
+      ) {
+        return
+      }
+      const newest = [...awaiting].sort((a, b) => a.created_at.localeCompare(b.created_at))
+      const block = newest[newest.length - 1]
+      if (!block) return
+      event.preventDefault()
+      placeTitleCaretAtEnd.current = true
+      const next = { ...setScheduleBlockColor(block, 'grey'), title: event.key }
+      onUpdate(next)
+      setEditingTitleId(next.id)
+      setTitleEdits((prev) => ({ ...prev, [next.id]: event.key }))
+      setFocusTitleId(next.id)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [blocks, editingTitleId, onUpdate])
 
   useLayoutEffect(() => {
     if (!editingNotesId) return
@@ -776,6 +827,9 @@ export function HourlyTimeline({
 
     const block = interactionBlockRef.current
     if (block && preview && (dragging || resizing)) {
+      const latest = blocksRef.current.find((entry) => entry.id === block.id) ?? block
+      const draftTitle = titleEditsRef.current[block.id]
+      const source = draftTitle !== undefined ? { ...latest, title: draftTitle } : latest
       const startMin = snapToGrid(preview.startMin)
       let endMin = snapToGrid(preview.endMin)
       if (endMin - startMin < GRID_MINUTES) {
@@ -791,7 +845,7 @@ export function HourlyTimeline({
         nextEnd !== parseTimeToMinutes(block.end_time)
       ) {
         onUpdate({
-          ...block,
+          ...source,
           start_time: minutesToTime(nextStart),
           end_time: minutesToTime(nextEnd),
         })
