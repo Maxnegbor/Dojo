@@ -787,10 +787,10 @@ export function TodayPage() {
         }}
       >
         <div
-          className="relative flex items-center justify-between gap-2 overflow-visible"
+          className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-visible"
           style={{ minHeight: 48 }}
         >
-          <div className="relative z-10 min-w-0 flex-1 self-center">
+          <div className="relative z-10 min-w-0">
             <DateNavigationHeader
               date={viewDate}
               onPrev={() => shiftDate(-1)}
@@ -798,8 +798,14 @@ export function TodayPage() {
               onToday={() => setViewDate(formatDate(new Date()))}
             />
           </div>
+          <ScheduleViewToggle
+            mode="day"
+            onChange={(mode) => {
+              if (mode === 'week') setWeekPlannerOpen(true)
+            }}
+          />
           {/* HomePulseCard is kept in components/pulse for later; the header stays compact. */}
-          <div className="relative z-10 flex shrink-0 items-center gap-1.5 self-center">
+          <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5">
             {isMobile && (
               <button
                 type="button"
@@ -974,14 +980,6 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
-          <div className="flex justify-center">
-            <ScheduleViewToggle
-              mode="day"
-              onChange={(mode) => {
-                if (mode === 'week') setWeekPlannerOpen(true)
-              }}
-            />
-          </div>
           <OneThingHomeCard />
           {settings.showExperimentsPage && <ExperimentHomeCard date={viewDate} />}
         </aside>
