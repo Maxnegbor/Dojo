@@ -725,7 +725,7 @@ export function WeekPlanner({
       role="dialog"
       aria-modal="true"
       aria-label="Week planner"
-      className="absolute inset-0 z-50 flex flex-col bg-[#09090b] text-zinc-100"
+      className="fixed inset-0 z-50 flex flex-col bg-[#09090b] text-zinc-100 lg:left-14 max-lg:bottom-[calc(4.25rem+env(safe-area-inset-bottom))]"
     >
       <header className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-zinc-800 px-4">
         <div className="flex min-w-0 items-center gap-2">
