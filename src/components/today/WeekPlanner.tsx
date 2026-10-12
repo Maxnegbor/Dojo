@@ -1126,7 +1126,7 @@ export function WeekPlanner({
                                 height,
                                 left: `calc(${(col / cols) * 100}% + 2px)`,
                                 width: `calc(${100 / cols}% - 4px)`,
-                                paddingTop: isHalfHour ? 0 : edge,
+                                paddingTop: isHalfHour ? 2 : edge,
                                 borderColor: blockFill,
                                 backgroundColor: blockFill,
                                 transition: `top 150ms ${BLOCK_MOVE_EASE}, height 150ms ${BLOCK_MOVE_EASE}, left 150ms ${BLOCK_MOVE_EASE}, width 150ms ${BLOCK_MOVE_EASE}, box-shadow 150ms ease, border-color 150ms ease, background-color 150ms ease`,
@@ -1184,13 +1184,8 @@ export function WeekPlanner({
                                 </div>
                               ) : (
                                 <>
-                                  <div
-                                    className={cn(
-                                      'relative text-[11px] font-semibold text-zinc-100',
-                                      isHalfHour ? 'leading-none' : 'leading-tight',
-                                    )}
-                                  >
-                                    <p className={cn('truncate', selectedBlock && 'invisible')}>
+                                  <div className="relative text-[11px] font-semibold leading-snug text-zinc-100">
+                                    <p className={cn('truncate py-0.5', selectedBlock && 'invisible')}>
                                       {block.title || '\u00a0'}
                                     </p>
                                     {selectedBlock && (
@@ -1199,7 +1194,7 @@ export function WeekPlanner({
                                         value={block.title}
                                         aria-label="Block title"
                                         placeholder=""
-                                        className="absolute inset-0 m-0 box-border h-full w-full appearance-none border-0 bg-transparent p-0 font-[inherit] text-[length:inherit] leading-[inherit] text-inherit outline-none"
+                                        className="absolute inset-0 m-0 box-border h-full w-full appearance-none overflow-visible border-0 bg-transparent px-0 py-0.5 font-[inherit] text-[length:inherit] leading-snug text-inherit outline-none"
                                         onMouseDown={(event) => event.stopPropagation()}
                                         onKeyDown={(event) => {
                                           if (event.key !== 'Enter') return

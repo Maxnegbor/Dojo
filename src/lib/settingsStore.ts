@@ -68,6 +68,7 @@ export function getAppSettings(): AppSettings {
         shutdownCustomTime: normalizeShutdownCustomTime(parsed.shutdownCustomTime),
         requireTypedReminderMorning: parsed.requireTypedReminderMorning === true,
         requireTypedReminderShutdown: parsed.requireTypedReminderShutdown === true,
+        remindActiveContracts: parsed.remindActiveContracts === true,
         typedReminderMorningText: normalizeTypedReminderText(
           parsed.typedReminderMorningText,
           // Migrate legacy shared text into morning if dedicated field missing.

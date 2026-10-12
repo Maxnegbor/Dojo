@@ -27,7 +27,7 @@ import { formatHourLabel } from '@/components/settings/TimelineRangeSlider'
 import { generateId, formatDuration, minutesToTime, parseTimeToMinutes, cn } from '@/lib/utils'
 
 const HOUR_HEIGHT = 88
-const TIMELINE_TOP_INSET = 0
+const TIMELINE_TOP_INSET = 6
 const NOW_DOT_GUTTER = 16
 /** Hour-label column; mirrored on the right so timeblocks center under the Pulse. */
 const HOUR_LABEL_COL_CLASS = 'w-11 shrink-0'
@@ -54,7 +54,6 @@ interface ScheduleBlockTitleInputProps {
   placeholder?: string
   inputRef?: React.Ref<HTMLInputElement>
   autoFocus?: boolean
-  centered?: boolean
 }
 
 function ScheduleBlockTitleInput({
@@ -67,18 +66,17 @@ function ScheduleBlockTitleInput({
   placeholder = '',
   inputRef,
   autoFocus,
-  centered = false,
 }: ScheduleBlockTitleInputProps) {
   const mirrorText = value || placeholder
-  const leading = centered ? 'leading-none' : 'leading-tight'
+  const leading = 'leading-snug'
 
   const mirrorClass = cn(
-    'invisible col-start-1 row-start-1 whitespace-pre text-[1em] font-bold',
+    'invisible col-start-1 row-start-1 whitespace-pre py-px text-[1em] font-bold',
     leading,
   )
 
   const inputClass = cn(
-    'col-start-1 row-start-1 min-h-0 min-w-[3ch] w-full cursor-text border-0 bg-transparent p-0 text-[1em] font-bold text-zinc-100 outline-none focus:outline-none',
+    'col-start-1 row-start-1 min-w-[3ch] w-full cursor-text overflow-visible border-0 bg-transparent py-px text-[1em] font-bold text-zinc-100 outline-none focus:outline-none',
     leading,
   )
 
@@ -131,6 +129,105 @@ interface HourlyTimelineProps {
 function isDefaultGreyTitle(title: string) {
   const trimmed = title.trim()
   return trimmed.length === 0 || trimmed === GREY_BLOCK_TITLE || trimmed === 'New Block'
+}
+
+const NOTES_BULLET = '• '
+
+/** `-` or `- ` at the start of a line becomes a bullet. `-hello` stays text. */
+function bulletizeLine(line: string) {
+  return line.replace(/^(\s*)-(?=$|[ \t])[ \t]?/, `$1${NOTES_BULLET}`)
+}
+
+function bulletizeNotes(value: string) {
+  return value.split('\n').map(bulletizeLine).join('\n')
+}
+
+function bulletIndent(line: string) {
+  const match = line.match(/^(\s*)(?:•|-)(?:\s|$)/)
+  return match ? match[1] : null
+}
+
+function bulletizeNotesAt(value: string, caret: number) {
+  const lines = value.split('\n')
+  let offset = 0
+  let deltaBefore = 0
+  let mapped = caret
+  let found = false
+  const next = lines.map((line) => {
+    const replaced = bulletizeLine(line)
+    const delta = replaced.length - line.length
+    const lineEnd = offset + line.length
+    if (!found && caret <= lineEnd) {
+      const marker = line.match(/^(\s*)-(?=$|[ \t])[ \t]?/)
+      const caretInLine = caret - offset
+      if (marker && caretInLine <= marker[0].length) {
+        mapped = offset + deltaBefore + marker[1].length + NOTES_BULLET.length
+      } else {
+        mapped = caret + deltaBefore
+      }
+      found = true
+    }
+    if (!found) deltaBefore += delta
+    offset += line.length + 1
+    return replaced
+  })
+  return { value: next.join('\n'), caret: mapped }
+}
+
+function notesLineBreak(value: string, start: number, end: number) {
+  const text = bulletizeNotes(value)
+  const mappedStart = bulletizeNotesAt(value, start).caret
+  const mappedEnd = bulletizeNotesAt(value, end).caret
+  const before = text.slice(0, mappedStart)
+  const lineStart = before.lastIndexOf('\n') + 1
+  const nextNewline = text.indexOf('\n', mappedEnd)
+  const line = text.slice(lineStart, nextNewline === -1 ? text.length : nextNewline)
+  const indent = bulletIndent(line)
+  const insertion = indent !== null ? `\n${indent}${NOTES_BULLET}` : '\n'
+  return {
+    value: before + insertion + text.slice(mappedEnd),
+    caret: mappedStart + insertion.length,
+  }
+}
+
+function ScheduleBlockNotes({ text }: { text: string }) {
+  const lines = text.split('\n')
+  const listed = lines.some((line) => bulletIndent(line) !== null)
+  if (!listed) {
+    return (
+      <p className="pointer-events-none max-h-full overflow-hidden whitespace-pre-wrap text-center text-[11px] leading-snug text-zinc-300">
+        {text}
+      </p>
+    )
+  }
+
+  return (
+    <div className="pointer-events-none max-h-full w-full overflow-hidden text-left text-[11px] leading-snug text-zinc-300">
+      {lines.map((line, index) => {
+        const indent = bulletIndent(line)
+        if (indent === null) {
+          return (
+            <p key={index} className="whitespace-pre-wrap text-center">
+              {line || '\u00a0'}
+            </p>
+          )
+        }
+        const body = line.slice(indent.length).replace(/^(?:•|-)\s?/, '')
+        return (
+          <div
+            key={index}
+            className="flex gap-1.5"
+            style={indent ? { paddingLeft: `${indent.length}ch` } : undefined}
+          >
+            <span aria-hidden className="shrink-0">
+              •
+            </span>
+            <span className="min-w-0 flex-1">{body || '\u00a0'}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function ScheduleBlockColorPicker({
@@ -322,6 +419,7 @@ export function HourlyTimeline({
   titleEditsRef.current = titleEdits
   const placeTitleCaretAtEnd = useRef(false)
   const notesInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
+  const notesCaretRef = useRef<{ id: string; caret: number } | null>(null)
   const [nowLine, setNowLine] = useState<number | null>(null)
   const [maxViewportHeight, setMaxViewportHeight] = useState<number | null>(null)
 
@@ -615,7 +713,9 @@ export function HourlyTimeline({
     setEditingTitleId((current) => (current === block.id ? null : current))
     setEditingNotesId(block.id)
     setNoteEdits((prev) =>
-      prev[block.id] !== undefined ? prev : { ...prev, [block.id]: block.notes ?? '' },
+      prev[block.id] !== undefined
+        ? prev
+        : { ...prev, [block.id]: bulletizeNotes(block.notes ?? '') },
     )
   }
 
@@ -634,8 +734,9 @@ export function HourlyTimeline({
       return next
     })
 
-    if (draft !== (block.notes ?? '')) {
-      onUpdate({ ...block, notes: draft })
+    const saved = bulletizeNotes(draft)
+    if (saved !== (block.notes ?? '') && saved !== bulletizeNotes(block.notes ?? '')) {
+      onUpdate({ ...block, notes: saved })
     }
   }
 
@@ -703,6 +804,15 @@ export function HourlyTimeline({
     const len = textarea.value.length
     textarea.setSelectionRange(len, len)
   }, [editingNotesId])
+
+  useLayoutEffect(() => {
+    const pending = notesCaretRef.current
+    if (!pending || pending.id !== editingNotesId) return
+    const textarea = notesInputRefs.current[pending.id]
+    if (!textarea) return
+    notesCaretRef.current = null
+    textarea.setSelectionRange(pending.caret, pending.caret)
+  }, [editingNotesId, noteEdits])
 
   const getBlockStyle = (block: ScheduleBlock) => {
     if (preview?.id === block.id) {
@@ -1149,7 +1259,8 @@ export function HourlyTimeline({
                 data-center-title={isShortInline ? '' : undefined}
                 data-awaiting-color={awaitingColor ? '' : undefined}
                 className={cn(
-                  'absolute left-0 right-0 z-[2] flex overflow-hidden rounded-lg border bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
+                  'absolute left-0 right-0 z-[2] flex rounded-lg border bg-zinc-950/70 shadow-md cursor-grab active:cursor-grabbing',
+                  editingTitleId === block.id ? 'overflow-visible' : 'overflow-hidden',
                   !awaitingColor && 'group/block',
                   isLiveGesture && 'z-[3] shadow-lg shadow-black/40',
                   isShortInline
@@ -1253,8 +1364,8 @@ export function HourlyTimeline({
                       isShortInline ? 'h-full items-center' : 'items-start',
                       screensaver && !isShortInline && (isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1'),
                       !screensaver && isShortInline && '-mx-1.5 w-[calc(100%+0.75rem)] px-1.5',
-                      !screensaver && !isShortInline && isCompact && '-mx-1.5 -mt-0.5 w-[calc(100%+0.75rem)] px-1.5 pt-0.5',
-                      !screensaver && !isShortInline && !isCompact && '-mx-2 -mt-1 w-[calc(100%+1rem)] px-2 pt-1 pb-0.5',
+                      !screensaver && !isShortInline && isCompact && '-mx-1.5 -mt-0.5 w-[calc(100%+0.75rem)] px-1.5 pt-1.5',
+                      !screensaver && !isShortInline && !isCompact && '-mx-2 -mt-1 w-[calc(100%+1rem)] px-2 pt-2 pb-0.5',
                     )}
                     style={{ backgroundColor: blockFill }}
                   >
@@ -1293,13 +1404,12 @@ export function HourlyTimeline({
                             }
                           }}
                           autoFocus
-                          centered
                           inputRef={(el) => {
                             titleInputRefs.current[block.id] = el
                           }}
                         />
                       ) : (
-                        <p className="min-w-0 truncate font-bold leading-none text-zinc-100">
+                        <p className="min-w-0 truncate py-px font-bold leading-snug text-zinc-100">
                           {blockTitleValue(block)}
                         </p>
                       )}
@@ -1328,7 +1438,7 @@ export function HourlyTimeline({
                           }}
                         />
                       ) : (
-                        <p className="min-w-0 truncate font-bold leading-tight text-zinc-100">
+                        <p className="min-w-0 truncate py-px font-bold leading-snug text-zinc-100">
                           {blockTitleValue(block)}
                         </p>
                       )}
@@ -1409,23 +1519,46 @@ export function HourlyTimeline({
                           }}
                           value={blockNotesValue(block)}
                           aria-label={`Notes for ${block.title}`}
-                          onChange={(e) => updateNotesDraft(block.id, e.target.value)}
+                          onChange={(e) => {
+                            const caret = e.target.selectionStart ?? e.target.value.length
+                            const next = bulletizeNotesAt(e.target.value, caret)
+                            updateNotesDraft(block.id, next.value)
+                            if (next.value !== e.target.value || next.caret !== caret) {
+                              notesCaretRef.current = { id: block.id, caret: next.caret }
+                            }
+                          }}
                           onBlur={() => commitNotesEdit(block)}
                           onMouseDown={(e) => e.stopPropagation()}
                           onKeyDown={(e) => {
                             e.stopPropagation()
-                            if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+                            if (e.nativeEvent.isComposing) return
+                            if (e.key === 'Escape') {
                               e.preventDefault()
-                              ;(e.target as HTMLTextAreaElement).blur()
+                              e.currentTarget.blur()
+                              return
                             }
+                            if (e.key !== 'Enter') return
+                            e.preventDefault()
+                            if (e.shiftKey) {
+                              const start = e.currentTarget.selectionStart ?? e.currentTarget.value.length
+                              const end = e.currentTarget.selectionEnd ?? start
+                              const next = notesLineBreak(e.currentTarget.value, start, end)
+                              notesCaretRef.current = { id: block.id, caret: next.caret }
+                              updateNotesDraft(block.id, next.value)
+                              return
+                            }
+                            e.currentTarget.blur()
                           }}
                           placeholder="Notes"
-                          className="h-full min-h-0 w-full resize-none bg-transparent text-center text-[11px] leading-snug text-zinc-200 outline-none placeholder:text-zinc-600"
+                          className={cn(
+                            'h-full min-h-0 w-full resize-none bg-transparent text-[11px] leading-snug text-zinc-200 outline-none placeholder:text-zinc-600',
+                            blockNotesValue(block).split('\n').some((line) => bulletIndent(line) !== null)
+                              ? 'text-left'
+                              : 'text-center',
+                          )}
                         />
                       ) : (
-                        <p className="pointer-events-none max-h-full overflow-hidden whitespace-pre-wrap text-center text-[11px] leading-snug text-zinc-300">
-                          {blockNotesValue(block)}
-                        </p>
+                        <ScheduleBlockNotes text={blockNotesValue(block)} />
                       )}
                     </div>
                   )}

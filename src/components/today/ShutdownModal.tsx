@@ -18,6 +18,7 @@ import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
 import { TypedReminderConfirm } from '@/components/today/TypedReminderConfirm'
+import { ActiveContractsPopup } from '@/components/today/ActiveContractsCard'
 import { TodoistTasksPanel } from '@/components/today/TodoistTasksPanel'
 import { HabitifyHabitsPanel } from '@/components/today/HabitifyHabitsPanel'
 import { useSettings } from '@/context/SettingsContext'
@@ -329,6 +330,7 @@ export function ShutdownModal({
             : 'h-[min(92vh,820px)] max-w-2xl',
         )}
       >
+        <ActiveContractsPopup />
         {!required && (
           <button
             onClick={onClose}

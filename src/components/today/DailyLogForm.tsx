@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { parseISO } from 'date-fns'
 import { ChevronDown, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GoalMetricInput } from '@/components/ui/GoalMetricInput'
 import { HabitLogRow } from '@/components/today/HabitLogRow'
+import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
 import type { DailyLog, Goal, Workout, WorkoutCategory } from '@/types'
 import { getDailyLogGoals, getHomeLogGoals } from '@/lib/goals'
 import { getDailyLogHabitTypes, getHabitTypes, saveHabitTypes, useDailyLogHabitTypes, useHomeLogHabitTypes, useWeeklyLogHabitTypes } from '@/lib/habitTypes'
 import { WeeklyHabitsLogSection } from '@/components/today/WeeklyHabitsLogSection'
 import { getHabitTargetLabel, applyRampLevelSync } from '@/lib/habitRamp'
-import { getWorkoutTypes, getHomeLogWorkoutTypes, formatWorkoutAmount } from '@/lib/workoutTypes'
+import { getWorkoutTypes, getHomeLogWorkoutTypes } from '@/lib/workoutTypes'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { localStore } from '@/lib/localStore'
 import { getHabitStreak } from '@/lib/habitStreaks'
 import {
   draftFromLog,
@@ -18,9 +22,7 @@ import {
   mergeDraftWithLog,
   setDraft,
   usesAdditiveTodayDraft,
-  workoutsFromListForDate,
   type DailyLogDraft,
-  type WorkoutDrafts,
 } from '@/lib/dailyLogDraft'
 import { isLogEditable } from '@/lib/devFlags'
 import { getAppSettings } from '@/lib/settingsStore'
@@ -28,7 +30,7 @@ import { playHabitCheckSound, warmAudioContext } from '@/lib/timerSound'
 import { useHabitCompleteAnimation } from '@/hooks/useHabitCompleteAnimation'
 import { useSettings } from '@/context/SettingsContext'
 import type { ShutdownLogFilter } from '@/lib/shutdownLogConfig'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, getWeekDates } from '@/lib/utils'
 
 interface DailyLogFormProps {
   log: DailyLog
@@ -238,27 +240,54 @@ export function DailyLogForm({
     }
   }
 
-  const workoutDrafts: WorkoutDrafts = draft.workouts ?? {}
-  const loggedWorkoutsToday = useMemo(
-    () => workoutsFromListForDate(workouts, log.date),
-    [workouts, log.date],
+  const [weekWorkouts, setWeekWorkouts] = useState<Workout[]>([])
+
+  const reloadWeekWorkouts = useCallback(async () => {
+    if (!userId) {
+      setWeekWorkouts([])
+      return
+    }
+    const weekDates = getWeekDates(parseISO(`${log.date}T12:00:00`), settings.weekStartsOn)
+    const start = weekDates[0]
+    const end = weekDates[weekDates.length - 1]
+    if (!start || !end) return
+    if (isSupabaseConfigured) {
+      const { fetchWorkouts } = await import('@/lib/supabase')
+      setWeekWorkouts(await fetchWorkouts(userId, start, end))
+      return
+    }
+    setWeekWorkouts(localStore.getWorkouts(start, end))
+  }, [userId, log.date, settings.weekStartsOn])
+
+  useEffect(() => {
+    void reloadWeekWorkouts()
+  }, [reloadWeekWorkouts])
+
+  const addLoggedWorkout = useCallback(
+    async (
+      category: WorkoutCategory,
+      minutes: number,
+      extras?: { date?: string; notes?: string },
+    ) => {
+      if (!userId) return
+      const workoutDate =
+        extras?.date && /^\d{4}-\d{2}-\d{2}$/.test(extras.date) ? extras.date : log.date
+      const payload = {
+        user_id: userId,
+        daily_log_id: workoutDate === log.date ? (log.id ?? null) : null,
+        date: workoutDate,
+        category,
+        duration_minutes: minutes,
+        notes: extras?.notes ?? '',
+      }
+      const created = isSupabaseConfigured
+        ? await (await import('@/lib/supabase')).addWorkout(payload)
+        : localStore.addWorkout(payload)
+      setWeekWorkouts((prev) => [...prev, created])
+      onSaved?.()
+    },
+    [userId, log.date, log.id, onSaved],
   )
-
-  const toggleWorkout = (category: WorkoutCategory) => {
-    const next = { ...workoutDrafts }
-    if (category in next) delete next[category]
-    else next[category] = null
-    updateDraft({ workouts: next })
-  }
-
-  const setWorkoutDuration = (category: WorkoutCategory, raw: string) => {
-    updateDraft({
-      workouts: {
-        ...workoutDrafts,
-        [category]: raw ? parseInt(raw, 10) : null,
-      },
-    })
-  }
 
   const toggleHabit = (habitId: string) => {
     const current = draft.habits?.[habitId] ?? false
@@ -336,13 +365,8 @@ export function DailyLogForm({
     log.date,
   ])
 
-  const unloggedWorkoutTypes = useMemo(() => {
-    if (!unloggedMetricsOnly) return filteredWorkoutTypes
-    return filteredWorkoutTypes.filter((type) => (loggedWorkoutsToday[type.id] ?? 0) <= 0)
-  }, [filteredWorkoutTypes, unloggedMetricsOnly, loggedWorkoutsToday])
-
   const scalarGoalsToShow = unloggedMetricsOnly ? unloggedScalarGoals : filteredScalarGoals
-  const workoutTypesToShow = unloggedMetricsOnly ? unloggedWorkoutTypes : filteredWorkoutTypes
+  const workoutTypesToShow = filteredWorkoutTypes
   const habitsToShow = incompleteHabitsOnly || unloggedMetricsOnly ? pendingHabits : filteredDailyHabits
 
   const showWorkouts =
@@ -585,70 +609,21 @@ export function DailyLogForm({
           )}
 
           {showWorkouts && workoutTypesToShow.length > 0 && (
-            <div>
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                Workouts
-              </p>
-              <div className="flex items-start gap-1">
-                {workoutTypesToShow.map((type) => {
-                  const selected = type.id in workoutDrafts
-                  const logged = loggedWorkoutsToday[type.id] ?? 0
-                  return (
-                    <button
-                      key={type.id}
-                      type="button"
-                      disabled={!isEditableDay}
-                      onClick={() => toggleWorkout(type.id)}
-                      className={cn(
-                        'flex min-w-0 flex-1 flex-col self-start overflow-hidden rounded-md transition-[background-color,color] duration-150',
-                        !selected &&
-                          'bg-zinc-800 text-zinc-400 hover:bg-[var(--accent-950)] hover:text-[var(--accent-200)]',
-                        selected && 'bg-[var(--accent-500)] text-black',
-                        !isEditableDay && 'cursor-not-allowed opacity-60',
-                      )}
-                    >
-                      <span className="px-1.5 pt-1.5 text-[10px] font-medium leading-tight">
-                        {type.label}
-                      </span>
-                      <span
-                        className={cn(
-                          'px-1.5 text-[10px] font-medium tabular-nums leading-tight',
-                          selected ? 'text-white/85' : 'text-zinc-300',
-                          !selected && 'pb-1.5',
-                        )}
-                      >
-                        {formatWorkoutAmount(logged, type.unit || 'min')}
-                      </span>
-                      {selected && (
-                        <div
-                          className="mx-1 mb-1.5 mt-1 flex flex-col gap-0.5"
-                          onClick={(e) => e.stopPropagation()}
-                          onPointerDown={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center gap-0.5 rounded bg-black/25 px-1.5 py-1">
-                            <input
-                              type="number"
-                              min={1}
-                              inputMode="numeric"
-                              placeholder="Add"
-                              disabled={!isEditableDay}
-                              value={workoutDrafts[type.id] ?? ''}
-                              onChange={(e) => setWorkoutDuration(type.id, e.target.value)}
-                              className={cn(
-                                'min-w-0 flex-1 bg-transparent text-center text-xs font-medium text-white',
-                                'placeholder:text-white/40 focus:outline-none',
-                                '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
-                              )}
-                            />
-                            <span className="shrink-0 text-[10px] text-white/60">min</span>
-                          </div>
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <WorkoutLogCard
+              embedded
+              date={log.date}
+              userId={userId}
+              goals={goals}
+              weekWorkouts={weekWorkouts}
+              workouts={workouts}
+              categories={workoutTypesToShow.map((type) => type.id)}
+              disabled={!isEditableDay || !userId}
+              onAddWorkout={addLoggedWorkout}
+              onWeekEdited={async () => {
+                await reloadWeekWorkouts()
+                onSaved?.()
+              }}
+            />
           )}
         </>
       )}

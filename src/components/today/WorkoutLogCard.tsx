@@ -38,6 +38,10 @@ interface WorkoutLogCardProps {
   weekWorkouts: Workout[]
   workouts: Workout[]
   disabled?: boolean
+  /** Limit the list to these workout types. Omit to show every type. */
+  categories?: string[]
+  /** Rows only, for embedding inside another log form. */
+  embedded?: boolean
   onAddWorkout: (
     category: WorkoutCategory,
     minutes: number,
@@ -59,6 +63,8 @@ export function WorkoutLogCard({
   weekWorkouts,
   workouts,
   disabled = false,
+  categories,
+  embedded = false,
   onAddWorkout,
   onWeekEdited,
 }: WorkoutLogCardProps) {
@@ -179,9 +185,13 @@ export function WorkoutLogCard({
       })
     }
     return map
-  }, [workoutTypes, goals, workoutsForWeek, weekDates, outcomeRevision])
+  }, [workoutTypes, goals, workoutsForWeek, weekDates, outcomeRevision, whoopRevision])
 
-  if (workoutTypes.length === 0) {
+  const visibleTypes = categories
+    ? workoutTypes.filter((type) => categories.includes(type.id))
+    : workoutTypes
+
+  if (visibleTypes.length === 0) {
     return null
   }
 
@@ -218,23 +228,9 @@ export function WorkoutLogCard({
     markWhoopWorkoutHandled(suggestion.whoopId, 'dismissed')
   }
 
-  return (
-    <>
-      <Card className="home-workout-card relative w-full shrink-0 overflow-visible">
-        {userId ? (
-          <button
-            type="button"
-            onClick={() => setEditOpen(true)}
-            disabled={disabled}
-            className="workout-edit-action absolute -right-2 -top-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-zinc-200 shadow-sm transition-colors hover:bg-zinc-700 disabled:opacity-50"
-            aria-label="Edit this week’s workouts"
-            title="Edit week"
-          >
-            <Pencil size={13} />
-          </button>
-        ) : null}
+  const list = (
         <ul className="space-y-1.5">
-          {workoutTypes.map((type) => {
+          {visibleTypes.map((type) => {
             const inputValue = inputs[type.id] ?? ''
             const isSaving = savingCategory === type.id
             const weeklyGoal = weeklyGoalByType.get(type.id)
@@ -348,7 +344,29 @@ export function WorkoutLogCard({
             )
           })}
         </ul>
-      </Card>
+  )
+
+  return (
+    <>
+      {embedded ? (
+        list
+      ) : (
+        <Card className="home-workout-card relative w-full shrink-0 overflow-visible">
+          {userId ? (
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              disabled={disabled}
+              className="workout-edit-action absolute -right-2 -top-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-zinc-200 shadow-sm transition-colors hover:bg-zinc-700 disabled:opacity-50"
+              aria-label="Edit this week’s workouts"
+              title="Edit week"
+            >
+              <Pencil size={13} />
+            </button>
+          ) : null}
+          {list}
+        </Card>
+      )}
 
       {editOpen && userId ? (
         <WorkoutWeekEditModal

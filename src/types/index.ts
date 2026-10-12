@@ -487,6 +487,8 @@ export interface AppSettings {
   typedReminderShutdownText: string
   /** Gate daily shutdown finish behind typing typedReminderShutdownText. */
   requireTypedReminderShutdown: boolean
+  /** Pop active habit contracts at the start of morning log and shutdown. */
+  remindActiveContracts: boolean
   /** Temporary developer perspective — unlocks dev settings and test flows. */
   devMode: boolean
   /** Set true after completing first-run onboarding. */
@@ -592,6 +594,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   requireTypedReminderMorning: false,
   typedReminderShutdownText: '',
   requireTypedReminderShutdown: false,
+  remindActiveContracts: false,
   devMode: false,
 }
 

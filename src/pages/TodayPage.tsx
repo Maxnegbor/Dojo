@@ -3,7 +3,7 @@ import { OneThingHomeCard } from '@/components/oneThing/OneThingHomeCard'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
-import { CalendarCheck, CalendarClock, CalendarDays, CalendarRange, ClipboardList, LayoutGrid, Moon } from 'lucide-react'
+import { CalendarCheck, CalendarClock, CalendarDays, ClipboardList, LayoutGrid, Moon, StickyNote } from 'lucide-react'
 import { DateNavigationHeader } from '@/components/today/DateNavigationHeader'
 import { HourlyTimeline } from '@/components/today/HourlyTimeline'
 import { ScheduleTemplateMenu } from '@/components/today/ScheduleTemplateMenu'
@@ -15,6 +15,7 @@ import { WhoopPulseOrbits } from '@/components/today/WhoopPulseOrbits'
 import { TodoistTasksCard } from '@/components/today/TodoistTasksCard'
 import { WorkoutLogCard } from '@/components/today/WorkoutLogCard'
 import { ExperimentHomeCard } from '@/components/today/ExperimentHomeCard'
+import { ActiveContractsCard } from '@/components/today/ActiveContractsCard'
 import { CoachCard } from '@/components/today/CoachCard'
 import { getDailyLogDraftForDate } from '@/components/today/DailyLogForm'
 import { ExercisePlanCard } from '@/components/today/ExercisePlanCard'
@@ -997,6 +998,7 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
+          <ActiveContractsCard />
           <OneThingHomeCard />
           {settings.showExperimentsPage && <ExperimentHomeCard date={viewDate} />}
         </aside>
@@ -1048,12 +1050,12 @@ export function TodayPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => setWeekPlannerOpen(true)}
-                    className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-                    aria-label="Plan the week"
-                    title="Plan the week"
+                    onClick={() => setDayNotesOpen(true)}
+                    className="rounded-lg p-1.5 text-zinc-500 transition-colors duration-200 ease-out hover:bg-zinc-800 hover:text-zinc-300"
+                    aria-label="Add a note"
+                    title="Add a note"
                   >
-                    <CalendarRange size={16} />
+                    <StickyNote size={16} />
                   </button>
                 </>
               }

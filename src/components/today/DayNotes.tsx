@@ -48,7 +48,7 @@ export function DayNoteButton({ date, onEdit }: { date: string; onEdit: () => vo
         type="button"
         aria-label="Read day notes"
         title="Day notes"
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-zinc-400 transition-colors duration-200 ease-out hover:bg-zinc-800 hover:text-[var(--accent-300)]"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent-500)] text-zinc-950 shadow-[0_0_0_2px_#09090b,0_0_14px_color-mix(in_srgb,var(--accent-400)_70%,transparent)] transition-[transform,background-color] duration-200 ease-out hover:scale-110 hover:bg-[var(--accent-400)]"
         onMouseEnter={showPreview}
         onMouseLeave={() => setPreview(null)}
         onMouseDown={(event) => event.stopPropagation()}
@@ -60,7 +60,7 @@ export function DayNoteButton({ date, onEdit }: { date: string; onEdit: () => vo
         }}
         onContextMenu={(event) => event.stopPropagation()}
       >
-        <StickyNote size={12} />
+        <StickyNote size={14} strokeWidth={2.4} />
       </button>
       {preview &&
         createPortal(
