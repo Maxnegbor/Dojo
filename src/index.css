@@ -849,7 +849,8 @@ input[type="number"] {
 @media (hover: hover) {
   .home-integration-card .integration-toolbar,
   .home-workout-card .workout-edit-action,
-  .home-exercise-card .exercise-plan-actions {
+  .home-exercise-card .exercise-plan-actions,
+  .home-contracts-card .contracts-actions {
     opacity: 0;
     pointer-events: none;
     transition: opacity 150ms ease;
@@ -860,7 +861,9 @@ input[type="number"] {
   .home-workout-card:hover .workout-edit-action,
   .home-workout-card:focus-within .workout-edit-action,
   .home-exercise-card:hover .exercise-plan-actions,
-  .home-exercise-card:focus-within .exercise-plan-actions {
+  .home-exercise-card:focus-within .exercise-plan-actions,
+  .home-contracts-card:hover .contracts-actions,
+  .home-contracts-card:focus-within .contracts-actions {
     opacity: 1;
     pointer-events: auto;
   }
@@ -869,7 +872,9 @@ input[type="number"] {
 .home-stage .home-workout-card:hover,
 .home-stage .home-workout-card:focus-within,
 .home-stage .home-exercise-card:hover,
-.home-stage .home-exercise-card:focus-within {
+.home-stage .home-exercise-card:focus-within,
+.home-stage .home-contracts-card:hover,
+.home-stage .home-contracts-card:focus-within {
   z-index: 20;
 }
 
