@@ -937,7 +937,7 @@ export function TodayPage() {
 
         {/* Right: Log / Shutdown + Habitify */}
         <aside className={cn(
-          'home-rail home-rail--right relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
+          'home-rail home-rail--right relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 pt-2 pr-3 lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
           isMobile ? 'order-1 overflow-visible' : 'order-2 overflow-y-auto overscroll-contain scrollbar-hidden',
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
           screensaver && 'pointer-events-none invisible !opacity-0',

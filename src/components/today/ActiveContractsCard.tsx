@@ -113,6 +113,7 @@ function ContractEditor({
   contracts: HabitContract[]
   onClose: () => void
 }) {
+  const { settings, updateSettings } = useSettings()
   const [name, setName] = useState('')
   const [penalty, setPenalty] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -291,6 +292,32 @@ function ContractEditor({
             </ul>
           )}
         </div>
+        {mode === 'edit' && (
+          <div className="border-t border-zinc-800/80 px-4 py-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.remindActiveContracts}
+              onClick={() => updateSettings({ remindActiveContracts: !settings.remindActiveContracts })}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <span className="text-sm text-zinc-300">Remind in morning log and shutdown</span>
+              <span
+                className={cn(
+                  'relative h-5 w-9 shrink-0 rounded-full transition-colors duration-300 ease-out',
+                  settings.remindActiveContracts ? 'bg-[var(--accent-600)]' : 'bg-zinc-700',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-300 ease-out',
+                    settings.remindActiveContracts && 'translate-x-4',
+                  )}
+                />
+              </span>
+            </button>
+          </div>
+        )}
         <div className="flex gap-2 border-t border-zinc-800/80 px-4 py-3">
           <button
             type="button"
@@ -317,7 +344,6 @@ function ContractEditor({
 }
 
 export function ActiveContractsCard({ className }: { className?: string }) {
-  const { settings, updateSettings } = useSettings()
   const contracts = useContracts()
   const [editor, setEditor] = useState<'add' | 'edit' | null>(null)
 
@@ -356,28 +382,6 @@ export function ActiveContractsCard({ className }: { className?: string }) {
       ) : (
         <ContractRows contracts={contracts} />
       )}
-      <button
-        type="button"
-        role="switch"
-        aria-checked={settings.remindActiveContracts}
-        onClick={() => updateSettings({ remindActiveContracts: !settings.remindActiveContracts })}
-        className="mt-3 flex w-full items-center justify-between gap-3 rounded-lg px-0.5 text-left"
-      >
-        <span className="text-xs text-zinc-400">Remind in morning log and shutdown</span>
-        <span
-          className={cn(
-            'relative h-5 w-9 shrink-0 rounded-full transition-colors duration-300 ease-out',
-            settings.remindActiveContracts ? 'bg-[var(--accent-600)]' : 'bg-zinc-700',
-          )}
-        >
-          <span
-            className={cn(
-              'absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-300 ease-out',
-              settings.remindActiveContracts && 'translate-x-4',
-            )}
-          />
-        </span>
-      </button>
       {editor && (
         <ContractEditor mode={editor} contracts={contracts} onClose={() => setEditor(null)} />
       )}
