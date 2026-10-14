@@ -371,6 +371,9 @@ export interface FocusTimerSettings {
   allowPause: boolean
   /** After each focus cycle, ask for a 1–10 subjective focus score. */
   promptFocusScore: boolean
+  /** When you press start, show these reminders before the timer begins. */
+  startReminderEnabled: boolean
+  startReminders: FocusAlarmCheckItem[]
   /** When a focus block ends, require this checklist before the alarm starts. */
   preAlarmChecklistEnabled: boolean
   preAlarmChecklist: FocusAlarmCheckItem[]
@@ -554,6 +557,8 @@ export const DEFAULT_FOCUS_SETTINGS: FocusTimerSettings = {
   longBreakMinutes: 15,
   allowPause: false,
   promptFocusScore: false,
+  startReminderEnabled: false,
+  startReminders: [],
   preAlarmChecklistEnabled: false,
   preAlarmChecklist: [],
   alarmChecklistEnabled: false,

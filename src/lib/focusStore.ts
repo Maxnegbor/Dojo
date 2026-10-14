@@ -23,6 +23,8 @@ export function getFocusSettings(): FocusTimerSettings {
         longBreakEnabled: Boolean(parsed.longBreakEnabled),
         allowPause: Boolean(parsed.allowPause),
         promptFocusScore: Boolean(parsed.promptFocusScore),
+        startReminderEnabled: Boolean(parsed.startReminderEnabled),
+        startReminders: normalizeAlarmChecklist(parsed.startReminders),
         preAlarmChecklistEnabled: Boolean(parsed.preAlarmChecklistEnabled),
         preAlarmChecklist: normalizeAlarmChecklist(parsed.preAlarmChecklist),
         alarmChecklistEnabled: Boolean(parsed.alarmChecklistEnabled),

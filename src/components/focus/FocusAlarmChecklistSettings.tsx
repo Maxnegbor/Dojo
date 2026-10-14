@@ -10,6 +10,8 @@ interface FocusAlarmChecklistSettingsProps {
   items: FocusAlarmCheckItem[]
   onEnabledChange: (enabled: boolean) => void
   onItemsChange: (items: FocusAlarmCheckItem[]) => void
+  placeholder?: string
+  addLabel?: string
 }
 
 export function FocusAlarmChecklistSettings({
@@ -19,6 +21,8 @@ export function FocusAlarmChecklistSettings({
   items,
   onEnabledChange,
   onItemsChange,
+  placeholder = 'Checklist item',
+  addLabel = 'Add item',
 }: FocusAlarmChecklistSettingsProps) {
   const addItem = () => {
     onItemsChange([...items, { id: generateId(), label: '' }])
@@ -39,7 +43,7 @@ export function FocusAlarmChecklistSettings({
             <div key={item.id} className="flex items-center gap-1.5">
               <input
                 value={item.label}
-                placeholder="Checklist item"
+                placeholder={placeholder}
                 onChange={(event) =>
                   onItemsChange(
                     items.map((entry) =>
@@ -65,7 +69,7 @@ export function FocusAlarmChecklistSettings({
             className="flex items-center gap-1 px-0.5 py-1 text-xs font-medium text-zinc-400 hover:text-zinc-200"
           >
             <Plus size={13} />
-            Add item
+            {addLabel}
           </button>
         </div>
       )}

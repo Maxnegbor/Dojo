@@ -10,6 +10,7 @@ import { FocusLabelPicker } from '@/components/focus/FocusLabelPicker'
 import { FocusScheduleAgenda } from '@/components/focus/FocusScheduleAgenda'
 import { FocusAlarmChecklistModal } from '@/components/focus/FocusAlarmChecklistModal'
 import { FocusAlarmChecklistSettings } from '@/components/focus/FocusAlarmChecklistSettings'
+import { FocusStartReminderModal } from '@/components/focus/FocusStartReminderModal'
 import { FocusTimerAlarmModal } from '@/components/focus/FocusTimerAlarmModal'
 import {
   FocusScorePrompt,
@@ -45,7 +46,7 @@ import {
 } from '@/lib/focusTimerLogic'
 import { playTimerChime, startFocusTimerAlarm, stopFocusTimerAlarm, unlockAudio } from '@/lib/timerSound'
 import { DEFAULT_FOCUS_SETTINGS, type FocusAlarmCheckItem, type FocusTimerSettings } from '@/types'
-import { cn, formatDate, formatDuration } from '@/lib/utils'
+import { cn, formatDate, formatDuration, generateId } from '@/lib/utils'
 
 type Phase = TimerPhase
 type FocusClockMode = 'timer' | 'stopwatch'
@@ -76,6 +77,10 @@ function activePreAlarmChecklist(settings: FocusTimerSettings): FocusAlarmCheckI
 
 function activeAlarmChecklist(settings: FocusTimerSettings): FocusAlarmCheckItem[] {
   return activeChecklist(settings.alarmChecklistEnabled, settings.alarmChecklist)
+}
+
+function activeStartReminders(settings: FocusTimerSettings): FocusAlarmCheckItem[] {
+  return activeChecklist(settings.startReminderEnabled, settings.startReminders)
 }
 
 function holdAlarmCopy(hold: PhaseHold, settings: FocusTimerSettings, checklistNext = false) {
@@ -298,6 +303,7 @@ export function FocusTimerPage() {
     hold: PhaseHold | null
     items: FocusAlarmCheckItem[]
   } | null>(null)
+  const [startReminderOpen, setStartReminderOpen] = useState(false)
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(
     () => openTimer?.labelId ?? getLastFocusLabelId(),
   )
@@ -882,8 +888,7 @@ export function FocusTimerPage() {
     phaseStartRef.current = Date.now()
   }
 
-  const start = () => {
-    if (oneThingBlocking) return
+  const beginRunning = () => {
     unlockAudio()
     if (!sessionStarted) {
       creditGen.current += 1
@@ -911,6 +916,17 @@ export function FocusTimerPage() {
     setSessionStarted(true)
     setRunning(true)
     persistOpenTimer()
+  }
+
+  const start = () => {
+    if (oneThingBlocking) return
+    unlockAudio()
+    const freshFocusStart = !sessionStarted && (clockMode === 'stopwatch' || phase === 'focus')
+    if (freshFocusStart && activeStartReminders(settings).length > 0) {
+      setStartReminderOpen(true)
+      return
+    }
+    beginRunning()
   }
 
   const stopStopwatch = () => {
@@ -943,6 +959,7 @@ export function FocusTimerPage() {
     setPhaseHold(null)
     setPreChecklistHold(null)
     setChecklistHold(null)
+    setStartReminderOpen(false)
     setRunning(false)
     setSessionStarted(false)
     elapsedRef.current = 0
@@ -1147,6 +1164,23 @@ export function FocusTimerPage() {
                 compact
                 checked={settings.promptFocusScore}
                 onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
+              />
+              <FocusAlarmChecklistSettings
+                label="Start reminder"
+                description="Pops up when you press start. Reminders stay until you delete them."
+                enabled={settings.startReminderEnabled}
+                items={settings.startReminders}
+                placeholder="What to remember"
+                addLabel="Add reminder"
+                onEnabledChange={(startReminderEnabled) =>
+                  updateTimerSettings({
+                    startReminderEnabled,
+                    ...(startReminderEnabled && settings.startReminders.length === 0
+                      ? { startReminders: [{ id: generateId(), label: '' }] }
+                      : {}),
+                  })
+                }
+                onItemsChange={(startReminders) => updateTimerSettings({ startReminders })}
               />
               {!isStopwatch && (
                 <FocusAlarmChecklistSettings
@@ -1449,6 +1483,17 @@ export function FocusTimerPage() {
           }}
           onSave={handleSaveFocusGoal}
           onClose={() => setShowFocusGoalModal(false)}
+        />
+      )}
+
+      {startReminderOpen && (
+        <FocusStartReminderModal
+          items={activeStartReminders(settings)}
+          onCancel={() => setStartReminderOpen(false)}
+          onStart={() => {
+            setStartReminderOpen(false)
+            beginRunning()
+          }}
         />
       )}
 
