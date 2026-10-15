@@ -221,7 +221,7 @@ export function AppLayout() {
   const { pathname } = useLocation()
   const isMobile = useIsMobile()
   const isIdle = useIdleScreensaver(pathname === '/focus' && focusTimerActive)
-  const onScreensaverRoute = pathname === '/' || (pathname === '/focus' && focusTimerActive)
+  const onScreensaverRoute = pathname === '/focus' && focusTimerActive
   const [screensaver, setScreensaver] = useState<ScreensaverState>({
     active: false,
     waking: false,
@@ -371,7 +371,6 @@ export function AppLayout() {
           className={cn(
             'pointer-events-none absolute inset-0 z-0 overflow-hidden',
             pathname === '/' && 'home-atmosphere',
-            pathname === '/' && screensaver.active && !screensaver.waking && 'home-atmosphere--screensaver',
           )}
           aria-hidden
         />

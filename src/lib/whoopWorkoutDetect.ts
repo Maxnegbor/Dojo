@@ -92,24 +92,6 @@ function isStrengthSport(sportName: string): boolean {
   return /weightlift|powerlift|bodybuild|strength/.test(key)
 }
 
-/** Minutes WHOOP recorded as strength this week. The API has no Strength Time field; this is the sum of those sessions. */
-export function whoopStrengthMinutesForDates(dates: string[]): number {
-  const seen = new Set<string>()
-  let total = 0
-  for (const date of dates) {
-    const day = getWhoopDay(date)
-    if (!day) continue
-    for (const workout of day.workouts) {
-      if (seen.has(workout.id) || !isStrengthSport(workout.sportName)) continue
-      const minutes = workout.durationMinutes
-      if (minutes == null || minutes <= 0) continue
-      seen.add(workout.id)
-      total += minutes
-    }
-  }
-  return total
-}
-
 function classifyWorkout(workout: WhoopWorkoutSummary): WhoopDetectKind | null {
   const minutes = workout.durationMinutes
   if (minutes == null || minutes < MIN_MINUTES) return null
@@ -153,7 +135,7 @@ export function listWhoopWorkoutSuggestions(
     for (const workout of day.workouts) {
       if (seen.has(workout.id) || handled[workout.id] || isAlreadyLogged(workouts, workout.id)) continue
       const kind = classifyWorkout(workout)
-      if (!kind || kind === 'strength') continue
+      if (!kind) continue
       const category = resolveCategory(kind)
       const minutes = workout.durationMinutes
       if (!category || minutes == null) continue

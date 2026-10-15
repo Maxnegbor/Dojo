@@ -968,10 +968,6 @@ input[type="number"] {
   pointer-events: none;
 }
 
-.home-stage--screensaver .home-schedule-panel::before {
-  display: none;
-}
-
 @media (hover: hover) {
   .home-schedule-panel .schedule-template-action {
     opacity: 0;
@@ -993,44 +989,7 @@ input[type="number"] {
   }
 }
 
-/* Screensaver: only the schedule stays — kill rail entrance fill so opacity can hide.
- * Keep the 3-column grid so the schedule width does not jump. */
-.home-stage--screensaver .home-rail {
-  animation: none !important;
-  opacity: 0 !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
-
-.home-stage--screensaver .home-canvas {
-  animation: none;
-}
-
-.home-stage--suppress-enter .home-rail,
-.home-stage--suppress-enter .home-canvas {
-  animation: none !important;
-}
-
-.home-stage--screensaver-wake .home-rail {
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-  transition: opacity 1400ms ease-in-out, visibility 0s linear 0s;
-}
-
-.home-stage--screensaver-wake > div:first-child {
-  max-height: var(--home-header-max-height, 12rem) !important;
-  opacity: 1 !important;
-  filter: none !important;
-  pointer-events: auto !important;
-}
-
-.home-atmosphere--screensaver::after {
-  opacity: 0;
-  transition: opacity 1400ms ease-in-out;
-}
-
-/* Focus screensaver uses the same wake timing as Home. */
+/* Focus screensaver wake. */
 .focus-stage--screensaver-wake {
   transition: gap 1400ms ease-in-out, padding 1400ms ease-in-out;
 }

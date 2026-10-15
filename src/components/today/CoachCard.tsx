@@ -26,7 +26,6 @@ import { isTodoistConnected, TODOIST_CHANGED } from '@/lib/todoistStore'
 import type { PulseContributor } from '@/lib/pulseBreakdown'
 import { cn, formatDate, parseTimeToMinutes } from '@/lib/utils'
 import { useSettings } from '@/context/SettingsContext'
-import { useScreensaver } from '@/context/ScreensaverContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { DailyLog, Goal, ScheduleBlock, Workout } from '@/types'
 
@@ -99,7 +98,6 @@ export function CoachCard({
   pulseScore,
 }: CoachCardProps) {
   const { settings } = useSettings()
-  const { active: screensaver } = useScreensaver()
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
   const [schedule, setSchedule] = useState<CoachSchedule>(() => getCoachSchedule())
@@ -250,8 +248,6 @@ export function CoachCard({
     window.addEventListener('pointerdown', onPointer)
     return () => window.removeEventListener('pointerdown', onPointer)
   }, [open])
-
-  if (screensaver) return null
 
   return (
     <div

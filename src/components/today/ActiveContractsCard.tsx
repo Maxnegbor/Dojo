@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { format } from 'date-fns'
 import { Handshake, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -126,14 +126,6 @@ function ContractEditor({
     })),
   )
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   const saveNew = () => {
     const trimmed = name.trim()
     if (!trimmed) return
@@ -150,13 +142,12 @@ function ContractEditor({
     onClose()
   }
 
-  const saveExisting = (id: string) => {
-    const contract = contracts.find((row) => row.id === id)
-    const draft = drafts.find((row) => row.id === id)
-    if (!contract || !draft) return
+  const saveDraft = (draft: { id: string; name: string; penalty: string; end_date: string }) => {
+    const contract = contracts.find((row) => row.id === draft.id)
+    if (!contract) return
     if (!draft.name.trim()) {
       setDrafts((prev) =>
-        prev.map((row) => (row.id === id ? { ...row, name: contract.name } : row)),
+        prev.map((row) => (row.id === draft.id ? { ...row, name: contract.name } : row)),
       )
       return
     }
@@ -173,17 +164,36 @@ function ContractEditor({
     })
   }
 
+  const saveDrafts = (rows: typeof drafts) => {
+    for (const draft of rows) saveDraft(draft)
+  }
+
+  const closeEditor = () => {
+    if (mode === 'edit') saveDrafts(drafts)
+    onClose()
+  }
+  const closeRef = useRef(closeEditor)
+  closeRef.current = closeEditor
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-      onMouseDown={onClose}
+      onClick={closeEditor}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={mode === 'add' ? 'Add a contract' : 'Edit contracts'}
         className="flex max-h-[min(32rem,100%)] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-[#0c0c14] shadow-2xl"
-        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="border-b border-zinc-800/80 px-4 py-3">
           <h2 className="text-base font-semibold text-zinc-100">
@@ -245,7 +255,9 @@ function ContractEditor({
                           ),
                         )
                       }
-                      onBlur={() => saveExisting(draft.id)}
+                      onBlur={(event) =>
+                        saveDraft({ ...draft, name: event.target.value })
+                      }
                       className={fieldClass}
                     />
                     <button
@@ -270,7 +282,7 @@ function ContractEditor({
                         ),
                       )
                     }
-                    onBlur={() => saveExisting(draft.id)}
+                    onBlur={(event) => saveDraft({ ...draft, penalty: event.target.value })}
                     className={fieldClass}
                     placeholder="Penalty"
                   />
@@ -284,7 +296,7 @@ function ContractEditor({
                         prev.map((row) => (row.id === draft.id ? { ...row, end_date } : row)),
                       )
                     }}
-                    onBlur={() => saveExisting(draft.id)}
+                    onBlur={(event) => saveDraft({ ...draft, end_date: event.target.value })}
                     className={cn(fieldClass, '[color-scheme:dark]')}
                   />
                 </li>
@@ -321,7 +333,7 @@ function ContractEditor({
         <div className="flex gap-2 border-t border-zinc-800/80 px-4 py-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeEditor}
             className="flex-1 rounded-xl bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors duration-200 ease-out hover:bg-zinc-700"
           >
             {mode === 'add' ? 'Cancel' : 'Done'}

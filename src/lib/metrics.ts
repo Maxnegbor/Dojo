@@ -13,7 +13,6 @@ import {
 } from '@/lib/weightGoal'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { getWeekDates } from '@/lib/utils'
-import { whoopStrengthMinutesForDates } from '@/lib/whoopWorkoutDetect'
 import { formatMetricAmount, usesTimedMetricDisplay } from '@/lib/timedMetrics'
 import {
   getSleepMetricDefinition,
@@ -100,14 +99,9 @@ export function getWeeklyWorkoutTotal(
   workouts: Workout[],
   weekDates: string[],
 ): number {
-  const inWeek = workouts.filter((w) => w.category === category && weekDates.includes(w.date))
-  const total = inWeek.reduce((s, w) => s + w.duration_minutes, 0)
-  if (category !== 'strength') return total
-  const imported = inWeek
-    .filter((w) => (w.notes ?? '').includes('whoop:'))
+  return workouts
+    .filter((w) => w.category === category && weekDates.includes(w.date))
     .reduce((s, w) => s + w.duration_minutes, 0)
-  const whoop = whoopStrengthMinutesForDates(weekDates)
-  return total - imported + Math.max(whoop, imported)
 }
 
 export function getWeeklyFocusTotal(logs: DailyLog[], weekDates: string[]): number {

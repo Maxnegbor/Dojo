@@ -244,22 +244,25 @@ export function normalizeHabitContractsState(raw: unknown): HabitContractsState 
   }
 }
 
-function readLocal(): HabitContractsState {
+function readStoredJson(raw: string | null): HabitContractsState | null {
+  if (!raw) return null
   try {
-    const raw = localStorage.getItem(LOCAL_KEY)
-    if (!raw) return emptyState()
     return normalizeHabitContractsState(JSON.parse(raw) as unknown)
   } catch {
-    return emptyState()
+    return null
   }
 }
 
+/** Snapshot taken before account storage hydrates, which can replace this key. */
+const bootLocal: HabitContractsState | null =
+  typeof window === 'undefined' ? null : readStoredJson(localStorage.getItem(LOCAL_KEY))
+
+function readLocal(): HabitContractsState {
+  return readStoredJson(storageGetItem(LOCAL_KEY)) ?? emptyState()
+}
+
 function writeLocal(state: HabitContractsState) {
-  try {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(state))
-  } catch {
-    /* quota */
-  }
+  storageSetItem(LOCAL_KEY, JSON.stringify(state))
 }
 
 export function getHabitContractsState(): HabitContractsState {
@@ -433,6 +436,7 @@ async function persistRemote(state: HabitContractsState): Promise<boolean> {
 
 function enqueueSave(state: HabitContractsState) {
   memory = state
+  loaded = true
   writeLocal(state)
   notify()
   saveTail = saveTail
@@ -440,9 +444,30 @@ function enqueueSave(state: HabitContractsState) {
     .then(() => persistRemote(state).then(() => undefined))
 }
 
-export async function loadHabitContracts(): Promise<HabitContractsState> {
+function keepNewestContracts() {
+  const hydrated = readStoredJson(storageGetItem(LOCAL_KEY))
+  const bootHasRows = Boolean(bootLocal && (bootLocal.contracts.length > 0 || bootLocal.people.length > 0))
+  if (
+    bootLocal &&
+    bootHasRows &&
+    (!hydrated || bootLocal.updated_at > hydrated.updated_at)
+  ) {
+    enqueueSave(bootLocal)
+    return
+  }
+  memory = hydrated ?? emptyState()
   loaded = true
-  const local = readLocal()
+  notify()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('user-storage-ready', keepNewestContracts)
+}
+
+export async function loadHabitContracts(): Promise<HabitContractsState> {
+  const stored = readStoredJson(storageGetItem(LOCAL_KEY))
+  const local = stored ?? emptyState()
+  loaded = true
   if (!isSupabaseConfigured) {
     memory = local
     notify()
@@ -456,6 +481,12 @@ export async function loadHabitContracts(): Promise<HabitContractsState> {
     if (remote?.value) {
       const next = normalizeHabitContractsState(remote.value)
       next.updated_at = remote.updated_at ?? next.updated_at
+      if (stored && stored.updated_at > next.updated_at) {
+        memory = stored
+        await persistRemote(stored)
+        notify()
+        return memory
+      }
       memory = next
       writeLocal(next)
       notifyNewProofs(next.proofs)

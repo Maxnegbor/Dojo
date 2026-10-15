@@ -108,7 +108,6 @@ import {
 import { isWeeklyShutdownAnyDay } from '@/lib/devMode'
 import { Button } from '@/components/ui/Button'
 import { useSettings } from '@/context/SettingsContext'
-import { useScreensaver } from '@/context/ScreensaverContext'
 import { addDaysToDateString, cn, formatDate, getWeekDates } from '@/lib/utils'
 import { getYesterdayDate } from '@/lib/dailyLog'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
@@ -182,8 +181,6 @@ export function TodayPage() {
   }, [])
 
   const isActiveDay = isToday(parseISO(viewDate))
-  const { active: screensaverActive, waking: screensaverWaking } = useScreensaver()
-  const screensaver = screensaverActive && !screensaverWaking
 
   useEffect(() => {
     if (location.pathname !== '/') return
@@ -754,19 +751,7 @@ export function TodayPage() {
   }
 
   return (
-      <div
-        className={cn(
-          'relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-visible home-stage',
-          screensaver && 'home-stage--screensaver',
-          screensaverWaking && 'home-stage--screensaver-wake',
-          (screensaverActive || screensaverWaking) && 'home-stage--suppress-enter',
-        )}
-        style={{
-          gap: screensaver ? '0px' : undefined,
-          transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
-        }}
-      >
-      {!screensaver && (
+      <div className="home-stage relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-visible">
         <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] flex justify-center lg:left-14">
           <div
             className={cn(
@@ -788,27 +773,16 @@ export function TodayPage() {
             />
           </div>
         </div>
-      )}
-      {!screensaver && <RightNowHeader />}
+      <RightNowHeader />
       <div
         className={cn(
           'flex min-h-0 flex-1 flex-col transition-[filter] duration-500',
-          oneThingPending && !screensaver && 'pointer-events-none select-none blur-md',
+          oneThingPending && 'pointer-events-none select-none blur-md',
         )}
       >
       <div
-        className={cn(
-          'relative shrink-0 px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1',
-          'transition-[max-height,opacity,filter,padding] duration-[2000ms] ease-in-out',
-          screensaver ? 'overflow-hidden' : 'overflow-visible',
-          'z-40',
-          screensaver && 'pointer-events-none opacity-0 blur-[1px]',
-        )}
-        style={{
-          maxHeight: screensaver ? '0px' : '72px',
-          paddingTop: screensaver ? '0px' : undefined,
-          paddingBottom: screensaver ? '0px' : undefined,
-        }}
+        className="relative z-40 shrink-0 overflow-visible px-1 pt-1 pb-0.5 sm:px-2 sm:pt-1.5 sm:pb-1"
+        style={{ maxHeight: '72px' }}
       >
         <div
           className="relative flex items-center justify-between gap-2 overflow-visible"
@@ -852,10 +826,6 @@ export function TodayPage() {
           'relative z-20 grid min-h-0 flex-1 gap-3 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,36rem)_1fr] lg:grid-rows-none lg:gap-4 xl:gap-5',
           isMobile ? 'grid-cols-1 grid-rows-1' : 'grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min-content)]',
         )}
-        style={{
-          transition: 'gap 1200ms cubic-bezier(0.4,0,0.2,1)',
-          gap: screensaver ? '0px' : undefined,
-        }}
       >
         {(!isMobile || homePane === 'cards') && (
         <div
@@ -880,8 +850,8 @@ export function TodayPage() {
           'home-rail home-rail--left relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 pt-2 pr-2 lg:order-1 lg:h-full lg:max-w-[17rem] lg:justify-self-end',
           isMobile ? 'order-2 overflow-visible' : 'order-3 overflow-y-auto overscroll-contain scrollbar-hidden',
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
-          screensaver && 'pointer-events-none invisible !opacity-0',
         )}>
+          <ActiveContractsCard />
           <ExercisePlanCard
             viewDate={viewDate}
             userId={userId}
@@ -940,7 +910,6 @@ export function TodayPage() {
           'home-rail home-rail--right relative z-30 flex min-h-0 w-full min-w-0 flex-col gap-2.5 pt-2 pr-3 lg:order-3 lg:h-full lg:max-w-[17rem] lg:justify-self-start',
           isMobile ? 'order-1 overflow-visible' : 'order-2 overflow-y-auto overscroll-contain scrollbar-hidden',
           'transition-[opacity,filter,visibility] duration-[1500ms] ease-in-out',
-          screensaver && 'pointer-events-none invisible !opacity-0',
         )}>
           <WhoopPulseOrbits date={viewDate} layout="row" />
           {(log && userId) ||
@@ -998,7 +967,6 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
-          <ActiveContractsCard />
           <OneThingHomeCard />
           {settings.showExperimentsPage && <ExperimentHomeCard date={viewDate} />}
         </aside>
@@ -1040,7 +1008,6 @@ export function TodayPage() {
               onCreate={saveBlock}
               onAssignExercise={assignExerciseBlock}
               onDropPlannedWorkout={dropPlannedWorkout}
-              screensaver={screensaver}
               headerActions={
                 <>
                   <ScheduleTemplateMenu
