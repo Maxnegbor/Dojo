@@ -913,7 +913,6 @@ export function TodayPage() {
         )}>
           <WhoopPulseOrbits date={viewDate} layout="row" />
           {(log && userId) ||
-          weeklyShutdownAvailable ||
           (isActiveDay &&
             ((!settings.requireMorningLog && !morningLogDone) || shutdownAvailable)) ? (
             <div className="home-action-tray flex flex-wrap gap-1.5 rounded-2xl border border-zinc-800/60 bg-zinc-950/40 p-1.5 backdrop-blur-sm">
@@ -950,16 +949,6 @@ export function TodayPage() {
                 >
                   <Moon size={14} className="text-violet-400" /> Shutdown
                 </Button>
-              )}
-              {weeklyShutdownAvailable && (
-                <button
-                  type="button"
-                  onClick={prepareWeeklyShutdown}
-                  className="today-btn-breathe-accent relative z-30 inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--accent-500)] px-3 py-1.5 text-xs font-semibold text-black shadow-md shadow-[var(--accent-500)]/30 ring-1 ring-[var(--accent-400)]/50 transition-transform hover:bg-[var(--accent-400)] active:scale-[0.98]"
-                >
-                  <CalendarCheck size={14} strokeWidth={2.5} />
-                  Weekly
-                </button>
               )}
             </div>
           ) : null}
@@ -1178,6 +1167,24 @@ export function TodayPage() {
           onClose={() => setShowCalendar(false)}
           onSelectDate={setViewDate}
         />
+      )}
+
+      {weeklyShutdownAvailable && !oneThingPending && !weekPlannerOpen && (
+        <div
+          className={cn(
+            'pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 lg:left-14',
+            'bottom-[calc(5.75rem+env(safe-area-inset-bottom))] lg:bottom-8',
+          )}
+        >
+          <button
+            type="button"
+            onClick={prepareWeeklyShutdown}
+            className="weekly-review-cta pointer-events-auto inline-flex h-[4.75rem] w-[min(26rem,calc(100vw-9.5rem))] items-center justify-center gap-3 rounded-full bg-[var(--accent-500)] text-2xl font-bold tracking-tight text-black transition-transform active:scale-[0.98]"
+          >
+            <CalendarCheck size={28} strokeWidth={2.5} />
+            Weekly review
+          </button>
+        </div>
       )}
 
       <CoachCard

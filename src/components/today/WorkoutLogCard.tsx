@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { parseISO } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { Check, Pencil, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { WorkoutWeekEditModal } from '@/components/today/WorkoutWeekEditModal'
@@ -54,6 +54,10 @@ function formatVolume(amount: number, unit: string): string {
   const timed = unit === 'min' || unit === 'mins' || unit === 'minutes'
   if (timed) return formatDuration(amount)
   return `${Math.round(amount * 100) / 100} ${unit}`
+}
+
+function formatSuggestionDay(date: string, pattern: 'EEE' | 'EEEE' = 'EEE'): string {
+  return format(parseISO(`${date}T12:00:00`), pattern)
 }
 
 export function WorkoutLogCard({
@@ -312,7 +316,9 @@ export function WorkoutLogCard({
                     key={suggestion.whoopId}
                     className="mt-1.5 flex items-center gap-1.5 text-[10px] leading-tight text-zinc-500"
                   >
-                    <span className="min-w-0 truncate">WHOOP · {suggestion.sportName}</span>
+                    <span className="min-w-0 truncate">
+                      WHOOP · {formatSuggestionDay(suggestion.date)} · {suggestion.sportName}
+                    </span>
                     <span className="shrink-0 tabular-nums text-zinc-300">
                       {formatDuration(suggestion.minutes)}
                     </span>
@@ -322,8 +328,8 @@ export function WorkoutLogCard({
                         disabled={disabled || pendingWhoopId != null}
                         onClick={() => void acceptWhoopSuggestion(suggestion)}
                         className="rounded p-0.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-emerald-400 disabled:opacity-40"
-                        aria-label={`Add ${suggestion.sportName} ${formatDuration(suggestion.minutes)} to ${type.label}`}
-                        title="Add to this week"
+                        aria-label={`Add ${suggestion.sportName} from ${formatSuggestionDay(suggestion.date, 'EEEE')} ${formatDuration(suggestion.minutes)} to ${type.label}`}
+                        title={`Add ${formatSuggestionDay(suggestion.date, 'EEEE')}'s workout`}
                       >
                         <Check size={12} />
                       </button>
@@ -332,7 +338,7 @@ export function WorkoutLogCard({
                         disabled={disabled || pendingWhoopId != null}
                         onClick={() => dismissWhoopSuggestion(suggestion)}
                         className="rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
-                        aria-label={`Dismiss ${suggestion.sportName} detection`}
+                        aria-label={`Dismiss ${suggestion.sportName} detection from ${formatSuggestionDay(suggestion.date, 'EEEE')}`}
                         title="Dismiss"
                       >
                         <X size={12} />

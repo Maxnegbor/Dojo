@@ -621,6 +621,37 @@ input[type="number"] {
   background-color: var(--accent-400);
 }
 
+@keyframes weekly-review-cta {
+  0%,
+  100% {
+    background-color: var(--accent-500);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent-400) 55%, transparent),
+      0 14px 36px -8px color-mix(in srgb, var(--accent-500) 65%, transparent),
+      0 0 56px 10px color-mix(in srgb, var(--accent-500) 42%, transparent);
+  }
+  50% {
+    background-color: var(--accent-400);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent-300) 75%, transparent),
+      0 18px 44px -6px color-mix(in srgb, var(--accent-400) 80%, transparent),
+      0 0 84px 18px color-mix(in srgb, var(--accent-400) 55%, transparent);
+  }
+}
+
+.weekly-review-cta {
+  animation: weekly-review-cta 2.6s ease-in-out infinite;
+}
+
+.weekly-review-cta:hover {
+  animation: none;
+  background-color: var(--accent-400);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-300) 80%, transparent),
+    0 18px 44px -6px color-mix(in srgb, var(--accent-400) 80%, transparent),
+    0 0 88px 20px color-mix(in srgb, var(--accent-400) 58%, transparent);
+}
+
 @keyframes pulse-radiant-burst-wave {
   0% {
     transform: translate(-50%, -50%) scale(0.12);

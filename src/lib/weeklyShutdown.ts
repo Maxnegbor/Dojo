@@ -43,6 +43,8 @@ import { storageGetItem, storageSetItem } from '@/lib/userStorage'
 
 const STORAGE_KEY = 'personal-os-weekly-shutdown-completed'
 
+export const WEEKLY_SHUTDOWN_CHANGED = 'personal-os-weekly-shutdown-changed'
+
 export const WEEKLY_SHUTDOWN_CHECKLIST: WeeklyShutdownCheckGroup[] = [
   {
     id: 'macrofactor',
@@ -255,6 +257,9 @@ export function isWeeklyShutdownCompleted(weekKey: string): boolean {
 export function markWeeklyShutdownCompleted(weekKey: string) {
   if (!weekKey) return
   storageSetItem(STORAGE_KEY, JSON.stringify([...new Set([...readCompletedWeeks(), weekKey])]))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(WEEKLY_SHUTDOWN_CHANGED))
+  }
 }
 
 function formatNum(n: number, decimals = 1): string {

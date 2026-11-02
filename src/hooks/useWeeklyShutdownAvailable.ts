@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react'
 import { isToday, parseISO } from 'date-fns'
-import { useSettings } from '@/context/SettingsContext'
+import { WEEKLY_SHUTDOWN_TEST_MODE } from '@/lib/devFlags'
 import {
-  isWeeklyShutdownAnyDay,
-  isWeeklyShutdownDevAvailable,
-} from '@/lib/devMode'
-import {
-  getWeeklyReviewWeekDates,
   getPendingWeeklyShutdownWeekDates,
   getWeeklyShutdownWeekKey,
   isWeeklyShutdownCompleted,
+  WEEKLY_SHUTDOWN_CHANGED,
 } from '@/lib/weeklyShutdown'
 import type { WeekStartDay } from '@/types'
 
@@ -18,23 +14,20 @@ export function useWeeklyShutdownAvailable(
   viewDate: string,
   weekStartsOn: WeekStartDay,
 ): boolean {
-  const { settings } = useSettings()
   const [available, setAvailable] = useState(false)
 
   useEffect(() => {
     const tick = () => {
       const now = new Date()
-      if (isWeeklyShutdownDevAvailable(settings) && isToday(parseISO(viewDate))) {
-        setAvailable(true)
-        return
-      }
       if (!isToday(parseISO(viewDate))) {
         setAvailable(false)
         return
       }
-      const weekDates = isWeeklyShutdownAnyDay(settings)
-        ? getWeeklyReviewWeekDates(now, weekStartsOn)
-        : getPendingWeeklyShutdownWeekDates(now, weekStartsOn)
+      if (WEEKLY_SHUTDOWN_TEST_MODE) {
+        setAvailable(true)
+        return
+      }
+      const weekDates = getPendingWeeklyShutdownWeekDates(now, weekStartsOn)
       if (weekDates.length === 0) {
         setAvailable(false)
         return
@@ -44,8 +37,14 @@ export function useWeeklyShutdownAvailable(
     }
     tick()
     const id = window.setInterval(tick, 60_000)
-    return () => clearInterval(id)
-  }, [viewDate, weekStartsOn, settings.devMode])
+    window.addEventListener(WEEKLY_SHUTDOWN_CHANGED, tick)
+    window.addEventListener('user-storage-ready', tick)
+    return () => {
+      clearInterval(id)
+      window.removeEventListener(WEEKLY_SHUTDOWN_CHANGED, tick)
+      window.removeEventListener('user-storage-ready', tick)
+    }
+  }, [viewDate, weekStartsOn])
 
   return available
 }
