@@ -1,5 +1,4 @@
 import { RightNowHeader } from '@/components/oneThing/RightNowHeader'
-import { OneThingHomeCard } from '@/components/oneThing/OneThingHomeCard'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addDays, isToday, parseISO } from 'date-fns'
@@ -24,7 +23,6 @@ import { DailyChecklistModal } from '@/components/today/DailyChecklistModal'
 import { MorningLogModal, type MorningLogSavePayload } from '@/components/today/MorningLogModal'
 import { ShutdownModal } from '@/components/today/ShutdownModal'
 import { WeeklyGoalRevealModal } from '@/components/today/WeeklyGoalRevealModal'
-import { WeeklyPulseRevealModal } from '@/components/today/WeeklyPulseRevealModal'
 import { WeeklyShutdownModal } from '@/components/today/WeeklyShutdownModal'
 import { MonthCalendarModal } from '@/components/today/MonthCalendarModal'
 import { HabitRampFailureModal } from '@/components/today/HabitRampFailureModal'
@@ -112,7 +110,6 @@ import { addDaysToDateString, cn, formatDate, getWeekDates } from '@/lib/utils'
 import { getYesterdayDate } from '@/lib/dailyLog'
 import { getWeeklyLog } from '@/lib/weeklyLogStore'
 import { cleanupStaleGoals } from '@/lib/goalCleanup'
-import { buildWeeklyPulseReview, type WeeklyPulseReview } from '@/lib/weeklyPulseReview'
 import { getPreviousWeekDates } from '@/lib/weightGoal'
 
 export function TodayPage() {
@@ -149,12 +146,10 @@ export function TodayPage() {
   const [yesterdayLog, setYesterdayLog] = useState<DailyLog | null>(null)
   const [yesterdayWorkouts, setYesterdayWorkouts] = useState<Workout[]>([])
   const [showWeeklyShutdown, setShowWeeklyShutdown] = useState(false)
-  const [showWeeklyPulse, setShowWeeklyPulse] = useState(false)
   const [showWeeklyReveal, setShowWeeklyReveal] = useState(false)
   const [weeklySummaries, setWeeklySummaries] = useState<WeeklyShutdownGoalSummary[]>([])
   const [weeklyStats, setWeeklyStats] = useState<WeeklyReviewStat[]>([])
   const [weeklyHabits, setWeeklyHabits] = useState<WeeklyHabitReviewSummary[]>([])
-  const [weeklyPulseReview, setWeeklyPulseReview] = useState<WeeklyPulseReview | null>(null)
   const [weeklyWeekDates, setWeeklyWeekDates] = useState<string[]>([])
   const [weeklyWeekLogs, setWeeklyWeekLogs] = useState<DailyLog[]>([])
   const [weeklyWeekWorkouts, setWeeklyWeekWorkouts] = useState<Workout[]>([])
@@ -703,27 +698,7 @@ export function TodayPage() {
       ),
     )
     setWeeklyHabits(buildWeeklyHabitReviewSummaries(logsForReview, weeklyWeekDates))
-    const pulseReview = buildWeeklyPulseReview(
-      weeklyWeekDates,
-      logsForReview,
-      goals,
-      weeklyWeekWorkouts,
-      settings.weekStartsOn,
-      pulseConfig,
-      sleepMetricsConfig,
-      { useDevDummyHistory: settings.devMode },
-    )
-    setWeeklyPulseReview(pulseReview)
     setShowWeeklyShutdown(false)
-    if (pulseReview) {
-      setShowWeeklyPulse(true)
-    } else {
-      setShowWeeklyReveal(true)
-    }
-  }
-
-  const continueWeeklyPulse = () => {
-    setShowWeeklyPulse(false)
     setShowWeeklyReveal(true)
   }
 
@@ -731,12 +706,10 @@ export function TodayPage() {
     const weekKey = getWeeklyShutdownWeekKey(weeklyWeekDates)
     captureWorkoutGoalSnapshotsForWeek(goals, weekKey)
     markWeeklyShutdownCompleted(weekKey)
-    setShowWeeklyPulse(false)
     setShowWeeklyReveal(false)
     setWeeklySummaries([])
     setWeeklyStats([])
     setWeeklyHabits([])
-    setWeeklyPulseReview(null)
     setWeeklyWeekDates([])
     setWeeklyWeekLogs([])
     setWeeklyWeekWorkouts([])
@@ -956,7 +929,6 @@ export function TodayPage() {
             viewDate={viewDate}
             className="w-full"
           />
-          <OneThingHomeCard />
           {settings.showExperimentsPage && <ExperimentHomeCard date={viewDate} />}
         </aside>
         </div>
@@ -1048,15 +1020,6 @@ export function TodayPage() {
           goals={goals}
           onClose={() => setShowWeeklyShutdown(false)}
           onComplete={completeWeeklyChecklist}
-        />
-      )}
-
-      {showWeeklyPulse && weeklyPulseReview && (
-        <WeeklyPulseRevealModal
-          review={weeklyPulseReview}
-          weekLabel={weekDateRangeLabel(weeklyWeekDates)}
-          onContinue={continueWeeklyPulse}
-          onClose={finishWeeklyShutdown}
         />
       )}
 

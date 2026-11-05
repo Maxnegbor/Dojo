@@ -295,10 +295,8 @@ export function FocusTimerPage() {
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
   const [scorePrompt, setScorePrompt] = useState<FocusScorePromptPayload | null>(null)
   const [phaseHold, setPhaseHold] = useState<PhaseHold | null>(null)
-  const [preChecklistHold, setPreChecklistHold] = useState<{
-    hold: PhaseHold
-    items: FocusAlarmCheckItem[]
-  } | null>(null)
+  const [startChecklistOpen, setStartChecklistOpen] = useState(false)
+  const pendingStartRef = useRef<(() => void) | null>(null)
   const [checklistHold, setChecklistHold] = useState<{
     hold: PhaseHold | null
     items: FocusAlarmCheckItem[]
@@ -606,11 +604,6 @@ export function FocusTimerPage() {
               }
             : null,
         }
-        const before = activePreAlarmChecklist(s)
-        if (before.length > 0) {
-          setPreChecklistHold({ hold, items: before })
-          return
-        }
         setPhaseHold(hold)
         return
       }
@@ -643,10 +636,39 @@ export function FocusTimerPage() {
     })
   }, [])
 
+  const runOrStartChecklist = useCallback((run: () => void) => {
+    if (
+      clockModeRef.current === 'stopwatch' ||
+      activePreAlarmChecklist(settingsRef.current).length === 0
+    ) {
+      run()
+      return
+    }
+    pendingStartRef.current = run
+    setStartChecklistOpen(true)
+  }, [])
+
   const continueAfterHold = useCallback(
     (hold: PhaseHold) => {
       const s = settingsRef.current
       const c = hold.cycle
+
+      const startFocusBlock = (nextCycle: number, chime: boolean) => {
+        const launch = () => {
+          creditedRef.current = 0
+          openSessionIdRef.current = null
+          setCreditedMinutes(0)
+          plannedFocusRef.current = s.focusMinutes
+          if (chime && userPrefs.timerSoundEnabled) playTimerChime()
+          setCycle(nextCycle)
+          setPhase('focus')
+          setPhaseRemaining(s.focusMinutes * 60)
+          setRunning(true)
+          setSessionStarted(true)
+          phaseStartRef.current = Date.now()
+        }
+        runOrStartChecklist(launch)
+      }
 
       if (hold.from === 'focus') {
         creditedRef.current = 0
@@ -660,12 +682,7 @@ export function FocusTimerPage() {
             setSessionStarted(false)
             return
           }
-          setCycle(c + 1)
-          setPhase('focus')
-          setPhaseRemaining(s.focusMinutes * 60)
-          setRunning(true)
-          setSessionStarted(true)
-          phaseStartRef.current = Date.now()
+          startFocusBlock(c + 1, false)
           return
         }
         const breakMinutes = getBreakMinutesAfterFocus(s, c)
@@ -690,19 +707,9 @@ export function FocusTimerPage() {
         setSessionStarted(false)
         return
       }
-      creditedRef.current = 0
-      openSessionIdRef.current = null
-      setCreditedMinutes(0)
-      plannedFocusRef.current = s.focusMinutes
-      if (userPrefs.timerSoundEnabled) playTimerChime()
-      setCycle(c + 1)
-      setPhase('focus')
-      setPhaseRemaining(s.focusMinutes * 60)
-      setRunning(true)
-      setSessionStarted(true)
-      phaseStartRef.current = Date.now()
+      startFocusBlock(c + 1, true)
     },
-    [setPhaseRemaining, userPrefs.timerSoundEnabled],
+    [runOrStartChecklist, setPhaseRemaining, userPrefs.timerSoundEnabled],
   )
 
   const dismissPhaseHold = useCallback(
@@ -724,12 +731,12 @@ export function FocusTimerPage() {
     [phaseHold, continueAfterHold],
   )
 
-  const finishPreChecklist = useCallback(() => {
-    const pending = preChecklistHold
-    if (!pending) return
-    setPreChecklistHold(null)
-    setPhaseHold(pending.hold)
-  }, [preChecklistHold])
+  const finishStartChecklist = useCallback(() => {
+    setStartChecklistOpen(false)
+    const run = pendingStartRef.current
+    pendingStartRef.current = null
+    run?.()
+  }, [])
 
   const finishChecklist = useCallback(() => {
     const pending = checklistHold
@@ -926,6 +933,10 @@ export function FocusTimerPage() {
       setStartReminderOpen(true)
       return
     }
+    if (freshFocusStart && phase === 'focus') {
+      runOrStartChecklist(beginRunning)
+      return
+    }
     beginRunning()
   }
 
@@ -957,7 +968,8 @@ export function FocusTimerPage() {
     clearOpenFocusTimer()
     stopFocusTimerAlarm()
     setPhaseHold(null)
-    setPreChecklistHold(null)
+    setStartChecklistOpen(false)
+    pendingStartRef.current = null
     setChecklistHold(null)
     setStartReminderOpen(false)
     setRunning(false)
@@ -1185,7 +1197,7 @@ export function FocusTimerPage() {
               {!isStopwatch && (
                 <FocusAlarmChecklistSettings
                   label="Checklist before alarm"
-                  description="When the timer ends, check every item before the alarm starts."
+                  description="When you start the timer, check every item before it begins."
                   enabled={settings.preAlarmChecklistEnabled}
                   items={settings.preAlarmChecklist}
                   onEnabledChange={(preAlarmChecklistEnabled) =>
@@ -1492,6 +1504,10 @@ export function FocusTimerPage() {
           onCancel={() => setStartReminderOpen(false)}
           onStart={() => {
             setStartReminderOpen(false)
+            if (phase === 'focus') {
+              runOrStartChecklist(beginRunning)
+              return
+            }
             beginRunning()
           }}
         />
@@ -1509,12 +1525,12 @@ export function FocusTimerPage() {
         />
       )}
 
-      {preChecklistHold && (
+      {startChecklistOpen && (
         <FocusAlarmChecklistModal
-          kicker="Before the alarm"
-          items={preChecklistHold.items}
-          subtitle="Check every item. The alarm starts after this."
-          onComplete={finishPreChecklist}
+          kicker="Before you start"
+          items={activePreAlarmChecklist(settings)}
+          subtitle="Check every item. The timer starts after this."
+          onComplete={finishStartChecklist}
         />
       )}
 

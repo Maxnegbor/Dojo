@@ -2,14 +2,15 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight, CircleDot } from 'lucide-react'
 import { useOneThing } from '@/hooks/useOneThing'
 import { ONE_THING_HORIZONS, currentOneThing } from '@/lib/oneThingPeriods'
+import { cn } from '@/lib/utils'
 
-export function OneThingHomeCard() {
+export function OneThingHomeCard({ className }: { className?: string }) {
   const { goals, now, weekStartsOn, ready } = useOneThing()
   if (!ready) return null
   const current = (id: typeof ONE_THING_HORIZONS[number]['id']) => currentOneThing(goals, id, now, weekStartsOn)
   const today = current('today')
   const due = ONE_THING_HORIZONS.filter(h => h.id !== 'today' && !current(h.id))
-  return <section className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+  return <section className={cn('w-full rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 text-left', className)}>
     <div className="mb-3 flex items-center justify-between gap-2">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200"><CircleDot size={15} className="text-[var(--accent-400)]"/>The One Thing</h2>
       <Link to="/one-thing" aria-label="Open The One Thing" className="rounded p-1 text-zinc-500 hover:text-zinc-200"><ArrowUpRight size={16}/></Link>

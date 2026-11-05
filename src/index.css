@@ -380,107 +380,6 @@ input[type="number"] {
   box-shadow: none;
 }
 
-@keyframes pulse-core-border-glow {
-  /* One cycle = 3 ring beats. Per beat: quick shrink, slow expand. */
-  /* Beat 1 — outline thickest at 0%, thinnest at 3.5% (PULSE_OUTLINE_THIN_SYNC); ring syncs there */
-  0% {
-    border-color: var(--pulse-core-border-base);
-    border-width: var(--pulse-core-border-width-thick);
-    box-shadow: var(--pulse-core-glow-base);
-  }
-  3.5% {
-    border-color: var(--pulse-core-border-bright);
-    border-width: var(--pulse-core-border-width-base);
-    box-shadow: var(--pulse-core-glow-bright);
-  }
-  5.5% {
-    border-color: var(--pulse-core-border-bright);
-    border-width: var(--pulse-core-border-width-base);
-    box-shadow: var(--pulse-core-glow-bright);
-  }
-  9% {
-    border-color: color-mix(in srgb, var(--pulse-core-border-base) 30%, var(--pulse-core-border-bright));
-    border-width: var(--pulse-core-border-width-mid);
-    box-shadow: var(--pulse-core-glow-rise);
-  }
-  22% {
-    border-color: color-mix(in srgb, var(--pulse-core-border-base) 65%, var(--pulse-core-border-bright));
-    border-width: var(--pulse-core-border-width-rise);
-    box-shadow: var(--pulse-core-glow-mid);
-  }
-  33.33% {
-    border-color: var(--pulse-core-border-base);
-    border-width: var(--pulse-core-border-width-thick);
-    box-shadow: var(--pulse-core-glow-base);
-  }
-  /* Beat 2 — ring launch at 33.33% */
-  36.83% {
-    border-color: var(--pulse-core-border-bright);
-    border-width: var(--pulse-core-border-width-base);
-    box-shadow: var(--pulse-core-glow-bright);
-  }
-  38.83% {
-    border-color: var(--pulse-core-border-bright);
-    border-width: var(--pulse-core-border-width-base);
-    box-shadow: var(--pulse-core-glow-bright);
-  }
-  42.33% {
-    border-color: color-mix(in srgb, var(--pulse-core-border-base) 30%, var(--pulse-core-border-bright));
-    border-width: var(--pulse-core-border-width-mid);
-    box-shadow: var(--pulse-core-glow-rise);
-  }
-  55.33% {
-    border-color: color-mix(in srgb, var(--pulse-core-border-base) 65%, var(--pulse-core-border-bright));
-    border-width: var(--pulse-core-border-width-rise);
-    box-shadow: var(--pulse-core-glow-mid);
-  }
-  66.66% {
-    border-color: var(--pulse-core-border-base);
-    border-width: var(--pulse-core-border-width-thick);
-    box-shadow: var(--pulse-core-glow-base);
-  }
-  /* Beat 3 — ring launch at 66.66% */
-  70.16% {
-    border-color: var(--pulse-core-border-bright);
-    border-width: var(--pulse-core-border-width-base);
-    box-shadow: var(--pulse-core-glow-bright);
-  }
-  72.16% {
-    border-color: var(--pulse-core-border-bright);
-    border-width: var(--pulse-core-border-width-base);
-    box-shadow: var(--pulse-core-glow-bright);
-  }
-  75.66% {
-    border-color: color-mix(in srgb, var(--pulse-core-border-base) 30%, var(--pulse-core-border-bright));
-    border-width: var(--pulse-core-border-width-mid);
-    box-shadow: var(--pulse-core-glow-rise);
-  }
-  88.66% {
-    border-color: color-mix(in srgb, var(--pulse-core-border-base) 65%, var(--pulse-core-border-bright));
-    border-width: var(--pulse-core-border-width-rise);
-    box-shadow: var(--pulse-core-glow-mid);
-  }
-  100% {
-    border-color: var(--pulse-core-border-base);
-    border-width: var(--pulse-core-border-width-thick);
-    box-shadow: var(--pulse-core-glow-base);
-  }
-}
-
-@keyframes pulse-ring-ripple {
-  0% {
-    transform: scale(var(--pulse-ring-start, 0.5));
-    opacity: var(--pulse-ring-peak-opacity, 0.25);
-  }
-  50% {
-    opacity: 0;
-  }
-  100% {
-    transform: scale(var(--pulse-ring-expand, 1.05));
-    opacity: 0;
-  }
-}
-
 @keyframes pulse-wave-dot-pulse {
   0%,
   100% {
@@ -510,24 +409,6 @@ input[type="number"] {
   to {
     stroke-dashoffset: 0;
   }
-}
-
-.pulse-hero-ring {
-  transform: scale(var(--pulse-ring-start, 0.5));
-  transform-origin: center;
-  opacity: 0;
-  border-style: solid;
-  border-width: var(--pulse-ring-border, 2.5px);
-  border-color: var(--pulse-ring-color, var(--pulse-core-border-bright));
-  animation-fill-mode: backwards;
-}
-
-.pulse-hero-core {
-  box-sizing: content-box;
-  border-color: var(--pulse-core-border-bright);
-  border-width: var(--pulse-core-border-width-base);
-  box-shadow: var(--pulse-core-glow-bright);
-  animation: pulse-core-border-glow var(--pulse-duration, 4.8s) linear infinite;
 }
 
 .pulse-star-glow {

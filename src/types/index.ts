@@ -374,7 +374,7 @@ export interface FocusTimerSettings {
   /** When you press start, show these reminders before the timer begins. */
   startReminderEnabled: boolean
   startReminders: FocusAlarmCheckItem[]
-  /** When a focus block ends, require this checklist before the alarm starts. */
+  /** When a focus block starts, require this checklist before the timer begins. */
   preAlarmChecklistEnabled: boolean
   preAlarmChecklist: FocusAlarmCheckItem[]
   /** After the focus alarm is dismissed, require this checklist before the break starts. */

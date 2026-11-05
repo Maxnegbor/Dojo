@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Check, ExternalLink, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
+import { Check, ExternalLink, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { HabitStreakBadge } from '@/components/today/HabitStreakBadge'
 import {
@@ -302,6 +302,7 @@ export function HabitifyHabitsPanel({
           <ul className="space-y-2 pr-0.5">
             {entries.map((entry) => {
               const done = entry.status === 'completed'
+              const failed = entry.status === 'failed'
               const busy = busyIds.has(entry.id)
               const streak = entry.streakLength ?? 0
               const progressLabel =
@@ -315,9 +316,11 @@ export function HabitifyHabitsPanel({
                   key={entry.id}
                   className={cn(
                     'flex items-center gap-2 rounded-lg border px-2 py-1.5',
-                    done
-                      ? 'border-zinc-800/60 bg-zinc-950/40'
-                      : 'border-zinc-800/80 bg-zinc-900/50',
+                    failed
+                      ? 'border-rose-500/40 bg-rose-950/35'
+                      : done
+                        ? 'border-zinc-800/60 bg-zinc-950/40'
+                        : 'border-zinc-800/80 bg-zinc-900/50',
                   )}
                 >
                   <button
@@ -326,17 +329,27 @@ export function HabitifyHabitsPanel({
                     onClick={() =>
                       void (done ? handleUndo(entry) : handleComplete(entry))
                     }
-                    aria-label={done ? `Undo ${entry.name}` : `Complete ${entry.name}`}
+                    aria-label={
+                      failed
+                        ? `${entry.name} failed. Mark complete`
+                        : done
+                          ? `Undo ${entry.name}`
+                          : `Complete ${entry.name}`
+                    }
                     className={cn(
                       'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all',
-                      done
-                        ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-300'
-                        : 'border-zinc-600 text-transparent hover:border-[var(--accent-500)] hover:bg-[var(--accent-500)]/15 hover:text-[var(--accent-400)]',
+                      failed
+                        ? 'border-rose-500/80 bg-rose-500/20 text-rose-300'
+                        : done
+                          ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-300'
+                          : 'border-zinc-600 text-transparent hover:border-[var(--accent-500)] hover:bg-[var(--accent-500)]/15 hover:text-[var(--accent-400)]',
                       busy && 'opacity-50',
                     )}
                   >
                     {busy ? (
                       <Loader2 size={11} className="animate-spin text-zinc-400" />
+                    ) : failed ? (
+                      <X size={11} strokeWidth={2.5} />
                     ) : (
                       <Check size={11} strokeWidth={2.5} />
                     )}
@@ -344,11 +357,20 @@ export function HabitifyHabitsPanel({
                   <p
                     className={cn(
                       'min-w-0 flex-1 truncate text-xs font-medium',
-                      done ? 'text-zinc-500 line-through' : 'text-zinc-100',
+                      failed
+                        ? 'text-rose-200/90 line-through decoration-rose-400/70'
+                        : done
+                          ? 'text-zinc-500 line-through'
+                          : 'text-zinc-100',
                     )}
                   >
                     {entry.name}
                   </p>
+                  {failed && (
+                    <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-rose-300">
+                      Failed
+                    </span>
+                  )}
                   {progressLabel && (
                     <span className="shrink-0 text-[10px] tabular-nums text-[var(--accent-400)]">
                       {progressLabel}

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, CornerDownLeft } from 'lucide-react'
+import { OneThingHomeCard } from '@/components/oneThing/OneThingHomeCard'
 import { useOneThing } from '@/hooks/useOneThing'
 import { currentOneThing, nextOneThingToSet } from '@/lib/oneThingPeriods'
 import { playOneThingSound } from '@/lib/timerSound'
+import { cn } from '@/lib/utils'
 
 export function RightNowHeader() {
   const { goals, now, weekStartsOn, ready, save, complete } = useOneThing()
@@ -26,8 +28,16 @@ export function RightNowHeader() {
   // The negative margin gives that top space back so the schedule stays put.
   return <section aria-label="Your right now focus" className="relative z-50 mx-auto w-full max-w-5xl shrink-0 px-3 pt-[4.5rem] pb-0 -mb-2 text-center sm:px-6">
     {parentGoal && asking?.parent && <p className="mx-auto mb-8 max-w-md whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-400"><span className="font-medium text-zinc-300">{asking.parent.label} goal:</span> {parentGoal.text}</p>}
-    {!asking && goal ? <div className="flex items-center justify-center gap-3">
-      <h1 className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl"><span className="one-thing-gold-shine-occasional">{goal.text}</span></h1>
+    {!asking && goal ? <div className="inline-flex max-w-full items-center justify-center gap-3">
+      <div className="group/one relative min-w-0">
+        <h1 className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl"><span className="one-thing-gold-shine-occasional">{goal.text}</span></h1>
+        <div className={cn(
+          'pointer-events-none invisible absolute left-1/2 top-full z-[80] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 pt-2 text-left opacity-0 transition duration-150',
+          'group-hover/one:pointer-events-auto group-hover/one:visible group-hover/one:opacity-100',
+        )}>
+          <OneThingHomeCard className="bg-zinc-950/95 shadow-2xl shadow-black/60 backdrop-blur-sm" />
+        </div>
+      </div>
       <button type="button" aria-label="Complete your right now One Thing" title="Done — choose your next One Thing" onClick={() => {
         if (complete()) {
           playOneThingSound('complete')
