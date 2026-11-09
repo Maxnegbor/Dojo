@@ -1,10 +1,10 @@
-import { isFutureDatesAllowed, isPastDatesAllowed } from '@/lib/devMode'
+import { isFutureDatesAllowed } from '@/lib/devMode'
 import type { AppSettings } from '@/types'
 
 /** Flip off before shipping — enables logging and browsing future dates/weeks. */
 export const ALLOW_FUTURE_DATES = false
 
-/** Allows editing daily logs on past dates (e.g. backfilling a week). */
+/** Past daily logs are always editable. Kept for the dev-mode helper. */
 export const ALLOW_PAST_DATES = false
 
 /** Shows Weekly Shutdown on any day — for testing; disable before shipping. */
@@ -18,7 +18,6 @@ export function isLogEditable(
   today: string,
   settings?: Pick<AppSettings, 'devMode'>,
 ): boolean {
-  if (date < today) return settings ? isPastDatesAllowed(settings) : ALLOW_PAST_DATES
-  if (date === today) return true
+  if (date <= today) return true
   return settings ? isFutureDatesAllowed(settings) : ALLOW_FUTURE_DATES
 }

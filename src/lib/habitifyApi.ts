@@ -399,3 +399,7 @@ export async function undoHabitifyHabit(habitId: string, targetDate: string): Pr
 export async function skipHabitifyHabit(habitId: string, targetDate: string): Promise<void> {
   await postLogAction(habitId, 'skipped', targetDate)
 }
+
+export async function failHabitifyHabit(habitId: string, targetDate: string): Promise<void> {
+  await postLogAction(habitId, 'failed', targetDate)
+}

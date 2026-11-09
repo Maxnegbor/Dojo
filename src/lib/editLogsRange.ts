@@ -2,7 +2,7 @@ import { addDays, parseISO } from 'date-fns'
 import { formatDate, getWeekDates } from '@/lib/utils'
 import { getWeeklyShutdownWeekKey } from '@/lib/weeklyShutdown'
 
-export const EDIT_LOGS_LOOKBACK_DAYS = 14
+export const EDIT_LOGS_LOOKBACK_DAYS = 90
 
 export function getEditLogsDateRange(endDate: string = formatDate(new Date())): {
   start: string

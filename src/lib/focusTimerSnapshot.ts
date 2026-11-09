@@ -5,7 +5,7 @@ const STORAGE_KEY = 'personal-os-focus-open-timer'
 export type OpenFocusClockMode = 'timer' | 'stopwatch'
 export type OpenFocusPhase = 'focus' | 'break'
 
-/** A focus session that was still in progress when the page closed. Restored paused. */
+/** A focus session that was still in progress when the page closed. */
 export interface OpenFocusTimer {
   clockMode: OpenFocusClockMode
   phase: OpenFocusPhase
@@ -18,6 +18,10 @@ export interface OpenFocusTimer {
   creditedMinutes: number
   openSessionId: string | null
   plannedFocusMinutes: number
+  /** False for sessions saved before the timer kept running in the background. */
+  running: boolean
+  /** Wall-clock deadline for the current countdown phase. Null while paused or on a stopwatch. */
+  phaseEndsAtMs: number | null
 }
 
 function finite(value: unknown, fallback = 0): number {
@@ -48,6 +52,11 @@ export function readOpenFocusTimer(): OpenFocusTimer | null {
           ? parsed.openSessionId
           : null,
       plannedFocusMinutes: Math.max(1, Math.round(finite(parsed.plannedFocusMinutes, 25))),
+      running: parsed.running === true,
+      phaseEndsAtMs:
+        typeof parsed.phaseEndsAtMs === 'number' && Number.isFinite(parsed.phaseEndsAtMs)
+          ? parsed.phaseEndsAtMs
+          : null,
     }
   } catch {
     return null
@@ -60,4 +69,17 @@ export function writeOpenFocusTimer(timer: OpenFocusTimer) {
 
 export function clearOpenFocusTimer() {
   storageRemoveItem(STORAGE_KEY)
+}
+
+/** Move a saved running timer forward to `now`. A countdown that already ended stays at 0. */
+export function applyOpenTimerClock(timer: OpenFocusTimer, now = Date.now()): OpenFocusTimer {
+  if (!timer.running) return timer
+  if (timer.clockMode === 'stopwatch') {
+    const elapsed = Math.max(timer.elapsed, Math.floor((now - timer.phaseStartMs) / 1000))
+    return { ...timer, elapsed }
+  }
+  if (timer.phaseEndsAtMs == null) return { ...timer, running: false }
+  const remaining = Math.max(0, Math.ceil((timer.phaseEndsAtMs - now) / 1000))
+  if (remaining <= 0) return { ...timer, remaining: 0, phaseEndsAtMs: null }
+  return { ...timer, remaining }
 }

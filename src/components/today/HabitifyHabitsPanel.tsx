@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ExternalLink, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { HabitStreakBadge } from '@/components/today/HabitStreakBadge'
 import {
   completeHabitifyHabit,
+  failHabitifyHabit,
   fetchHabitifyHabits,
   fetchHabitifyJournal,
   HabitifyApiError,
@@ -47,6 +49,7 @@ export function HabitifyHabitsPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set())
+  const [failMenu, setFailMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const loadGen = useRef(0)
 
   const load = useCallback(async (opts?: { force?: boolean }) => {
@@ -100,6 +103,29 @@ export function HabitifyHabitsPanel({
     void load()
   }, [load])
 
+  useEffect(() => {
+    if (!failMenu) return
+    const close = () => setFailMenu(null)
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-habit-fail-menu]')) return
+      close()
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('mousedown', onPointer, true)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('mousedown', onPointer, true)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [failMenu])
+
   const setBusy = (id: string, busy: boolean) => {
     setBusyIds((prev) => {
       const next = new Set(prev)
@@ -146,6 +172,44 @@ export function HabitifyHabitsPanel({
         progressTarget: entry.progressTarget,
       })
       setError(err instanceof Error ? err.message : 'Could not complete habit')
+    } finally {
+      setBusy(entry.id, false)
+    }
+  }
+
+  const handleFail = async (entry: HabitifyJournalEntry) => {
+    if (busyIds.has(entry.id) || entry.status === 'failed') return
+    setFailMenu(null)
+    setBusy(entry.id, true)
+    setEntries((prev) =>
+      prev.map((item) =>
+        item.id === entry.id
+          ? { ...item, status: 'failed' as const, streakLength: 0 }
+          : item,
+      ),
+    )
+    patchHabitifyJournalEntry(viewDate, {
+      id: entry.id,
+      name: entry.name,
+      status: 'failed',
+      type: entry.type,
+      progressCurrent: entry.progressCurrent,
+      progressTarget: entry.progressTarget,
+    })
+    try {
+      await failHabitifyHabit(entry.id, viewDate)
+      void load()
+    } catch (err) {
+      setEntries((prev) => prev.map((item) => (item.id === entry.id ? entry : item)))
+      patchHabitifyJournalEntry(viewDate, {
+        id: entry.id,
+        name: entry.name,
+        status: entry.status,
+        type: entry.type,
+        progressCurrent: entry.progressCurrent,
+        progressTarget: entry.progressTarget,
+      })
+      setError(err instanceof Error ? err.message : 'Could not mark habit as failed')
     } finally {
       setBusy(entry.id, false)
     }
@@ -322,6 +386,14 @@ export function HabitifyHabitsPanel({
                         ? 'border-zinc-800/60 bg-zinc-950/40'
                         : 'border-zinc-800/80 bg-zinc-900/50',
                   )}
+                  onContextMenu={(event) => {
+                    if (failed || busy) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    const left = Math.max(8, Math.min(event.clientX, window.innerWidth - 180))
+                    const top = Math.max(8, Math.min(event.clientY, window.innerHeight - 48))
+                    setFailMenu({ id: entry.id, x: left, y: top })
+                  }}
                 >
                   <button
                     type="button"
@@ -366,11 +438,6 @@ export function HabitifyHabitsPanel({
                   >
                     {entry.name}
                   </p>
-                  {failed && (
-                    <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-rose-300">
-                      Failed
-                    </span>
-                  )}
                   {progressLabel && (
                     <span className="shrink-0 text-[10px] tabular-nums text-[var(--accent-400)]">
                       {progressLabel}
@@ -392,6 +459,29 @@ export function HabitifyHabitsPanel({
               )
             })}
           </ul>
+          {failMenu &&
+            createPortal(
+              <div
+                data-habit-fail-menu
+                className="fixed z-[110] min-w-[10.5rem] overflow-hidden rounded-lg border border-zinc-700/80 bg-zinc-950 py-1 shadow-xl"
+                style={{ left: failMenu.x, top: failMenu.y }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                <button
+                  type="button"
+                  className="flex w-full px-3 py-2 text-left text-sm text-rose-300 hover:bg-zinc-800/80"
+                  onClick={() => {
+                    const entry = entries.find((item) => item.id === failMenu.id)
+                    if (entry) void handleFail(entry)
+                    else setFailMenu(null)
+                  }}
+                >
+                  Mark as failed
+                </button>
+              </div>,
+              document.body,
+            )}
         </>
       )}
     </div>

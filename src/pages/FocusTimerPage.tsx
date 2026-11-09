@@ -29,6 +29,7 @@ import { getLastFocusLabelId, setLastFocusLabelId } from '@/lib/focusLabels'
 import { addFocusScoreSession } from '@/lib/focusScores'
 import { getFocusSettings, saveFocusSettings } from '@/lib/focusStore'
 import {
+  applyOpenTimerClock,
   clearOpenFocusTimer,
   readOpenFocusTimer,
   writeOpenFocusTimer,
@@ -250,7 +251,12 @@ export function FocusTimerPage() {
   const { active: screensaverActive, waking: screensaverWaking } = useScreensaver()
   const { userId } = useAuth()
   const { settings: userPrefs, formatTime } = useSettings()
-  const [openTimer] = useState(readOpenFocusTimer)
+  const [openTimer] = useState(() => {
+    const saved = readOpenFocusTimer()
+    return saved ? applyOpenTimerClock(saved) : null
+  })
+  const phaseExpiredOnLoad =
+    openTimer?.running === true && openTimer.clockMode === 'timer' && openTimer.remaining <= 0
   const [settings, setSettings] = useState<FocusTimerSettings>(getFocusSettings)
   const [showSettings, setShowSettings] = useState(false)
   const [phase, setPhase] = useState<Phase>(openTimer?.phase ?? 'focus')
@@ -259,7 +265,9 @@ export function FocusTimerPage() {
   const [activeBreakMinutes, setActiveBreakMinutes] = useState(
     openTimer?.activeBreakMinutes ?? settings.breakMinutes,
   )
-  const [running, setRunning] = useState(false)
+  const [running, setRunning] = useState(
+    () => openTimer?.running === true && !phaseExpiredOnLoad,
+  )
   const [sessionStarted, setSessionStarted] = useState(openTimer != null)
   const { answer: sessionOneThing, setAnswer: setSessionOneThing } = useFocusOneThing(running || sessionStarted)
   const [oneThingDismissed, setOneThingDismissed] = useState(false)
@@ -310,6 +318,7 @@ export function FocusTimerPage() {
   const timerFaceRef = useRef<HTMLDivElement>(null)
   const scheduleSlotRef = useRef<HTMLDivElement>(null)
   const phaseRef = useRef(phase)
+  const runningRef = useRef(openTimer?.running === true && !phaseExpiredOnLoad)
   const cycleRef = useRef(cycle)
   const remainingRef = useRef(remaining)
   const elapsedRef = useRef(elapsed)
@@ -326,6 +335,7 @@ export function FocusTimerPage() {
 
   settingsRef.current = settings
   phaseRef.current = phase
+  runningRef.current = running
   cycleRef.current = cycle
   elapsedRef.current = elapsed
   clockModeRef.current = clockMode
@@ -396,6 +406,8 @@ export function FocusTimerPage() {
   const phaseDuration =
     phase === 'focus' ? settings.focusMinutes * 60 : activeBreakMinutes * 60
   const phaseStartRef = useRef(openTimer?.phaseStartMs ?? Date.now())
+  const phaseEndsAtRef = useRef<number | null>(openTimer?.phaseEndsAtMs ?? null)
+  const catchUpPhaseRef = useRef(phaseExpiredOnLoad)
 
   const enqueueCredit = useCallback((task: () => Promise<unknown>) => {
     const gen = creditGen.current
@@ -633,6 +645,9 @@ export function FocusTimerPage() {
       creditedMinutes: creditedRef.current,
       openSessionId: openSessionIdRef.current,
       plannedFocusMinutes: plannedFocusRef.current,
+      running: runningRef.current,
+      phaseEndsAtMs:
+        runningRef.current && clockModeRef.current !== 'stopwatch' ? phaseEndsAtRef.current : null,
     })
   }, [])
 
@@ -746,38 +761,69 @@ export function FocusTimerPage() {
   }, [checklistHold, continueAfterHold])
 
   useEffect(() => {
-    if (!running || phaseHold) return
+    if (catchUpPhaseRef.current) {
+      catchUpPhaseRef.current = false
+      advancingRef.current = true
+      phaseEndsAtRef.current = null
+      void advancePhase()
+    }
+  }, [advancePhase])
 
-    if (clockMode === 'stopwatch') {
-      const id = window.setInterval(() => {
-        const next = elapsedRef.current + 1
-        elapsedRef.current = next
-        setElapsed(next)
-        void flushFocusCredit()
-      }, 1000)
-      return () => clearInterval(id)
+  useEffect(() => {
+    if (!running || phaseHold || startChecklistOpen) return
+
+    const syncStopwatch = () => {
+      const next = Math.max(0, Math.floor((Date.now() - phaseStartRef.current) / 1000))
+      if (next === elapsedRef.current) return
+      elapsedRef.current = next
+      setElapsed(next)
+      void flushFocusCredit()
     }
 
-    if (phase === 'done') return
-
-    const id = window.setInterval(() => {
+    const syncCountdown = () => {
       if (advancingRef.current) return
-      if (remainingRef.current <= 0) return
-
-      const next = remainingRef.current - 1
-      if (next > 0) {
-        setPhaseRemaining(next)
-        if (phaseRef.current === 'focus') void flushFocusCredit()
-        return
+      if (phaseEndsAtRef.current == null) {
+        phaseEndsAtRef.current = Date.now() + remainingRef.current * 1000
       }
-
+      const left = Math.max(0, Math.ceil((phaseEndsAtRef.current - Date.now()) / 1000))
+      if (left !== remainingRef.current) {
+        setPhaseRemaining(left)
+        if (left > 0 && phaseRef.current === 'focus') void flushFocusCredit()
+      }
+      if (left > 0) return
+      phaseEndsAtRef.current = null
       advancingRef.current = true
       setPhaseRemaining(0)
-      advancePhase()
-    }, 1000)
+      void advancePhase()
+    }
 
-    return () => clearInterval(id)
-  }, [running, phase, phaseHold, clockMode, advancePhase, flushFocusCredit, setPhaseRemaining])
+    const sync = clockMode === 'stopwatch' ? syncStopwatch : phase === 'done' ? null : syncCountdown
+    if (!sync) return
+    sync()
+    const id = window.setInterval(sync, 250)
+    const onWake = () => {
+      if (document.visibilityState === 'visible') sync()
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('pageshow', onWake)
+    window.addEventListener('focus', onWake)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('pageshow', onWake)
+      window.removeEventListener('focus', onWake)
+      if (clockMode !== 'stopwatch') phaseEndsAtRef.current = null
+    }
+  }, [
+    running,
+    phase,
+    phaseHold,
+    startChecklistOpen,
+    clockMode,
+    advancePhase,
+    flushFocusCredit,
+    setPhaseRemaining,
+  ])
 
   useEffect(() => {
     if (running && clockMode === 'stopwatch') {
@@ -810,6 +856,7 @@ export function FocusTimerPage() {
 
   useEffect(() => {
     persistOpenTimer()
+    return () => persistOpenTimer()
   }, [
     persistOpenTimer,
     sessionStarted,
@@ -821,6 +868,7 @@ export function FocusTimerPage() {
     clockMode,
     selectedLabelId,
     creditedMinutes,
+    running,
   ])
 
   useEffect(() => {

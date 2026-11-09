@@ -26,6 +26,7 @@ import {
   buildEditLogDaySleepUpdates,
   formatSleepMetricUnit,
   getSleepMetricValue,
+  sleepMetricDisplayUnit,
   type SleepMetricDefinition,
 } from '@/lib/sleepMetrics'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -42,13 +43,22 @@ import {
   getTrackedWeeklyEditHabits,
 } from '@/lib/trackedLogsNet'
 import { useSettings } from '@/context/SettingsContext'
-import { cn } from '@/lib/utils'
-import { parseHrsMinToMinutes, usesTimedMetricInput } from '@/lib/timedMetrics'
+import { cn, minutesToTime } from '@/lib/utils'
+import {
+  formatMetricAmountWithUnit,
+  parseHrsMinToMinutes,
+  usesTimedMetricInput,
+} from '@/lib/timedMetrics'
 
 interface EditLogsModalProps {
   goals: Goal[]
   userId: string
   onClose: () => void
+}
+
+function formatHistoryValue(value: number, unit: string, metricKey?: string): string {
+  if (unit === 'Time of day') return minutesToTime(value)
+  return formatMetricAmountWithUnit(value, unit, metricKey)
 }
 
 function MetricFieldRow({
@@ -307,17 +317,61 @@ function EditLogsDaySection({
     void persistDay({ sleepMetricValues: nextSleepMetricValues })
   }
 
-  const hasLoggedData =
-    (sleepGoal && sleepHours != null) ||
-    (weightGoal && weightDisplay != null) ||
-    otherGoals.some((g) => {
-      if (g.metric_key.startsWith('custom:')) return customMetrics[g.metric_key] != null
-      return customMetrics[g.metric_key] != null
-    }) ||
-    (showFocus && (focusMinutes ?? 0) > 0) ||
-    dailyHabits.some((h) => habits[h.id]) ||
-    visibleWorkouts.length > 0 ||
-    sleepMetrics.some((m) => sleepMetricValues[m.id] != null)
+  const daySummary = useMemo(() => {
+    const parts: string[] = []
+    for (const metric of sleepMetrics) {
+      const value = sleepMetricValues[metric.id]
+      if (value == null) continue
+      parts.push(
+        `${metric.label} ${formatHistoryValue(value, sleepMetricDisplayUnit(metric), metric.id)}`,
+      )
+    }
+    if (sleepGoal && sleepHours != null && !sleepMetrics.some((metric) => metric.id === 'sleep_duration')) {
+      parts.push(
+        `${sleepGoal.name} ${formatHistoryValue(sleepHours, sleepGoal.unit, sleepGoal.metric_key)}`,
+      )
+    }
+    if (weightGoal && weightDisplay != null) {
+      parts.push(`${weightGoal.name} ${weightDisplay} ${weightUnit}`)
+    }
+    for (const goal of otherGoals) {
+      const value = customMetrics[goal.metric_key]
+      if (value == null) continue
+      parts.push(`${goal.name} ${formatHistoryValue(value, goal.unit, goal.metric_key)}`)
+    }
+    if (showFocus && (focusMinutes ?? 0) > 0) {
+      parts.push(`Focus ${formatHistoryValue(focusMinutes ?? 0, 'min', 'focus')}`)
+    }
+    const workoutTotals = new Map<string, number>()
+    for (const workout of visibleWorkouts) {
+      const minutes = workoutDurations[workout.id] ?? workout.duration_minutes
+      if (minutes <= 0) continue
+      workoutTotals.set(workout.category, (workoutTotals.get(workout.category) ?? 0) + minutes)
+    }
+    for (const [category, minutes] of workoutTotals) {
+      const type = getWorkoutTypes().find((entry) => entry.id === category)
+      parts.push(`${type?.label ?? category} ${minutes}m`)
+    }
+    const doneHabits = dailyHabits.filter((habit) => habits[habit.id]).length
+    if (doneHabits > 0) parts.push(`${doneHabits} habit${doneHabits === 1 ? '' : 's'}`)
+    return parts.join(' · ')
+  }, [
+    customMetrics,
+    dailyHabits,
+    focusMinutes,
+    habits,
+    otherGoals,
+    showFocus,
+    sleepGoal,
+    sleepHours,
+    sleepMetricValues,
+    sleepMetrics,
+    visibleWorkouts,
+    weightDisplay,
+    weightGoal,
+    weightUnit,
+    workoutDurations,
+  ])
 
   const clearSleepMetric = (metricId: string) => {
     updateSleepMetric(metricId, null)
@@ -366,8 +420,8 @@ function EditLogsDaySection({
       >
         <div className="min-w-0">
           <span className="text-sm font-medium text-zinc-200">{formatEditLogDayLabel(date)}</span>
-          {!expanded && hasLoggedData && (
-            <p className="mt-0.5 truncate text-[11px] text-zinc-500">Has logged data</p>
+          {!expanded && daySummary && (
+            <p className="mt-0.5 truncate text-[11px] text-zinc-500">{daySummary}</p>
           )}
         </div>
         <ChevronDown
@@ -883,7 +937,7 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
   }
 
   return (
-    <ModalOverlay align="center" onBackdropClick={() => void handleDone()}>
+    <ModalOverlay align="center" className="!z-[100]" onBackdropClick={() => void handleDone()}>
       <div
         role="dialog"
         aria-labelledby="edit-logs-title"
@@ -900,7 +954,7 @@ export function EditLogsModal({ goals, userId, onClose }: EditLogsModalProps) {
                 Edit logs
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Review and change metric logs from the past {EDIT_LOGS_LOOKBACK_DAYS} days.
+                Open any of the past {EDIT_LOGS_LOOKBACK_DAYS} days and change its metrics.
               </p>
             </div>
           </div>

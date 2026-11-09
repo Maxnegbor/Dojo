@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ClipboardList, X } from 'lucide-react'
+import { ClipboardList, History, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { EditLogsModal } from '@/components/goals/EditLogsModal'
 import { DailyLogForm } from '@/components/today/DailyLogForm'
 import { WeeklyLogFields, useWeeklyLogDraft } from '@/components/today/WeeklyLogFields'
 import { SleepMetricField } from '@/components/today/SleepMetricField'
@@ -50,6 +51,7 @@ export function HomeLogModal({
 }: HomeLogModalProps) {
   const { settings } = useSettings()
   const [view, setView] = useState<'daily' | 'weekly'>('daily')
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const sleepMetrics = useMemo(
     () => getHomeLogSleepMetrics(sleepMetricsConfig),
@@ -191,6 +193,17 @@ export function HomeLogModal({
         <div className="flex items-center gap-2 border-t border-zinc-800/80 px-5 py-3">
           {view === 'daily' ? (
             <>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium',
+                  'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300',
+                )}
+              >
+                <History size={12} />
+                History
+              </button>
               {showWeekly && (
                 <button
                   type="button"
@@ -224,6 +237,16 @@ export function HomeLogModal({
           )}
         </div>
       </div>
+      {historyOpen && (
+        <EditLogsModal
+          goals={goals}
+          userId={userId}
+          onClose={() => {
+            setHistoryOpen(false)
+            onSaved()
+          }}
+        />
+      )}
     </div>,
     document.body,
   )
