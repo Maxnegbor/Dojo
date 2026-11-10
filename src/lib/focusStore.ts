@@ -23,6 +23,8 @@ export function getFocusSettings(): FocusTimerSettings {
         longBreakEnabled: Boolean(parsed.longBreakEnabled),
         allowPause: Boolean(parsed.allowPause),
         promptFocusScore: Boolean(parsed.promptFocusScore),
+        breathingEnabled: Boolean(parsed.breathingEnabled),
+        breathingCycles: snapBreathingCycles(parsed.breathingCycles),
         startReminderEnabled: Boolean(parsed.startReminderEnabled),
         startReminders: normalizeAlarmChecklist(parsed.startReminders),
         preAlarmChecklistEnabled: Boolean(parsed.preAlarmChecklistEnabled),
@@ -55,6 +57,11 @@ function normalizeAlarmChecklist(raw: unknown): FocusAlarmCheckItem[] {
     items.push({ id, label })
   }
   return items.slice(0, 30)
+}
+
+function snapBreathingCycles(n: unknown): number {
+  const value = typeof n === 'number' && Number.isFinite(n) ? n : 5
+  return Math.min(10, Math.max(1, Math.round(value)))
 }
 
 function snapMinutes(n: number): number {

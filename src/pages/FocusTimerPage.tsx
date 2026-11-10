@@ -151,12 +151,41 @@ function TimerColon() {
   )
 }
 
+const BREATH_IN_MS = 4000
+const BREATH_OUT_MS = 6000
+const BREATH_CYCLE_MS = BREATH_IN_MS + BREATH_OUT_MS
+const BREATH_SCALE_MIN = 0.58
+const BREATH_SCALE_MAX = 1
+
+interface BreathFrame {
+  inhaling: boolean
+  cycle: number
+  cycles: number
+  scale: number
+}
+
+function breathFrame(startedAt: number, now: number, cycles: number): BreathFrame | null {
+  const elapsed = Math.max(0, now - startedAt)
+  if (elapsed >= cycles * BREATH_CYCLE_MS) return null
+  const cycle = Math.floor(elapsed / BREATH_CYCLE_MS) + 1
+  const into = elapsed % BREATH_CYCLE_MS
+  const inhaling = into < BREATH_IN_MS
+  const t = inhaling ? into / BREATH_IN_MS : (into - BREATH_IN_MS) / BREATH_OUT_MS
+  const x = Math.min(1, Math.max(0, t))
+  const eased = x * x * (3 - 2 * x)
+  const scale = inhaling
+    ? BREATH_SCALE_MIN + (BREATH_SCALE_MAX - BREATH_SCALE_MIN) * eased
+    : BREATH_SCALE_MAX - (BREATH_SCALE_MAX - BREATH_SCALE_MIN) * eased
+  return { inhaling, cycle, cycles, scale }
+}
+
 function FocusTimerFace({
   progress,
   isRest,
   totalSeconds,
   countUp = false,
   maskSeconds = false,
+  breath = null,
   className,
 }: {
   progress: number
@@ -166,8 +195,43 @@ function FocusTimerFace({
   countUp?: boolean
   /** Hide ticking seconds as two dashes (screensaver while the timer is running). */
   maskSeconds?: boolean
+  breath?: BreathFrame | null
   className?: string
 }) {
+  if (breath) {
+    return (
+      <div
+        className={cn('relative h-60 w-60 shrink-0', className)}
+        role="img"
+        aria-label={`${breath.inhaling ? 'Breathe in' : 'Breathe out'}, cycle ${breath.cycle} of ${breath.cycles}`}
+      >
+        <svg
+          className="absolute inset-0"
+          viewBox="0 0 100 100"
+          aria-hidden
+          style={{ transform: `scale(${breath.scale})` }}
+        >
+          <circle
+            cx="50"
+            cy="50"
+            r="42"
+            fill="color-mix(in srgb, var(--accent-500) 16%, transparent)"
+            stroke="var(--accent-500)"
+            strokeWidth="3.5"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+          <span className="text-sm font-medium tracking-wide text-zinc-100">
+            {breath.inhaling ? 'Breathe in' : 'Breathe out'}
+          </span>
+          <span className="text-[11px] tabular-nums text-zinc-500">
+            {breath.cycle} of {breath.cycles}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
   const safe = Math.max(0, Math.floor(totalSeconds))
   const hours = Math.floor(safe / 3600)
   const showHours = countUp && hours > 0
@@ -248,7 +312,7 @@ export function FocusTimerPage() {
     setFocusImmersive,
     setFocusTimerActive,
   } = useFocus()
-  const { active: screensaverActive, waking: screensaverWaking } = useScreensaver()
+  const { active: screensaverActive } = useScreensaver()
   const { userId } = useAuth()
   const { settings: userPrefs, formatTime } = useSettings()
   const [openTimer] = useState(() => {
@@ -302,6 +366,10 @@ export function FocusTimerPage() {
   const [creditedMinutes, setCreditedMinutes] = useState(openTimer?.creditedMinutes ?? 0)
   const [showFocusGoalModal, setShowFocusGoalModal] = useState(false)
   const [scorePrompt, setScorePrompt] = useState<FocusScorePromptPayload | null>(null)
+  const [breathing, setBreathing] = useState<{ cycles: number; startedAt: number } | null>(null)
+  const [breathFrameNow, setBreathFrameNow] = useState<BreathFrame | null>(null)
+  const breathingAfterPromptsRef = useRef(false)
+  const scorePromptRef = useRef(scorePrompt)
   const [phaseHold, setPhaseHold] = useState<PhaseHold | null>(null)
   const [startChecklistOpen, setStartChecklistOpen] = useState(false)
   const pendingStartRef = useRef<(() => void) | null>(null)
@@ -334,6 +402,7 @@ export function FocusTimerPage() {
   const creditGen = useRef(0)
 
   settingsRef.current = settings
+  scorePromptRef.current = scorePrompt
   phaseRef.current = phase
   runningRef.current = running
   cycleRef.current = cycle
@@ -663,6 +732,34 @@ export function FocusTimerPage() {
     setStartChecklistOpen(true)
   }, [])
 
+  const startBreathing = useCallback(() => {
+    const s = settingsRef.current
+    if (!s.breathingEnabled) return
+    const cycles = Math.min(10, Math.max(1, Math.round(s.breathingCycles || 5)))
+    const startedAt = Date.now()
+    breathingAfterPromptsRef.current = false
+    setBreathing({ cycles, startedAt })
+    setBreathFrameNow(breathFrame(startedAt, startedAt, cycles))
+  }, [])
+
+  const offerBreathing = useCallback(
+    (defer: boolean) => {
+      if (!settingsRef.current.breathingEnabled) return
+      if (defer) {
+        breathingAfterPromptsRef.current = true
+        return
+      }
+      startBreathing()
+    },
+    [startBreathing],
+  )
+
+  const endBreathing = useCallback(() => {
+    breathingAfterPromptsRef.current = false
+    setBreathing(null)
+    setBreathFrameNow(null)
+  }, [])
+
   const continueAfterHold = useCallback(
     (hold: PhaseHold) => {
       const s = settingsRef.current
@@ -695,6 +792,7 @@ export function FocusTimerPage() {
             setPhase('done')
             setRunning(false)
             setSessionStarted(false)
+            offerBreathing(false)
             return
           }
           startFocusBlock(c + 1, false)
@@ -705,6 +803,7 @@ export function FocusTimerPage() {
           setPhase('done')
           setRunning(false)
           setSessionStarted(false)
+          offerBreathing(false)
           return
         }
         setActiveBreakMinutes(breakMinutes)
@@ -720,11 +819,12 @@ export function FocusTimerPage() {
         setPhase('done')
         setRunning(false)
         setSessionStarted(false)
+        offerBreathing(false)
         return
       }
       startFocusBlock(c + 1, true)
     },
-    [runOrStartChecklist, setPhaseRemaining, userPrefs.timerSoundEnabled],
+    [offerBreathing, runOrStartChecklist, setPhaseRemaining, userPrefs.timerSoundEnabled],
   )
 
   const dismissPhaseHold = useCallback(
@@ -757,8 +857,38 @@ export function FocusTimerPage() {
     const pending = checklistHold
     if (!pending) return
     setChecklistHold(null)
-    if (pending.hold) continueAfterHold(pending.hold)
-  }, [checklistHold, continueAfterHold])
+    if (pending.hold) {
+      continueAfterHold(pending.hold)
+      return
+    }
+    if (breathingAfterPromptsRef.current && !scorePromptRef.current) startBreathing()
+  }, [checklistHold, continueAfterHold, startBreathing])
+
+  useEffect(() => {
+    if (!breathing) return
+    setFocusImmersive(true)
+    let raf = 0
+    const tick = () => {
+      const frame = breathFrame(breathing.startedAt, Date.now(), breathing.cycles)
+      if (!frame) {
+        setBreathing(null)
+        setBreathFrameNow(null)
+        return
+      }
+      setBreathFrameNow(frame)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') endBreathing()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('keydown', onKey)
+      setFocusImmersive(false)
+    }
+  }, [breathing, endBreathing, setFocusImmersive])
 
   useEffect(() => {
     if (catchUpPhaseRef.current) {
@@ -907,6 +1037,7 @@ export function FocusTimerPage() {
         setPhase('done')
         setRunning(false)
         setSessionStarted(false)
+        offerBreathing(settings.promptFocusScore)
         return
       }
       plannedFocusRef.current = settings.focusMinutes
@@ -932,6 +1063,7 @@ export function FocusTimerPage() {
       setPhase('done')
       setRunning(false)
       setSessionStarted(false)
+      offerBreathing(false)
       return
     }
 
@@ -1005,6 +1137,7 @@ export function FocusTimerPage() {
     maybePromptFocusScore(sessionStart, minutes)
     const items = activeAlarmChecklist(settings)
     if (items.length > 0) setChecklistHold({ hold: null, items })
+    offerBreathing(settings.promptFocusScore || items.length > 0)
   }
 
   const reset = () => {
@@ -1020,6 +1153,7 @@ export function FocusTimerPage() {
     pendingStartRef.current = null
     setChecklistHold(null)
     setStartReminderOpen(false)
+    endBreathing()
     setRunning(false)
     setSessionStarted(false)
     elapsedRef.current = 0
@@ -1070,6 +1204,11 @@ export function FocusTimerPage() {
   const faceSeconds = isStopwatch ? elapsed : remaining
 
   const showSchedule = userPrefs.showFocusSchedule && !!userId
+  const breathQuiet = breathing != null
+  const breathFade = cn(
+    'transition-opacity duration-500',
+    breathQuiet && 'pointer-events-none opacity-0',
+  )
 
   useLayoutEffect(() => {
     const face = timerFaceRef.current
@@ -1104,9 +1243,8 @@ export function FocusTimerPage() {
     createPortal(
       <div
         className={cn(
-          'fixed inset-0 z-[200] flex h-dvh flex-col items-center justify-center gap-8 px-6 bg-[#06060b] transition-opacity duration-[1400ms] ease-in-out',
+          'fixed inset-0 z-[200] flex h-dvh flex-col items-center justify-center gap-8 bg-[#06060b] px-6',
           userId && 'pb-28',
-          screensaverWaking && 'pointer-events-none opacity-0',
         )}
       >
         {sessionOneThing && <p className="max-h-[35dvh] w-full max-w-3xl overflow-y-auto whitespace-pre-wrap break-words text-center text-2xl font-semibold leading-tight tracking-tight sm:text-3xl lg:text-4xl">
@@ -1137,10 +1275,11 @@ export function FocusTimerPage() {
       <div
         ref={focusPageRef}
         className={cn(
-          'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-start gap-4 py-6 transition-[gap,padding,opacity] duration-[1400ms] ease-in-out',
+          'focus-stage relative mx-auto flex min-h-full w-full flex-col justify-start gap-4 py-6',
           screensaverActive && !oneThingBlocking && 'pointer-events-none opacity-0',
         )}
       >
+      <div className={breathFade}>
       <FocusOneThingHeader
         answer={sessionOneThing}
         compact={oneThingDismissed}
@@ -1149,6 +1288,7 @@ export function FocusTimerPage() {
           setOneThingDismissed(false)
         }}
       />
+      </div>
       <div
         inert={oneThingBlocking}
         className={cn(
@@ -1160,6 +1300,7 @@ export function FocusTimerPage() {
         <div
           className={cn(
             'order-3 mx-auto w-full min-w-0 max-w-[28rem] space-y-5 lg:mr-auto lg:ml-0 lg:max-w-72',
+            breathFade,
           )}
         >
           <FocusTodoBox key={userId ?? 'guest'} />
@@ -1225,6 +1366,22 @@ export function FocusTimerPage() {
                 checked={settings.promptFocusScore}
                 onChange={(promptFocusScore) => updateTimerSettings({ promptFocusScore })}
               />
+              <ToggleRow
+                label="Breathing after session"
+                description="Four seconds in, six seconds out, when the session finishes."
+                compact
+                checked={settings.breathingEnabled}
+                onChange={(breathingEnabled) => updateTimerSettings({ breathingEnabled })}
+              />
+              {settings.breathingEnabled && (
+                <CycleStepper
+                  label="Breathing cycles"
+                  value={settings.breathingCycles}
+                  min={1}
+                  max={10}
+                  onChange={(breathingCycles) => updateTimerSettings({ breathingCycles })}
+                />
+              )}
               <FocusAlarmChecklistSettings
                 label="Start reminder"
                 description="Pops up when you press start. Reminders stay until you delete them."
@@ -1310,7 +1467,8 @@ export function FocusTimerPage() {
           <div className="flex w-full flex-col items-center px-2 pt-2 pb-4 sm:px-4">
             <div
               className={cn(
-                'mb-3 flex rounded-full border border-zinc-800 bg-zinc-950 p-0.5 transition-opacity duration-[1400ms] ease-in-out',
+                'mb-3 flex rounded-full border border-zinc-800 bg-zinc-950 p-0.5',
+                breathFade,
                 screensaverActive && 'pointer-events-none opacity-0',
                 (running || sessionStarted) && 'opacity-60',
               )}
@@ -1339,7 +1497,8 @@ export function FocusTimerPage() {
 
             <p
           className={cn(
-            'mb-1 h-4 text-xs font-medium uppercase tracking-widest transition-opacity duration-[1400ms] ease-in-out',
+            'mb-1 h-4 text-xs font-medium uppercase tracking-widest',
+            breathFade,
             isStopwatch || phase === 'focus'
               ? 'text-[var(--accent-400)]'
               : isRest
@@ -1359,17 +1518,27 @@ export function FocusTimerPage() {
                   : `Rest · ${cycle}/${settings.iterations}`}
         </p>
 
-        <div ref={timerFaceRef} className="mt-4 mb-6">
+        <div ref={timerFaceRef} className="mt-4 mb-6 flex flex-col items-center">
           <FocusTimerFace
             progress={progress}
             isRest={isRest}
             totalSeconds={faceSeconds}
             countUp={isStopwatch}
+            breath={breathFrameNow}
           />
+          {breathQuiet && (
+            <button
+              type="button"
+              onClick={endBreathing}
+              className="mt-4 text-xs text-zinc-500 hover:text-zinc-300"
+            >
+              Skip
+            </button>
+          )}
         </div>
 
         <FocusLabelPicker
-          className={cn('mb-4 transition-opacity duration-[1400ms] ease-in-out', screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0')}
+          className={cn('mb-4', breathFade, screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0')}
           value={selectedLabelId}
           onChange={selectLabel}
           disabled={phase === 'done'}
@@ -1378,7 +1547,8 @@ export function FocusTimerPage() {
         {!isStopwatch && sessionEndAt && phase !== 'done' ? (
           <div
             className={cn(
-              'mb-5 flex h-11 shrink-0 flex-wrap items-center justify-center gap-1.5 transition-opacity duration-[1400ms] ease-in-out',
+              'mb-5 flex h-11 shrink-0 flex-wrap items-center justify-center gap-1.5',
+              breathFade,
               screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0',
             )}
           >
@@ -1398,7 +1568,8 @@ export function FocusTimerPage() {
         ) : (
           <div
             className={cn(
-              'mb-5 h-11 shrink-0 transition-all duration-[1400ms] ease-in-out',
+              'mb-5 h-11 shrink-0',
+              breathFade,
               screensaverActive && 'mb-0 h-0',
             )}
             aria-hidden
@@ -1407,7 +1578,8 @@ export function FocusTimerPage() {
 
         <div
           className={cn(
-            'mb-3 flex h-12 w-full shrink-0 items-center justify-center transition-opacity duration-[1400ms] ease-in-out',
+            'mb-3 flex h-12 w-full shrink-0 items-center justify-center',
+            breathFade,
             screensaverActive && 'pointer-events-none mb-0 max-h-0 overflow-hidden opacity-0',
           )}
         >
@@ -1448,7 +1620,8 @@ export function FocusTimerPage() {
 
         <div
           className={cn(
-            'flex h-12 shrink-0 items-center justify-center gap-2 transition-opacity duration-[1400ms] ease-in-out',
+            'flex h-12 shrink-0 items-center justify-center gap-2',
+            breathFade,
             screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
           )}
         >
@@ -1491,7 +1664,8 @@ export function FocusTimerPage() {
 
           <section
             className={cn(
-              'w-full pt-2 transition-opacity duration-[1400ms] ease-in-out',
+              'w-full pt-2',
+              breathFade,
               screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
             )}
           >
@@ -1509,7 +1683,8 @@ export function FocusTimerPage() {
             onDelete={deleteFocusRecord}
             onCreate={addFocusRecord}
             className={cn(
-              'pt-6 transition-opacity duration-[1400ms] ease-in-out',
+              'pt-6',
+              breathFade,
               screensaverActive && 'pointer-events-none max-h-0 overflow-hidden opacity-0',
             )}
           />
@@ -1519,6 +1694,7 @@ export function FocusTimerPage() {
           ref={scheduleSlotRef}
           className={cn(
             'order-2 min-w-0 lg:order-1',
+            breathFade,
             !(showSchedule && userId) && 'hidden lg:block',
           )}
         >
@@ -1600,10 +1776,14 @@ export function FocusTimerPage() {
       {scorePrompt && !phaseHold && !checklistHold && (
         <FocusScorePrompt
           payload={scorePrompt}
-          onSkip={() => setScorePrompt(null)}
+          onSkip={() => {
+            setScorePrompt(null)
+            if (breathingAfterPromptsRef.current) startBreathing()
+          }}
           onSubmit={(score) => {
             addFocusScoreSession({ ...scorePrompt, score })
             setScorePrompt(null)
+            if (breathingAfterPromptsRef.current) startBreathing()
           }}
         />
       )}

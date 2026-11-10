@@ -888,8 +888,3 @@ input[type="number"] {
     animation: none;
   }
 }
-
-/* Focus screensaver wake. */
-.focus-stage--screensaver-wake {
-  transition: gap 1400ms ease-in-out, padding 1400ms ease-in-out;
-}

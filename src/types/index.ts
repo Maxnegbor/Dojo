@@ -371,6 +371,10 @@ export interface FocusTimerSettings {
   allowPause: boolean
   /** After each focus cycle, ask for a 1–10 subjective focus score. */
   promptFocusScore: boolean
+  /** After a finished session, breathe with the focus circle. */
+  breathingEnabled: boolean
+  /** Inhale-then-exhale rounds. Four seconds in, six seconds out. */
+  breathingCycles: number
   /** When you press start, show these reminders before the timer begins. */
   startReminderEnabled: boolean
   startReminders: FocusAlarmCheckItem[]
@@ -557,6 +561,8 @@ export const DEFAULT_FOCUS_SETTINGS: FocusTimerSettings = {
   longBreakMinutes: 15,
   allowPause: false,
   promptFocusScore: false,
+  breathingEnabled: false,
+  breathingCycles: 5,
   startReminderEnabled: false,
   startReminders: [],
   preAlarmChecklistEnabled: false,

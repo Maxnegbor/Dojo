@@ -18,6 +18,7 @@ import { TimelineRangePicker } from '@/components/settings/TimelineRangePicker'
 import { ScheduleColorsEditor } from '@/components/settings/ScheduleColorsEditor'
 import { ScheduleTemplatesEditor } from '@/components/settings/ScheduleTemplatesEditor'
 import { ExerciseWeekPlanEditor } from '@/components/settings/ExerciseWeekPlanEditor'
+import { CycleStepper } from '@/components/focus/TimerControls'
 import { FocusLabelsEditor } from '@/components/settings/FocusLabelsEditor'
 import { OpenAIIntegrationEditor } from '@/components/settings/OpenAIIntegrationEditor'
 import { SettingsCoachEditor } from '@/components/settings/SettingsCoachEditor'
@@ -345,6 +346,31 @@ export function SettingsPage() {
                   flashSaved()
                 }}
               />
+              <ToggleRow
+                label="Breathing after a session"
+                description="The focus circle breathes for four seconds in and six seconds out when a session finishes."
+                checked={focusTimerSettings.breathingEnabled}
+                onChange={(breathingEnabled) => {
+                  const next = { ...getFocusSettings(), breathingEnabled }
+                  saveFocusSettings(next)
+                  setFocusTimerSettings(next)
+                  flashSaved()
+                }}
+              />
+              {focusTimerSettings.breathingEnabled && (
+                <CycleStepper
+                  label="Breathing cycles"
+                  value={focusTimerSettings.breathingCycles}
+                  min={1}
+                  max={10}
+                  onChange={(breathingCycles) => {
+                    const next = { ...getFocusSettings(), breathingCycles }
+                    saveFocusSettings(next)
+                    setFocusTimerSettings(next)
+                    flashSaved()
+                  }}
+                />
+              )}
               <div className="border-t border-zinc-800/80 pt-4">
                 <p className="mb-3 text-sm font-medium text-zinc-200">Focus labels</p>
                 <FocusLabelsEditor onSaved={flashSaved} />

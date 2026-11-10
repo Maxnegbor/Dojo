@@ -204,8 +204,6 @@ const SIDEBAR_EXPAND_DELAY_MS = 0
 const SIDEBAR_COLLAPSE_DELAY_MS = 100
 /** Wide enough for the longest label, "The One Thing". */
 const SIDEBAR_EXPANDED_WIDTH_CLASS = 'w-[11.5rem]'
-const SCREENSAVER_WAKE_MS = 1400
-
 function sidebarLabelClass(expanded: boolean) {
   return cn(
     'min-w-0 overflow-hidden whitespace-nowrap pr-3 text-left transition-opacity',
@@ -266,21 +264,10 @@ export function AppLayout() {
   }, [])
 
   useEffect(() => {
-    if (isIdle && onScreensaverRoute && !isMobile) {
-      setScreensaver({ active: true, waking: false })
-      return
-    }
-
-    setScreensaver((prev) => {
-      if (!prev.active) return { active: false, waking: false }
-      return { active: true, waking: true }
+    setScreensaver({
+      active: isIdle && onScreensaverRoute && !isMobile,
+      waking: false,
     })
-
-    const id = window.setTimeout(() => {
-      setScreensaver({ active: false, waking: false })
-    }, SCREENSAVER_WAKE_MS)
-
-    return () => window.clearTimeout(id)
   }, [isIdle, onScreensaverRoute, isMobile])
 
   useEffect(() => {
@@ -305,7 +292,7 @@ export function AppLayout() {
     <div className="relative z-10 flex h-dvh flex-col overflow-hidden bg-[#06060b] text-zinc-100">
       <div className="flex min-h-0 flex-1 overflow-hidden">
       {!focusImmersive && !isMobile && (
-      <aside className={cn('relative z-30 w-14 shrink-0 transition-opacity duration-[1400ms] ease-in-out', screensaver.active && 'pointer-events-none opacity-0')}>
+      <aside className={cn('relative z-30 w-14 shrink-0', screensaver.active && 'pointer-events-none opacity-0')}>
         <div
           className={cn(
             'absolute inset-y-0 left-0 z-30 flex w-14 flex-col overflow-x-hidden overflow-y-auto bg-[#06060b]',
